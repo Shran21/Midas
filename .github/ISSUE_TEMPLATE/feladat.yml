@@ -1,0 +1,29 @@
+name: Feladat
+description: Új fejlesztési feladat a backlogba
+body:
+  - type: textarea
+    id: cel
+    attributes:
+      label: Cél
+      description: Mit ad a felhasználónak vagy az üzemeltetőnek, ha elkészül?
+    validations:
+      required: true
+  - type: textarea
+    id: teendok
+    attributes:
+      label: Teendők
+      description: A fő lépések, pipálható listaként.
+      value: |
+        - [ ] 
+  - type: textarea
+    id: kesz
+    attributes:
+      label: Kész, ha
+      description: Mérhető elfogadási feltételek.
+    validations:
+      required: true
+  - type: input
+    id: terv
+    attributes:
+      label: Kapcsolódó fejezet a rendszertervben
+      placeholder: https://github.com/Shran21/MIDAS/blob/main/docs/rendszerterv.md#...

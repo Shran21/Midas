@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Biztonsági hiba bejelentése
+    url: https://github.com/Shran21/MIDAS/security/advisories/new
+    about: Sebezhetőséget privát módon jelents be, ne nyilvános issue-ban.

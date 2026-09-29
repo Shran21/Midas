@@ -1,0 +1,49 @@
+name: Hibajelentés
+description: Valami nem úgy működik, ahogy kellene
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Biztonsági hibát ne itt jelents, hanem a Security fülön (Report a vulnerability).
+  - type: textarea
+    id: mi-tortent
+    attributes:
+      label: Mi történt?
+    validations:
+      required: true
+  - type: textarea
+    id: lepesek
+    attributes:
+      label: Hogyan lehet előidézni?
+      value: |
+        1. 
+        2. 
+    validations:
+      required: true
+  - type: textarea
+    id: vart
+    attributes:
+      label: Mit vártál helyette?
+    validations:
+      required: true
+  - type: input
+    id: verzio
+    attributes:
+      label: MIDAS-verzió
+  - type: dropdown
+    id: resz
+    attributes:
+      label: Érintett rész
+      options:
+        - Szerver
+        - Dashboard
+        - Windows-agent
+        - Linux-agent
+        - Asztali app
+        - Távsegítés
+        - Telepítő
+  - type: input
+    id: rendszer
+    attributes:
+      label: Operációs rendszer és böngésző
+      placeholder: pl. Windows 11 24H2, Chrome 140
