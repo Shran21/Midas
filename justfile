@@ -1,0 +1,31 @@
+set windows-shell := ["cmd.exe", "/d", "/c"]
+
+default:
+    @just --list
+
+setup:
+    pnpm install --frozen-lockfile
+
+dev:
+    pnpm dev
+
+build:
+    cargo build --workspace --locked
+    pnpm build
+
+test:
+    cargo test --workspace --locked
+    pnpm typecheck
+
+lint:
+    cargo fmt --all -- --check
+    cargo clippy --workspace --all-targets --locked -- -D warnings
+    pnpm lint
+
+fmt:
+    cargo fmt --all
+    pnpm format
+
+release:
+    cargo build --workspace --release --locked
+    pnpm build

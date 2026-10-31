@@ -1,54 +1,79 @@
 # MIDAS
 
-Nyílt forráskódú távfelügyeleti (RMM) platform ügyfelek IT-környezetéhez: folyamatos monitorozás, automatizált karbantartás és gyors, jó képminőségű távsegítség, egy helyről, több ügyfélre.
+[English](#english)
 
-> **English:** MIDAS is an open-source RMM platform for monitoring, automated maintenance and remote support. The project documentation is in Hungarian; the dashboard will be available in Hungarian and English.
+A MIDAS saját szerveren üzemeltethető, nyílt forráskódú távfelügyeleti platform terve. Egy technikus több ügyfél munkaállomásait és szervereit kezelheti ugyanarról a webes adminfelületről.
 
 ## Állapot
 
-A rendszerterv elkészült, a fejlesztés a **0. fázissal** (Alapok) indul. Futtatható kód még nincs.
+Az alapok megvalósítása elindult: Rust-szerver helyi állapotvégponttal, magyar–angol fejlesztői indítóoldal és közös buildparancsok. A Windowsos távsegítés és az UAC kezelése a későbbi prototípus része. A 0–5. fázis felülvizsgált feladatai a [GitHub Projectben](https://github.com/users/Shran21/projects/4) követhetők: 96 ütemezett tétel és 6 külön javaslat.
 
-- Rendszerterv: [docs/rendszerterv.md](docs/rendszerterv.md)
-- Fázisok és feladatok: [mérföldkövek](https://github.com/Shran21/MIDAS/milestones) és [issue-k](https://github.com/Shran21/MIDAS/issues)
+- A [rendszerterv](docs/rendszerterv.md) tartalmazza az architektúrát, a platformokat, a biztonsági modellt és az ütemtervet.
+- A [működési követelmények](docs/kovetelmenyek.md) írják le az agent és az adminpanel használatát, a jogosultságokat és az elfogadási próbákat.
+- A [feladatfelosztás](docs/feladatlista.md) minden tételhez státuszt, mérföldkövet, függőséget és elfogadási feltételt rendel. A közreműködéshez lásd a [hozzájárulási útmutatót](CONTRIBUTING.md).
 
-## Fő funkciók
+Fejlesztői indítás: `just setup`, majd `just dev`. [Környezet és parancsok](docs/fejlesztes.md) · [Biztonság](SECURITY.md)
 
-- **Távsegítés WebRTC-n**: hardveres AV1, H.265 vagy H.264 kódolás, ha a videokártya tudja, és szoftveres H.264, ha nem; így bármilyen gépen, GPU nélkül is működik. Jóváhagyással (attended) vagy ügyfélszintű szabályzattal jóváhagyás nélkül (unattended).
-- **Monitorozás és riasztás**: heartbeat, metrikák, leltár, ellenőrzések, öröklődő szabályzatok, értesítés e-mailben, webhookon és Web Push-sal.
-- **Automatizált karbantartás**: aláírt szkriptkönyvtár, ütemezett feladatok, Windows Update, winget, apt és dnf, karbantartási ablakok.
-- **Ügyfelek és jogosultságok**: ügyfél, telephely, eszközcsoport; szerepek és felhasználónként állítható engedélyek; belépés passkey-jel, TOTP-vel, Active Directoryval (LDAPS) és Entra ID-val.
-- **Böngészős dashboard**: magyar és angol nyelv, világos és sötét téma, saját mobilnézet, PWA-ként telepíthető.
-- **Szerver Linuxra és Windowsra**: aláírt telepítő (.deb, .rpm, illetve setup.exe) és webes beállító varázsló, beégetett alapjelszó nélkül.
+## Tervezett működés
 
-## Technológia röviden
+Távvezérlést kizárólag az adminisztrátor vagy az adott géphez távvezérlési joggal rendelkező technikus kezdeményezhet a webes adminpanelen. Felhasználói gépen az agent megmutatja, ki szeretne kapcsolódni és milyen hozzáférést kér. A felhasználó engedélyezheti vagy elutasíthatja a kérést, és bármikor befejezheti az aktív kapcsolatot. Az adminpanelen az eszközoldal és a helyi menü ugyanazokat az engedélyezett funkciókat kínálja, a monitorozástól és frissítésektől a fájlkezelőig és a távsegítésig. Mindkét felület magyarul és angolul készül.
 
-| Rész | Választás |
+A **Távoli vezérlés kérése** a felhasználó asztalát nyitja meg. A **Rendszergazdai távvezérlés kérése** az előre megadott rendszergazdai műveleteket is elérhetővé teszi. Megfelelő engedéllyel mindkét módban ugyanabban a kapcsolatban kell látni és kezelni a Windows UAC-promptját. Felhasználó nélküli szerverhez az ügyfél és az adott gép külön szabályzata, technikusi jogosultság és friss erős hitelesítés kell.
+
+A háttéragent változásokat továbbít és halasztható feladatokat ütemez. Távsegítéskor a valós idejű kép és bevitel az elsődleges. Az AD-felderítés jelölteket vesz fel a leltárba. Távoli kezeléshez jóváhagyott agent, tartományba léptetéshez külön engedély kell.
+
+## Technológia és ütemterv
+
+Rust agent és szerver, PostgreSQL 18, mTLS-sel védett protobuf/WebSocket kapcsolat, WebRTC és eturnal TURN-relé, React/TypeScript dashboard, Tauri 2 asztali felület. A célplatformok az agentnél Windows 10/11, Windows Server 2016-tól, Debian, Ubuntu és Rocky Linux. A központi szervernél Windows Server 2022-től, Debian 12/13, Ubuntu 24.04 LTS-től és Rocky Linux 9/10 a cél. A kiadásonkénti támogatást az adott géptípuson és művelettel végzett próbák határozzák meg.
+
+| Fázis | Fő eredmény |
 | --- | --- |
-| Agent és szerver | Rust (axum, tokio, rustls, sqlx) |
-| Adatbázis | PostgreSQL 18, sorszintű biztonsággal (RLS) |
-| Agent–szerver kapcsolat | protobuf WebSocketen, mTLS kliens-tanúsítvánnyal |
-| Távsegítés | WebRTC, TURN-relé: eturnal |
-| Dashboard | React, TypeScript, Vite, Tailwind CSS, shadcn/ui |
-| Asztali app | Tauri 2 |
-| Támogatott rendszerek | Agent: Windows 10/11, Windows Server 2016-tól, Debian, Ubuntu, Rocky Linux. Szerver: Windows Server 2022-től, Debian 12/13, Ubuntu 24.04 LTS-től, Rocky Linux 9/10 |
+| 0. Alapok | Belépés, ügyfélszigetelés, CI, használhatósági próba az agent és a dashboard prototípusán, korai WebRTC/UAC-próba |
+| 1. Agent és monitorozás | Regisztráció, leltár, riasztás, eszközoldalak, AD-felderítés és terhelési mérés |
+| 2. Távsegítés | Mindkét vezérlési mód, UAC, helyi leállítás, szerveres hozzáférés, fájlátvitel és TURN |
+| 3. Karbantartás | Szkriptek, frissítések, háttérműveletek és ellenőrzött Windows-tartományba léptetés |
+| 4. Megerősítés és pilot | Telepítők, aláírt frissítés, visszaállítási és biztonsági próba, első éles ügyfél |
+| 5. Bővítések | Linuxos grafikus távsegítés, gyorssegítség, hang és felvétel, Entra ID, Web Push és riportok |
 
-A döntések indoklása a [rendszertervben](docs/rendszerterv.md#technológiai-döntések) olvasható.
+Az ügyfélportál, a ticketing és a felhasználói segítségkérés külön javaslat, jelenleg mérföldkő nélkül.
 
-## Ütemterv
+A sebezhetőségeket a [privát hibabejelentőn](https://github.com/Shran21/Midas/security/advisories/new) várjuk. A projekt licence a [GNU AGPL v3](LICENSE).
 
-| Fázis | Tartalom |
+## English
+
+MIDAS is a design for a self-hosted, open-source remote monitoring and management platform. A technician can manage workstations and servers belonging to multiple customers from a web admin panel.
+
+### Status
+
+Foundation implementation has started: a Rust server with a local liveness endpoint, a Hungarian/English development launch page and shared build commands. Windows remote support and UAC interaction belong to the subsequent prototype. The reviewed phases 0–5 are tracked in the [GitHub Project](https://github.com/users/Shran21/projects/4): 96 scheduled items and 6 separate proposals.
+
+- The [system plan](docs/rendszerterv.md#english) covers architecture, platforms, security and delivery.
+- The [operating requirements](docs/kovetelmenyek.md#english) describe the agent and admin panel, permissions and acceptance trials.
+- The [task allocation](docs/feladatlista.md#english) assigns status, milestone, dependencies and acceptance to each item. See the [contribution guide](CONTRIBUTING.md#english) for contributing.
+
+Development startup: `just setup`, then `just dev`. [Environment and commands](docs/fejlesztes.md#english) · [Security](SECURITY.md#english)
+
+### Planned experience
+
+Only an administrator or a technician with remote-control permission for the device can initiate remote control from the web admin panel. On a user's device, the agent shows who wants to connect and what access they are requesting. The user can allow or decline and can end an active session at any time. Device pages and context menus offer the same authorized monitoring, update, file management and support actions. Both interfaces will be available in Hungarian and English.
+
+**Request remote control** opens the user's desktop. **Request administrative remote control** also makes pre-authorized administrative operations available. With the required permission, the technician must see and interact with Windows UAC in the same connection in either mode. Access to a server without a local participant requires both customer and device policies, technician permission and fresh strong authentication.
+
+The background agent sends changes and schedules deferrable work. Live video and input take priority during support. AD discovery adds inventory candidates. Remote management requires an approved agent, and domain joining needs separate permission.
+
+### Technology and roadmap
+
+Rust agent and server, PostgreSQL 18, protobuf over WebSocket secured by mTLS, WebRTC with an eturnal TURN relay, a React/TypeScript dashboard and a Tauri 2 desktop interface. The agent targets Windows 10/11, Windows Server 2016 onwards, Debian, Ubuntu and Rocky Linux. The central server targets Windows Server 2022 onwards, Debian 12/13, Ubuntu 24.04 LTS onwards and Rocky Linux 9/10. Tested device and operation combinations determine support for each release.
+
+| Phase | Principal outcome |
 | --- | --- |
-| 0. Alapok | repó, CI, beállító varázsló, belépés, jogosultságok, ügyfélmodell |
-| 1. Agent és monitorozás | Windows- és Linux-agent, mTLS, metrikák, leltár, riasztás, MSI, asztali app |
-| 2. Távsegítés | prototípus és mérés, hardveres és szoftveres kódolás, bevitel, fájlátvitel, TURN |
-| 3. Automatizált karbantartás | szkriptek, ütemezés, Windows Update, winget, apt és dnf |
-| 4. Megerősítés és pilot | telepítők, kódaláírás, önfrissítés, mentés, biztonsági audit, első éles ügyfél |
-| 5. Bővítések | Linux-távsegítés, gyorssegítség, hang, felvétel, Entra ID, riportok, ügyfélportál |
+| 0. Foundations | Sign-in, tenant isolation, CI, usability trials on agent and dashboard prototypes, early WebRTC/UAC proof |
+| 1. Agent and monitoring | Enrollment, inventory, alerts, device pages, AD discovery and load testing |
+| 2. Remote support | Both control modes, UAC, local stop, server access, file transfer and TURN |
+| 3. Maintenance | Scripts, updates, background operations and verified Windows domain joining |
+| 4. Hardening and pilot | Installers, signed updates, recovery and security testing, first production customer |
+| 5. Extensions | Graphical Linux support, quick support, audio and recording, Entra ID, Web Push and reports |
 
-## Biztonság
+The customer portal, ticketing and user-initiated help requests are separate proposals with no milestone assigned.
 
-Ha sebezhetőséget találsz, kérjük, ne nyiss róla nyilvános issue-t, hanem jelentsd be privát módon a [Security fülön](https://github.com/Shran21/MIDAS/security/advisories/new). A részletes folyamat a SECURITY.md-be kerül a 0. fázisban.
-
-## Licenc
-
-[GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
+Please use the [private vulnerability reporting form](https://github.com/Shran21/Midas/security/advisories/new) for security issues. MIDAS uses the [GNU AGPL v3](LICENSE).

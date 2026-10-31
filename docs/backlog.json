@@ -1,0 +1,4021 @@
+{
+  "schema_version": 1,
+  "revision": "2026-10-31",
+  "purpose": {
+    "hu": "Közzétett kezdő feladatfelosztás; az aktuális státusz a GitHub Projectben követendő.",
+    "en": "Published initial task allocation; track current status in GitHub Projects."
+  },
+  "publication": {
+    "repository": "Shran21/Midas",
+    "project_url": "https://github.com/users/Shran21/projects/4",
+    "import_status": "Backlog",
+    "resolve_destination_before_writing": true,
+    "legacy_seed_scripts_are_not_import_source": true,
+    "published_at": "2026-10-31T08:30:32.489456+00:00"
+  },
+  "workflow": {
+    "statuses": [
+      "Backlog",
+      "Ready",
+      "In progress",
+      "In review",
+      "Done"
+    ],
+    "forward_transitions": [
+      [
+        "Backlog",
+        "Ready"
+      ],
+      [
+        "Ready",
+        "In progress"
+      ],
+      [
+        "In progress",
+        "In review"
+      ],
+      [
+        "In review",
+        "Done"
+      ]
+    ],
+    "return_transitions": [
+      [
+        "Ready",
+        "Backlog"
+      ],
+      [
+        "In progress",
+        "Backlog"
+      ],
+      [
+        "In review",
+        "In progress"
+      ],
+      [
+        "Done",
+        "In progress"
+      ]
+    ],
+    "read_back_each_transition": true,
+    "phase_gate_required": true
+  },
+  "milestones": [
+    {
+      "key": "M0",
+      "phase": 0,
+      "title": {
+        "hu": "0. Alapok",
+        "en": "0. Foundations"
+      },
+      "github_number": 1,
+      "gate": "MIDAS-020",
+      "previous_gate": null
+    },
+    {
+      "key": "M1",
+      "phase": 1,
+      "title": {
+        "hu": "1. Agent és monitorozás",
+        "en": "1. Agent and monitoring"
+      },
+      "github_number": 2,
+      "gate": "MIDAS-040",
+      "previous_gate": "MIDAS-020"
+    },
+    {
+      "key": "M2",
+      "phase": 2,
+      "title": {
+        "hu": "2. Távsegítés",
+        "en": "2. Remote support"
+      },
+      "github_number": 3,
+      "gate": "MIDAS-060",
+      "previous_gate": "MIDAS-040"
+    },
+    {
+      "key": "M3",
+      "phase": 3,
+      "title": {
+        "hu": "3. Automatizált karbantartás",
+        "en": "3. Automated maintenance"
+      },
+      "github_number": 4,
+      "gate": "MIDAS-074",
+      "previous_gate": "MIDAS-060"
+    },
+    {
+      "key": "M4",
+      "phase": 4,
+      "title": {
+        "hu": "4. Megerősítés és pilot",
+        "en": "4. Hardening and pilot"
+      },
+      "github_number": 5,
+      "gate": "MIDAS-087",
+      "previous_gate": "MIDAS-074"
+    },
+    {
+      "key": "M5",
+      "phase": 5,
+      "title": {
+        "hu": "5. Bővítések",
+        "en": "5. Extensions"
+      },
+      "github_number": 6,
+      "gate": "MIDAS-096",
+      "previous_gate": "MIDAS-087"
+    }
+  ],
+  "items": [
+    {
+      "id": "MIDAS-001",
+      "kind": "task",
+      "phase": 0,
+      "milestone": "M0",
+      "title": {
+        "hu": "Monorepó és közös fejlesztői parancsok",
+        "en": "Monorepo and shared development commands"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Ready",
+      "priority": "P0",
+      "depends_on": [],
+      "requirements": [],
+      "legacy_ids": [
+        "F0-01"
+      ],
+      "acceptance": {
+        "hu": [
+          "Tiszta klónon a dokumentált Windows- és Linux-build, formázás és ellenőrzés lefut."
+        ],
+        "en": [
+          "A clean clone builds and runs the documented formatting and checks on Windows and Linux."
+        ]
+      },
+      "label_names": [
+        "server"
+      ],
+      "github_issue_number": 2,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/2"
+    },
+    {
+      "id": "MIDAS-002",
+      "kind": "task",
+      "phase": 0,
+      "milestone": "M0",
+      "title": {
+        "hu": "Repó és projekttábla előkészítése a felülvizsgált tervhez",
+        "en": "Prepare the repository and project for the reviewed plan"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Ready",
+      "priority": "P0",
+      "depends_on": [],
+      "requirements": [],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "A megerősített célrepóban a kétnyelvű terv, licenc és sablonok elérhetők, a projekt és a mérföldkövek helyesen kapcsolódnak."
+        ],
+        "en": [
+          "The confirmed target repository contains bilingual plans, license and templates, with correct project and milestone links."
+        ]
+      },
+      "label_names": [
+        "documentation"
+      ],
+      "github_issue_number": 3,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/3"
+    },
+    {
+      "id": "MIDAS-003",
+      "kind": "task",
+      "phase": 0,
+      "milestone": "M0",
+      "title": {
+        "hu": "Projekttábla és feladatmezők beállítása",
+        "en": "Configure project views and task fields"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-002"
+      ],
+      "requirements": [],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "A projektnézetek a feladatokkal azonos mérföldkő-, prioritás- és címkeadatokat mutatnak. Új feladat duplikáció nélkül kapcsolható a projekthez."
+        ],
+        "en": [
+          "Project views show the same milestone, priority and label values as their issues. New issues can be linked without creating duplicate project items."
+        ]
+      },
+      "label_names": [
+        "documentation"
+      ],
+      "github_issue_number": 4,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/4"
+    },
+    {
+      "id": "MIDAS-004",
+      "kind": "task",
+      "phase": 0,
+      "milestone": "M0",
+      "title": {
+        "hu": "Linux- és Windows-CI, függőség- és titokellenőrzés",
+        "en": "Linux/Windows CI, dependency and secret checks"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-001",
+        "MIDAS-002"
+      ],
+      "requirements": [
+        "SEC-06"
+      ],
+      "legacy_ids": [
+        "F0-02"
+      ],
+      "acceptance": {
+        "hu": [
+          "Egy hibás módosítást a CI megállít, a célág védelme az elkészült ellenőrzésekre hivatkozik."
+        ],
+        "en": [
+          "CI rejects a deliberately broken change and branch protection references existing checks."
+        ]
+      },
+      "label_names": [
+        "automation",
+        "security"
+      ],
+      "github_issue_number": 5,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/5"
+    },
+    {
+      "id": "MIDAS-005",
+      "kind": "task",
+      "phase": 0,
+      "milestone": "M0",
+      "title": {
+        "hu": "Biztonsági és hozzájárulási útmutató, döntési jegyzetek",
+        "en": "Security/contribution guidance and decision records"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Ready",
+      "priority": "P1",
+      "depends_on": [],
+      "requirements": [
+        "SEC-06"
+      ],
+      "legacy_ids": [
+        "F0-03"
+      ],
+      "acceptance": {
+        "hu": [
+          "A közzétett útmutató tartalmazza a privát hibabejelentést, a hozzájárulás feltételeit, a licencet és a Rust/Tauri/WebRTC döntéseket."
+        ],
+        "en": [
+          "Published guidance covers private vulnerability reporting, contribution requirements, licensing and Rust/Tauri/WebRTC decisions."
+        ]
+      },
+      "label_names": [
+        "documentation",
+        "security"
+      ],
+      "github_issue_number": 6,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/6"
+    },
+    {
+      "id": "MIDAS-006",
+      "kind": "task",
+      "phase": 0,
+      "milestone": "M0",
+      "title": {
+        "hu": "Szerverváz, TLS, ACME és megfigyelhetőség",
+        "en": "Server skeleton, TLS, ACME and observability"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-001"
+      ],
+      "requirements": [
+        "SEC-02"
+      ],
+      "legacy_ids": [
+        "F0-04"
+      ],
+      "acceptance": {
+        "hu": [
+          "HTTPS-válasz, állapotvégpont és naplózás működik. A későbbi agentbeiratkozás és az mTLS-üzem külön útvonalat kap."
+        ],
+        "en": [
+          "HTTPS, health endpoint and logging work, with distinct enrollment and operational mTLS routes."
+        ]
+      },
+      "label_names": [
+        "server",
+        "security"
+      ],
+      "github_issue_number": 7,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/7"
+    },
+    {
+      "id": "MIDAS-007",
+      "kind": "task",
+      "phase": 0,
+      "milestone": "M0",
+      "title": {
+        "hu": "Ügyfélmodell, migrációk és PostgreSQL RLS",
+        "en": "Tenant model, migrations and PostgreSQL RLS"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-001",
+        "MIDAS-006"
+      ],
+      "requirements": [
+        "SEC-01"
+      ],
+      "legacy_ids": [
+        "F0-05"
+      ],
+      "acceptance": {
+        "hu": [
+          "Két ügyfél adatai hibás alkalmazásszűrő és újrahasznált adatbázis-kapcsolat mellett is elkülönülnek a próbában."
+        ],
+        "en": [
+          "Negative tests isolate two tenants with a faulty application filter and reused database connections."
+        ]
+      },
+      "label_names": [
+        "server",
+        "security"
+      ],
+      "github_issue_number": 8,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/8"
+    },
+    {
+      "id": "MIDAS-008",
+      "kind": "task",
+      "phase": 0,
+      "milestone": "M0",
+      "title": {
+        "hu": "Passkey, jelszó+TOTP és helyreállítás",
+        "en": "Passkeys, password+TOTP and recovery"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-006",
+        "MIDAS-007"
+      ],
+      "requirements": [
+        "SEC-01"
+      ],
+      "legacy_ids": [
+        "F0-06"
+      ],
+      "acceptance": {
+        "hu": [
+          "Passkey-felhasználóellenőrzés, tartalék hitelesítés, egyszeri helyreállító kód és próbálkozáskorlátozás tesztelve."
+        ],
+        "en": [
+          "Passkey user verification, fallback authentication, single-use recovery and rate limiting are tested."
+        ]
+      },
+      "label_names": [
+        "server",
+        "security"
+      ],
+      "github_issue_number": 9,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/9"
+    },
+    {
+      "id": "MIDAS-009",
+      "kind": "task",
+      "phase": 0,
+      "milestone": "M0",
+      "title": {
+        "hu": "Böngészős munkamenet, CSRF és visszavonás",
+        "en": "Browser sessions, CSRF and revocation"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-008"
+      ],
+      "requirements": [
+        "SEC-01",
+        "SEC-03"
+      ],
+      "legacy_ids": [
+        "F0-07"
+      ],
+      "acceptance": {
+        "hu": [
+          "A visszavont munkamenet nem indíthat API- vagy WebSocket-műveletet, az állapotváltoztatás CSRF-védett."
+        ],
+        "en": [
+          "Revoked sessions cannot invoke APIs or WebSockets, and mutations are protected against CSRF."
+        ]
+      },
+      "label_names": [
+        "server",
+        "security"
+      ],
+      "github_issue_number": 10,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/10"
+    },
+    {
+      "id": "MIDAS-010",
+      "kind": "task",
+      "phase": 0,
+      "milestone": "M0",
+      "title": {
+        "hu": "Megbízható helyi AD-belépés és csoportleképezés",
+        "en": "Trusted local AD sign-in and group mapping"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P1",
+      "depends_on": [
+        "MIDAS-008",
+        "MIDAS-007"
+      ],
+      "requirements": [
+        "AD-01",
+        "SEC-01"
+      ],
+      "legacy_ids": [
+        "F0-08"
+      ],
+      "acceptance": {
+        "hu": [
+          "Tesztcímtárral az engedélyezett fiók belép, a tiltott fiók és hibás LDAPS-tanúsítvány elutasított."
+        ],
+        "en": [
+          "A test directory permits valid users and rejects disabled accounts and invalid LDAPS certificates."
+        ]
+      },
+      "label_names": [
+        "server",
+        "security"
+      ],
+      "github_issue_number": 11,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/11"
+    },
+    {
+      "id": "MIDAS-011",
+      "kind": "task",
+      "phase": 0,
+      "milestone": "M0",
+      "title": {
+        "hu": "Szerepek, egyedi engedélyek és célhatókör",
+        "en": "Roles, overrides and target scope"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-008",
+        "MIDAS-007"
+      ],
+      "requirements": [
+        "SEC-01",
+        "REMOTE-04"
+      ],
+      "legacy_ids": [
+        "F0-09"
+      ],
+      "acceptance": {
+        "hu": [
+          "A megvonás elsőbbsége, ügyfélhatár, normál/admin/UAC és unattended jogok negatív próbái sikeresek."
+        ],
+        "en": [
+          "Denial precedence, tenant boundaries and normal/admin/UAC/unattended permission checks pass negative tests."
+        ]
+      },
+      "label_names": [
+        "server",
+        "security"
+      ],
+      "github_issue_number": 12,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/12"
+    },
+    {
+      "id": "MIDAS-012",
+      "kind": "task",
+      "phase": 0,
+      "milestone": "M0",
+      "title": {
+        "hu": "Csak hozzáfűzhető alapaudit",
+        "en": "Append-only baseline audit"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P1",
+      "depends_on": [
+        "MIDAS-007",
+        "MIDAS-008"
+      ],
+      "requirements": [
+        "SEC-04"
+      ],
+      "legacy_ids": [
+        "F0-10"
+      ],
+      "acceptance": {
+        "hu": [
+          "Belépés, jogosultságváltozás és kérésdöntés kereshető, hitelesítő adatok nélkül."
+        ],
+        "en": [
+          "Sign-ins, permission changes and request decisions are searchable without credentials."
+        ]
+      },
+      "label_names": [
+        "server",
+        "security"
+      ],
+      "github_issue_number": 13,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/13"
+    },
+    {
+      "id": "MIDAS-013",
+      "kind": "task",
+      "phase": 0,
+      "milestone": "M0",
+      "title": {
+        "hu": "Kétnyelvű dashboardváz és közös komponensek",
+        "en": "Bilingual dashboard shell and shared components"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-009",
+        "MIDAS-011"
+      ],
+      "requirements": [
+        "UI-01",
+        "UI-07",
+        "UI-08"
+      ],
+      "legacy_ids": [
+        "F0-11"
+      ],
+      "acceptance": {
+        "hu": [
+          "Belépés után az ügyfélkörnyezet, navigáció és állapotok mindkét nyelven és témában működnek."
+        ],
+        "en": [
+          "After sign-in, tenant context, navigation and states work in both languages and themes."
+        ]
+      },
+      "label_names": [
+        "dashboard"
+      ],
+      "github_issue_number": 14,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/14"
+    },
+    {
+      "id": "MIDAS-014",
+      "kind": "task",
+      "phase": 0,
+      "milestone": "M0",
+      "title": {
+        "hu": "Mobilnézet, fókuszkezelés és PWA-alapok",
+        "en": "Mobile layout, focus handling and PWA foundations"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P1",
+      "depends_on": [
+        "MIDAS-013"
+      ],
+      "requirements": [
+        "UI-03",
+        "UI-08"
+      ],
+      "legacy_ids": [
+        "F0-12"
+      ],
+      "acceptance": {
+        "hu": [
+          "A fő oldalak billentyűzettel és érintéssel elérhetők, a gyorsítótár csak statikus felületet tárol."
+        ],
+        "en": [
+          "Primary pages support keyboard/touch and the service worker caches only static UI assets."
+        ]
+      },
+      "label_names": [
+        "dashboard"
+      ],
+      "github_issue_number": 15,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/15"
+    },
+    {
+      "id": "MIDAS-015",
+      "kind": "task",
+      "phase": 0,
+      "milestone": "M0",
+      "title": {
+        "hu": "Ügyfél-, telephely- és felhasználókezelés",
+        "en": "Customer, site and user management"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-013",
+        "MIDAS-011",
+        "MIDAS-012"
+      ],
+      "requirements": [
+        "UI-01",
+        "SEC-01"
+      ],
+      "legacy_ids": [
+        "F0-13"
+      ],
+      "acceptance": {
+        "hu": [
+          "Az admin ügyfelet és korlátozott technikust hoz létre, az új jogok és megvonások a célhatókörben érvényesülnek."
+        ],
+        "en": [
+          "An admin creates a tenant and scoped technician, and grants/denials apply within target scope."
+        ]
+      },
+      "label_names": [
+        "dashboard",
+        "security"
+      ],
+      "github_issue_number": 16,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/16"
+    },
+    {
+      "id": "MIDAS-016",
+      "kind": "task",
+      "phase": 0,
+      "milestone": "M0",
+      "title": {
+        "hu": "Egyszeri beállító folyamat a végleges HTTPS-originen",
+        "en": "Single-use setup on the final HTTPS origin"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-006",
+        "MIDAS-008",
+        "MIDAS-013"
+      ],
+      "requirements": [
+        "SEC-01",
+        "SEC-06"
+      ],
+      "legacy_ids": [
+        "F0-14"
+      ],
+      "acceptance": {
+        "hu": [
+          "Az első admin a végleges originen regisztrál passkeyt, a felhasznált setupfelhatalmazás lejár és lezárul."
+        ],
+        "en": [
+          "The first admin enrolls a passkey at the final origin and consumed setup authorization becomes invalid."
+        ]
+      },
+      "label_names": [
+        "server",
+        "security"
+      ],
+      "github_issue_number": 17,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/17"
+    },
+    {
+      "id": "MIDAS-017",
+      "kind": "task",
+      "phase": 0,
+      "milestone": "M0",
+      "title": {
+        "hu": "Korai WebRTC- és kódoló-prototípus",
+        "en": "Early WebRTC and encoder proof"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-001",
+        "MIDAS-006"
+      ],
+      "requirements": [
+        "PERF-04"
+      ],
+      "legacy_ids": [
+        "F2-01"
+      ],
+      "acceptance": {
+        "hu": [
+          "Valódi Windows-asztal böngészőből látható, a mérési jegyzőkönyv dönt a WebRTC-integrációról."
+        ],
+        "en": [
+          "A browser displays a real Windows desktop and measurements determine the WebRTC integration."
+        ]
+      },
+      "label_names": [
+        "remote-support"
+      ],
+      "github_issue_number": 18,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/18"
+    },
+    {
+      "id": "MIDAS-018",
+      "kind": "task",
+      "phase": 0,
+      "milestone": "M0",
+      "title": {
+        "hu": "Normál kapcsolatú UAC és védett beviteli út próbája",
+        "en": "Normal-session UAC and protected input proof"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-017"
+      ],
+      "requirements": [
+        "REMOTE-03",
+        "REMOTE-05",
+        "REMOTE-06",
+        "REMOTE-07"
+      ],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "Standard felhasználónál a böngésző kezeli a valódi secure-desktop UAC-t, helyi leállítással és védelmek kikapcsolása nélkül."
+        ],
+        "en": [
+          "A browser controls real secure-desktop UAC for a standard user with local termination and security policies enabled."
+        ]
+      },
+      "label_names": [
+        "remote-support",
+        "security"
+      ],
+      "github_issue_number": 19,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/19"
+    },
+    {
+      "id": "MIDAS-019",
+      "kind": "task",
+      "phase": 0,
+      "milestone": "M0",
+      "title": {
+        "hu": "Adminpanel és helyi jóváhagyás használhatósági prototípusa",
+        "en": "Admin-panel and local-consent usability prototype"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-013",
+        "MIDAS-014"
+      ],
+      "requirements": [
+        "UI-04",
+        "UI-06",
+        "UI-07",
+        "UI-08"
+      ],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "A kezelő indít kérést, az új felhasználó érti és elutasítja, majd új kérésből enged és bont. Billentyűzetes próba is sikerül.",
+          "A mobil adminpanel és a helyi jóváhagyó ablak képernyőolvasós próbája is dokumentált, mindkét nyelven."
+        ],
+        "en": [
+          "The operator initiates, a new user understands/declines, then accepts a new request and ends it, including keyboard testing.",
+          "Document mobile admin-panel and screen-reader trials on the local consent dialog, in both languages."
+        ]
+      },
+      "label_names": [
+        "dashboard",
+        "agent"
+      ],
+      "github_issue_number": 20,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/20"
+    },
+    {
+      "id": "MIDAS-020",
+      "kind": "gate",
+      "phase": 0,
+      "milestone": "M0",
+      "title": {
+        "hu": "0. fázis ellenőrzése és mérföldkőzárás",
+        "en": "Review phase 0 and close its milestone"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-001",
+        "MIDAS-002",
+        "MIDAS-003",
+        "MIDAS-004",
+        "MIDAS-005",
+        "MIDAS-006",
+        "MIDAS-007",
+        "MIDAS-008",
+        "MIDAS-009",
+        "MIDAS-010",
+        "MIDAS-011",
+        "MIDAS-012",
+        "MIDAS-013",
+        "MIDAS-014",
+        "MIDAS-015",
+        "MIDAS-016",
+        "MIDAS-017",
+        "MIDAS-018",
+        "MIDAS-019"
+      ],
+      "requirements": [],
+      "legacy_ids": [
+        "F0-15"
+      ],
+      "acceptance": {
+        "hu": [
+          "A fázis összes vállalt feladata ellenőrzött Done; a fázis próbáinak bizonyítéka, a státuszelőzmények és a következő fázis feltételei áttekintve. Az UAC/WebRTC- és használhatósági prototípus döntése dokumentált."
+        ],
+        "en": [
+          "All committed phase work is reviewed Done; inspect phase evidence, status histories and next-phase prerequisites. Record the UAC/WebRTC and usability prototype decisions."
+        ]
+      },
+      "label_names": [
+        "documentation"
+      ],
+      "github_issue_number": 21,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/21"
+    },
+    {
+      "id": "MIDAS-021",
+      "kind": "task",
+      "phase": 1,
+      "milestone": "M1",
+      "title": {
+        "hu": "Verziózott agentprotokoll és újracsatlakozás",
+        "en": "Versioned agent protocol and reconnection"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-006",
+        "MIDAS-020"
+      ],
+      "requirements": [
+        "PERF-01"
+      ],
+      "legacy_ids": [
+        "F1-01"
+      ],
+      "acceptance": {
+        "hu": [
+          "Eltérő támogatott verziók üzenetet váltanak, kapcsolatkimaradás után az agent önállóan visszatér."
+        ],
+        "en": [
+          "Supported protocol versions interoperate and an agent reconnects after connection loss."
+        ]
+      },
+      "label_names": [
+        "agent"
+      ],
+      "github_issue_number": 22,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/22"
+    },
+    {
+      "id": "MIDAS-022",
+      "kind": "task",
+      "phase": 1,
+      "milestone": "M1",
+      "title": {
+        "hu": "Agentbeiratkozás, jóváhagyás, mTLS és visszavonás",
+        "en": "Agent enrollment, approval, mTLS and revocation"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-021",
+        "MIDAS-011",
+        "MIDAS-012",
+        "MIDAS-020"
+      ],
+      "requirements": [
+        "SEC-02"
+      ],
+      "legacy_ids": [
+        "F1-02"
+      ],
+      "acceptance": {
+        "hu": [
+          "Első beiratkozás TLS-en működik, művelethez mTLS kell. Újrahasznált token, rossz cél és visszavont cert elutasított."
+        ],
+        "en": [
+          "First enrollment uses server-authenticated TLS and operations require mTLS. Reused tokens, wrong targets and revoked certificates are rejected."
+        ]
+      },
+      "label_names": [
+        "agent",
+        "security"
+      ],
+      "github_issue_number": 23,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/23"
+    },
+    {
+      "id": "MIDAS-023",
+      "kind": "task",
+      "phase": 1,
+      "milestone": "M1",
+      "title": {
+        "hu": "Windows-szolgáltatás és biztonságos helyi IPC",
+        "en": "Windows service and protected local IPC"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-022",
+        "MIDAS-020"
+      ],
+      "requirements": [
+        "PERF-05",
+        "SERVER-01",
+        "REMOTE-06"
+      ],
+      "legacy_ids": [
+        "F1-03"
+      ],
+      "acceptance": {
+        "hu": [
+          "Újraindítás és hálózatkiesés után visszatér, idegen folyamat és más Windows-munkamenet nem éri el az IPC-műveleteket."
+        ],
+        "en": [
+          "The service recovers from reboot/network loss and rejects unauthorized processes and other sessions on IPC."
+        ]
+      },
+      "label_names": [
+        "agent",
+        "security"
+      ],
+      "github_issue_number": 24,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/24"
+    },
+    {
+      "id": "MIDAS-024",
+      "kind": "task",
+      "phase": 1,
+      "milestone": "M1",
+      "title": {
+        "hu": "Linux-agent, systemd és csomagok",
+        "en": "Linux agent, systemd and packages"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-022",
+        "MIDAS-020"
+      ],
+      "requirements": [
+        "SERVER-01"
+      ],
+      "legacy_ids": [
+        "F1-04"
+      ],
+      "acceptance": {
+        "hu": [
+          "Debianon, Ubuntun és Rocky Linuxon csomagból indul, ügyfélhez kötötten és biztonságos szolgáltatásjoggal."
+        ],
+        "en": [
+          "Packages start a tenant-bound, restricted service on Debian, Ubuntu and Rocky Linux."
+        ]
+      },
+      "label_names": [
+        "agent"
+      ],
+      "github_issue_number": 25,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/25"
+    },
+    {
+      "id": "MIDAS-025",
+      "kind": "task",
+      "phase": 1,
+      "milestone": "M1",
+      "title": {
+        "hu": "Heartbeat, metrikák, összesítés és megőrzés",
+        "en": "Heartbeat, metrics, rollups and retention"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-023",
+        "MIDAS-024",
+        "MIDAS-020"
+      ],
+      "requirements": [
+        "PERF-02",
+        "PERF-05"
+      ],
+      "legacy_ids": [
+        "F1-05"
+      ],
+      "acceptance": {
+        "hu": [
+          "Három kimaradás után offline, a kiesés adatai szabályosan visszaérkeznek, az összesítés és lejárati törlés ellenőrzött."
+        ],
+        "en": [
+          "Three missed heartbeats mark offline, buffered data returns safely and rollups/retention cleanup are verified."
+        ]
+      },
+      "label_names": [
+        "agent"
+      ],
+      "github_issue_number": 26,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/26"
+    },
+    {
+      "id": "MIDAS-026",
+      "kind": "task",
+      "phase": 1,
+      "milestone": "M1",
+      "title": {
+        "hu": "Változásalapú hardver- és szoftverleltár",
+        "en": "Incremental hardware and software inventory"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P1",
+      "depends_on": [
+        "MIDAS-025",
+        "MIDAS-020"
+      ],
+      "requirements": [
+        "PERF-02"
+      ],
+      "legacy_ids": [
+        "F1-06"
+      ],
+      "acceptance": {
+        "hu": [
+          "Windows/Linux változás után frissül a leltár, újraindítás megőrzi az utolsó sikeres egyeztetést."
+        ],
+        "en": [
+          "Windows/Linux inventory updates on changes and persists successful reconciliation time across restarts."
+        ]
+      },
+      "label_names": [
+        "agent"
+      ],
+      "github_issue_number": 27,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/27"
+    },
+    {
+      "id": "MIDAS-027",
+      "kind": "task",
+      "phase": 1,
+      "milestone": "M1",
+      "title": {
+        "hu": "Állapotellenőrzések és platformképességek",
+        "en": "Health checks and platform capabilities"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P1",
+      "depends_on": [
+        "MIDAS-023",
+        "MIDAS-024",
+        "MIDAS-020"
+      ],
+      "requirements": [
+        "SERVER-01",
+        "UI-05"
+      ],
+      "legacy_ids": [
+        "F1-07"
+      ],
+      "acceptance": {
+        "hu": [
+          "Szolgáltatás-, frissítés-, Defender-, BitLocker- és tárolóhibák kipróbálva, a nem elérhető ellenőrzés látható."
+        ],
+        "en": [
+          "Service, update, Defender, BitLocker and storage cases are exercised and unavailable checks are labelled."
+        ]
+      },
+      "label_names": [
+        "agent"
+      ],
+      "github_issue_number": 28,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/28"
+    },
+    {
+      "id": "MIDAS-028",
+      "kind": "task",
+      "phase": 1,
+      "milestone": "M1",
+      "title": {
+        "hu": "Öröklődő ügyfél-, telephely- és csoportszabályzatok",
+        "en": "Inherited customer, site and group policies"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P1",
+      "depends_on": [
+        "MIDAS-026",
+        "MIDAS-011",
+        "MIDAS-020"
+      ],
+      "requirements": [
+        "UI-01",
+        "SEC-01"
+      ],
+      "legacy_ids": [
+        "F1-08"
+      ],
+      "acceptance": {
+        "hu": [
+          "Felülírás csak a megfelelő csoportot érinti, a gép oldalán követhető a beállítás eredete."
+        ],
+        "en": [
+          "An override affects only its scoped group and the device shows policy provenance."
+        ]
+      },
+      "label_names": [
+        "agent",
+        "security"
+      ],
+      "github_issue_number": 29,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/29"
+    },
+    {
+      "id": "MIDAS-029",
+      "kind": "task",
+      "phase": 1,
+      "milestone": "M1",
+      "title": {
+        "hu": "Riasztás, összevonás és e-mail",
+        "en": "Alerts, deduplication and email"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-025",
+        "MIDAS-027",
+        "MIDAS-028",
+        "MIDAS-020"
+      ],
+      "requirements": [
+        "UI-07"
+      ],
+      "legacy_ids": [
+        "F1-09"
+      ],
+      "acceptance": {
+        "hu": [
+          "Kiesésre egy kezelhető riasztás és értesítés születik, a nyugtázás auditált."
+        ],
+        "en": [
+          "An outage produces one actionable alert/notification and acknowledgement is audited."
+        ]
+      },
+      "label_names": [
+        "agent"
+      ],
+      "github_issue_number": 30,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/30"
+    },
+    {
+      "id": "MIDAS-030",
+      "kind": "task",
+      "phase": 1,
+      "milestone": "M1",
+      "title": {
+        "hu": "Teams- és Slack-értesítési végpontok",
+        "en": "Teams and Slack notification endpoints"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P2",
+      "depends_on": [
+        "MIDAS-029",
+        "MIDAS-020"
+      ],
+      "requirements": [
+        "SEC-01"
+      ],
+      "legacy_ids": [
+        "F1-10"
+      ],
+      "acceptance": {
+        "hu": [
+          "Próbariasztás az ügyfélhez kijelölt csatornán jelenik meg, a webhooktitok védett."
+        ],
+        "en": [
+          "A test alert reaches the scoped channel and the webhook secret is protected."
+        ]
+      },
+      "label_names": [
+        "agent",
+        "security"
+      ],
+      "github_issue_number": 31,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/31"
+    },
+    {
+      "id": "MIDAS-031",
+      "kind": "task",
+      "phase": 1,
+      "milestone": "M1",
+      "title": {
+        "hu": "Eszközoldal, kártyák, helyi menük és élő állapot",
+        "en": "Device pages, cards, context menus and live state"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-013",
+        "MIDAS-025",
+        "MIDAS-026",
+        "MIDAS-029",
+        "MIDAS-020"
+      ],
+      "requirements": [
+        "UI-01",
+        "UI-02",
+        "UI-03",
+        "UI-05",
+        "UI-07",
+        "SERVER-04"
+      ],
+      "legacy_ids": [
+        "F1-11"
+      ],
+      "acceptance": {
+        "hu": [
+          "A menü és az eszközoldal egyező jogokat használ, a kiválasztott ügyfél és gép látszik, az offline funkciók érthetők."
+        ],
+        "en": [
+          "Menus and pages share permission rules, target identity stays visible and offline capabilities are clear."
+        ]
+      },
+      "label_names": [
+        "dashboard"
+      ],
+      "github_issue_number": 32,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/32"
+    },
+    {
+      "id": "MIDAS-032",
+      "kind": "task",
+      "phase": 1,
+      "milestone": "M1",
+      "title": {
+        "hu": "Jogosultságot követő kereső és parancspaletta",
+        "en": "Permission-aware search and command palette"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P2",
+      "depends_on": [
+        "MIDAS-031",
+        "MIDAS-020"
+      ],
+      "requirements": [
+        "UI-03",
+        "UI-08"
+      ],
+      "legacy_ids": [
+        "F1-12"
+      ],
+      "acceptance": {
+        "hu": [
+          "Csak hozzáférhető gép és művelet kereshető, billentyűzettel megnyitható."
+        ],
+        "en": [
+          "Search only returns accessible devices/actions and supports keyboard access."
+        ]
+      },
+      "label_names": [
+        "dashboard"
+      ],
+      "github_issue_number": 33,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/33"
+    },
+    {
+      "id": "MIDAS-033",
+      "kind": "task",
+      "phase": 1,
+      "milestone": "M1",
+      "title": {
+        "hu": "Windows MSI és védett regisztrációs átadás",
+        "en": "Windows MSI and protected enrollment delivery"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-023",
+        "MIDAS-020"
+      ],
+      "requirements": [
+        "AD-04",
+        "SEC-02"
+      ],
+      "legacy_ids": [
+        "F1-13"
+      ],
+      "acceptance": {
+        "hu": [
+          "Kézi és központi telepítés a megfelelő ügyfélhez regisztrál, titok nem kerül URL-be, parancssorba vagy MSI-naplóba."
+        ],
+        "en": [
+          "Manual and managed deployment enroll the right tenant without secrets in URLs, process arguments or MSI logs."
+        ]
+      },
+      "label_names": [
+        "agent",
+        "security"
+      ],
+      "github_issue_number": 34,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/34"
+    },
+    {
+      "id": "MIDAS-034",
+      "kind": "task",
+      "phase": 1,
+      "milestone": "M1",
+      "title": {
+        "hu": "Agent állapotnézet és tálcaikon",
+        "en": "Agent status view and tray icon"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P1",
+      "depends_on": [
+        "MIDAS-023",
+        "MIDAS-019",
+        "MIDAS-020"
+      ],
+      "requirements": [
+        "UI-06",
+        "UI-08",
+        "PERF-04"
+      ],
+      "legacy_ids": [
+        "F1-14"
+      ],
+      "acceptance": {
+        "hu": [
+          "A felhasználó látja a kapcsolat állapotát és érthető hibajelzést kap, a felület felhasználói jogon fut."
+        ],
+        "en": [
+          "The user sees connection status and actionable errors in a user-level interface."
+        ]
+      },
+      "label_names": [
+        "agent"
+      ],
+      "github_issue_number": 35,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/35"
+    },
+    {
+      "id": "MIDAS-035",
+      "kind": "task",
+      "phase": 1,
+      "milestone": "M1",
+      "title": {
+        "hu": "Flottaterhelés és újracsatlakozási hullám",
+        "en": "Fleet load and reconnection testing"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-031",
+        "MIDAS-025",
+        "MIDAS-020"
+      ],
+      "requirements": [
+        "PERF-06",
+        "SEC-01"
+      ],
+      "legacy_ids": [
+        "F1-15"
+      ],
+      "acceptance": {
+        "hu": [
+          "Legalább 1000 szimulált agent egyórás próbája dokumentálja a terhelést és az ügyfélszigetelést."
+        ],
+        "en": [
+          "A one-hour run of at least 1000 simulated agents documents load and tenant isolation."
+        ]
+      },
+      "label_names": [
+        "agent",
+        "server"
+      ],
+      "github_issue_number": 36,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/36"
+    },
+    {
+      "id": "MIDAS-036",
+      "kind": "task",
+      "phase": 1,
+      "milestone": "M1",
+      "title": {
+        "hu": "Ügyfelenkénti, csak olvasó AD-connector",
+        "en": "Per-customer read-only AD connector"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-010",
+        "MIDAS-022",
+        "MIDAS-020"
+      ],
+      "requirements": [
+        "AD-01",
+        "AD-02"
+      ],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "A kijelölt címtár érvényes tanúsítvánnyal, olvasási joggal és OU-határral elérhető, más ügyfélé nem."
+        ],
+        "en": [
+          "A connector reads its designated directory with valid TLS and OU scope and cannot access another tenant's directory."
+        ]
+      },
+      "label_names": [
+        "agent",
+        "security"
+      ],
+      "github_issue_number": 37,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/37"
+    },
+    {
+      "id": "MIDAS-037",
+      "kind": "task",
+      "phase": 1,
+      "milestone": "M1",
+      "title": {
+        "hu": "AD-felderítés és agenthez egyeztetett jelöltek",
+        "en": "AD discovery and verified agent matching"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-036",
+        "MIDAS-026",
+        "MIDAS-020"
+      ],
+      "requirements": [
+        "AD-03",
+        "AD-04"
+      ],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "A jelölt különbözik az online agenttől, az objectGUID-alapú egyeztetés nem kapcsol össze más ügyfeleket."
+        ],
+        "en": [
+          "Candidates remain distinct from live agents and objectGUID matching does not cross tenants."
+        ]
+      },
+      "label_names": [
+        "agent",
+        "server"
+      ],
+      "github_issue_number": 38,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/38"
+    },
+    {
+      "id": "MIDAS-038",
+      "kind": "task",
+      "phase": 1,
+      "milestone": "M1",
+      "title": {
+        "hu": "Felderítési és regisztrációs nézet",
+        "en": "Discovery and enrollment view"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-037",
+        "MIDAS-031",
+        "MIDAS-020"
+      ],
+      "requirements": [
+        "UI-01",
+        "AD-03",
+        "AD-04"
+      ],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "Az admin látja a jelölteket, kezelt gépeket és regisztrációs döntéseket, a felderítés nem telepít automatikusan."
+        ],
+        "en": [
+          "The admin sees candidates, managed devices and enrollment decisions, while discovery triggers no automatic installation."
+        ]
+      },
+      "label_names": [
+        "dashboard"
+      ],
+      "github_issue_number": 39,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/39"
+    },
+    {
+      "id": "MIDAS-039",
+      "kind": "task",
+      "phase": 1,
+      "milestone": "M1",
+      "title": {
+        "hu": "24 órás háttérmérés és szerverprofil",
+        "en": "24-hour background profiling and server profiles"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-034",
+        "MIDAS-024",
+        "MIDAS-027",
+        "MIDAS-020"
+      ],
+      "requirements": [
+        "PERF-01",
+        "PERF-02",
+        "PERF-03",
+        "PERF-04",
+        "SERVER-03"
+      ],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "Külön mérés készül a háttéragentről és megnyitott helyi felületről, a szerverprofil megkülönbözteti a grafikus és háttérképességeket.",
+          "Legalább 24 órás agentmérés készül, Windows 11-en a kapcsolódó WebView2-folyamatokkal együtt. Az eredmény optimalizálási alap, nincs előírt CPU-, GPU-, memória- vagy adatforgalmi plafon."
+        ],
+        "en": [
+          "Separate measurements cover background and open UI, and server profiles distinguish graphical and background capabilities.",
+          "Run at least a 24-hour agent measurement, including related WebView2 processes on Windows 11. Results guide optimization without preset CPU, GPU, memory or traffic ceilings."
+        ]
+      },
+      "label_names": [
+        "agent"
+      ],
+      "github_issue_number": 40,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/40"
+    },
+    {
+      "id": "MIDAS-040",
+      "kind": "gate",
+      "phase": 1,
+      "milestone": "M1",
+      "title": {
+        "hu": "1. fázis ellenőrzése és mérföldkőzárás",
+        "en": "Review phase 1 and close its milestone"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-021",
+        "MIDAS-022",
+        "MIDAS-023",
+        "MIDAS-024",
+        "MIDAS-025",
+        "MIDAS-026",
+        "MIDAS-027",
+        "MIDAS-028",
+        "MIDAS-029",
+        "MIDAS-030",
+        "MIDAS-031",
+        "MIDAS-032",
+        "MIDAS-033",
+        "MIDAS-034",
+        "MIDAS-035",
+        "MIDAS-036",
+        "MIDAS-037",
+        "MIDAS-038",
+        "MIDAS-039",
+        "MIDAS-020"
+      ],
+      "requirements": [],
+      "legacy_ids": [
+        "F1-16"
+      ],
+      "acceptance": {
+        "hu": [
+          "A monitorozás, felderítés, regisztráció és terhelésmérés elfogadva; az összes vállalt feladat ellenőrzött Done, a támogatási mátrix és a következő fázis feltételei rögzítve.",
+          "Tíz vegyes tesztgép egy hétig jelent; a 24 órás agent- és az egyórás, 1000 szimulált agentes mérés bizonyítéka csatolt."
+        ],
+        "en": [
+          "Accept monitoring, discovery, enrollment and load evidence; all committed work is reviewed Done, with a support matrix and next-phase prerequisites recorded.",
+          "Ten mixed test devices report for one week; attach evidence for the 24-hour agent and one-hour 1000-simulated-agent measurements."
+        ]
+      },
+      "label_names": [
+        "documentation"
+      ],
+      "github_issue_number": 41,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/41"
+    },
+    {
+      "id": "MIDAS-041",
+      "kind": "task",
+      "phase": 2,
+      "milestone": "M2",
+      "title": {
+        "hu": "Felhasználó nélküli szerveres hozzáférés szabályzata",
+        "en": "Unattended server-access policy"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-011",
+        "MIDAS-023",
+        "MIDAS-031",
+        "MIDAS-040"
+      ],
+      "requirements": [
+        "SERVER-02",
+        "SERVER-04"
+      ],
+      "legacy_ids": [
+        "F2-02"
+      ],
+      "acceptance": {
+        "hu": [
+          "Ügyfél- és gépszabályzat, jogosultság, indoklás és friss hitelesítés együtt kell, jelen lévő felhasználó asztala helyi jóváhagyást kér."
+        ],
+        "en": [
+          "Customer/device opt-in, permission, reason and fresh authentication are required, and an occupied desktop requires local consent."
+        ]
+      },
+      "label_names": [
+        "remote-support"
+      ],
+      "github_issue_number": 42,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/42"
+    },
+    {
+      "id": "MIDAS-042",
+      "kind": "task",
+      "phase": 2,
+      "milestone": "M2",
+      "title": {
+        "hu": "DXGI-rögzítés és több monitor",
+        "en": "DXGI capture and multiple monitors"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-018",
+        "MIDAS-023",
+        "MIDAS-040"
+      ],
+      "requirements": [
+        "REMOTE-03",
+        "REMOTE-06"
+      ],
+      "legacy_ids": [
+        "F2-03"
+      ],
+      "acceptance": {
+        "hu": [
+          "Monitorválasztás és kombinált kép tesztelve, asztalváltás után az előző célhoz tartozó bevitel eldobódik."
+        ],
+        "en": [
+          "Monitor selection and combined view work, and old-target pending input is discarded on desktop changes."
+        ]
+      },
+      "label_names": [
+        "remote-support",
+        "security"
+      ],
+      "github_issue_number": 43,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/43"
+    },
+    {
+      "id": "MIDAS-043",
+      "kind": "task",
+      "phase": 2,
+      "milestone": "M2",
+      "title": {
+        "hu": "NVIDIA hardveres kódoló integráció",
+        "en": "NVIDIA hardware encoder integration"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-042",
+        "MIDAS-040"
+      ],
+      "requirements": [
+        "PERF-04"
+      ],
+      "legacy_ids": [
+        "F2-04"
+      ],
+      "acceptance": {
+        "hu": [
+          "Támogatott NVIDIA-gépen egyeztetett kodekkel fut és mérhető a késleltetés, kódolóhiba kezelhető."
+        ],
+        "en": [
+          "A supported NVIDIA host negotiates a working codec, reports measured latency and handles encoder failures."
+        ]
+      },
+      "label_names": [
+        "remote-support"
+      ],
+      "github_issue_number": 44,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/44"
+    },
+    {
+      "id": "MIDAS-044",
+      "kind": "task",
+      "phase": 2,
+      "milestone": "M2",
+      "title": {
+        "hu": "AMD hardveres kódoló integráció",
+        "en": "AMD hardware encoder integration"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-042",
+        "MIDAS-040"
+      ],
+      "requirements": [
+        "PERF-04"
+      ],
+      "legacy_ids": [
+        "F2-04"
+      ],
+      "acceptance": {
+        "hu": [
+          "Támogatott AMD-gépen egyeztetett kodekkel fut és mérhető a késleltetés, kódolóhiba kezelhető."
+        ],
+        "en": [
+          "A supported AMD host negotiates a working codec, reports latency and handles encoder failures."
+        ]
+      },
+      "label_names": [
+        "remote-support"
+      ],
+      "github_issue_number": 45,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/45"
+    },
+    {
+      "id": "MIDAS-045",
+      "kind": "task",
+      "phase": 2,
+      "milestone": "M2",
+      "title": {
+        "hu": "Intel hardveres kódoló integráció",
+        "en": "Intel hardware encoder integration"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-042",
+        "MIDAS-040"
+      ],
+      "requirements": [
+        "PERF-04"
+      ],
+      "legacy_ids": [
+        "F2-04"
+      ],
+      "acceptance": {
+        "hu": [
+          "Támogatott Intel-gépen egyeztetett kodekkel fut és mérhető a késleltetés, kódolóhiba kezelhető."
+        ],
+        "en": [
+          "A supported Intel host negotiates a working codec, reports latency and handles encoder failures."
+        ]
+      },
+      "label_names": [
+        "remote-support"
+      ],
+      "github_issue_number": 46,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/46"
+    },
+    {
+      "id": "MIDAS-046",
+      "kind": "task",
+      "phase": 2,
+      "milestone": "M2",
+      "title": {
+        "hu": "Szoftveres H.264 és kodekegyeztetés",
+        "en": "Software H.264 and codec negotiation"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-042",
+        "MIDAS-040"
+      ],
+      "requirements": [
+        "PERF-04",
+        "SERVER-03"
+      ],
+      "legacy_ids": [
+        "F2-05"
+      ],
+      "acceptance": {
+        "hu": [
+          "Virtuális kijelzőn hardveres kódoló nélkül vezérelhető az asztal, a használt bináris terjesztési feltételei ellenőrzöttek."
+        ],
+        "en": [
+          "A virtual-display desktop is controllable without a hardware encoder and binary distribution terms are verified."
+        ]
+      },
+      "label_names": [
+        "remote-support"
+      ],
+      "github_issue_number": 47,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/47"
+    },
+    {
+      "id": "MIDAS-047",
+      "kind": "task",
+      "phase": 2,
+      "milestone": "M2",
+      "title": {
+        "hu": "Védett transzport és külön UAC-komponens",
+        "en": "Protected transport and separate UAC component"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-018",
+        "MIDAS-023",
+        "MIDAS-040"
+      ],
+      "requirements": [
+        "REMOTE-03",
+        "REMOTE-06"
+      ],
+      "legacy_ids": [
+        "F2-06"
+      ],
+      "acceptance": {
+        "hu": [
+          "Normál segéd, transzport és emelt komponens külön identitással működik, más felhasználó és munkamenet hozzáférése elutasított."
+        ],
+        "en": [
+          "User worker, transport and privileged component use isolated identities and reject other users/sessions."
+        ]
+      },
+      "label_names": [
+        "remote-support",
+        "security"
+      ],
+      "github_issue_number": 48,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/48"
+    },
+    {
+      "id": "MIDAS-048",
+      "kind": "task",
+      "phase": 2,
+      "milestone": "M2",
+      "title": {
+        "hu": "Adminpanelről indított helyi jóváhagyás",
+        "en": "Admin-initiated local consent"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-047",
+        "MIDAS-034",
+        "MIDAS-011",
+        "MIDAS-012",
+        "MIDAS-040"
+      ],
+      "requirements": [
+        "UI-04",
+        "UI-06",
+        "REMOTE-01",
+        "REMOTE-02"
+      ],
+      "legacy_ids": [
+        "F2-07"
+      ],
+      "acceptance": {
+        "hu": [
+          "Mindkét módnál név és képesség látszik, elutasított vagy lejárt kérést távoli bevitel és késő válasz nem aktivál."
+        ],
+        "en": [
+          "Both modes show identity/capabilities and reject remote approval and late replies to declined/expired requests."
+        ]
+      },
+      "label_names": [
+        "remote-support",
+        "security"
+      ],
+      "github_issue_number": 49,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/49"
+    },
+    {
+      "id": "MIDAS-049",
+      "kind": "task",
+      "phase": 2,
+      "milestone": "M2",
+      "title": {
+        "hu": "Normál távvezérlés működő UAC-val",
+        "en": "Normal remote control with working UAC"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-048",
+        "MIDAS-042",
+        "MIDAS-046",
+        "MIDAS-040"
+      ],
+      "requirements": [
+        "REMOTE-03",
+        "REMOTE-04",
+        "REMOTE-05"
+      ],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "A felhasználói alkalmazások saját jogukkal futnak, az engedélyezett UAC ugyanabban a kapcsolatban látható és kezelhető."
+        ],
+        "en": [
+          "User applications retain their privileges and authorized UAC is visible and interactive in the same connection."
+        ]
+      },
+      "label_names": [
+        "remote-support",
+        "security"
+      ],
+      "github_issue_number": 50,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/50"
+    },
+    {
+      "id": "MIDAS-050",
+      "kind": "task",
+      "phase": 2,
+      "milestone": "M2",
+      "title": {
+        "hu": "Rendszergazdai távvezérlés és külön engedélyek",
+        "en": "Administrative control and distinct permissions"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-049",
+        "MIDAS-040"
+      ],
+      "requirements": [
+        "REMOTE-04",
+        "REMOTE-05",
+        "SEC-03"
+      ],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "A mód friss passkeyt és megfelelő jogot kér, meglévő felhasználói folyamat jogosultságát nem írja át."
+        ],
+        "en": [
+          "The mode requires fresh passkey verification and appropriate rights without altering existing user processes."
+        ]
+      },
+      "label_names": [
+        "remote-support",
+        "security"
+      ],
+      "github_issue_number": 51,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/51"
+    },
+    {
+      "id": "MIDAS-051",
+      "kind": "task",
+      "phase": 2,
+      "milestone": "M2",
+      "title": {
+        "hu": "Helyi leállítás, lejárat és visszavonás",
+        "en": "Local stop, expiry and revocation"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-049",
+        "MIDAS-050",
+        "MIDAS-041",
+        "MIDAS-040"
+      ],
+      "requirements": [
+        "REMOTE-07",
+        "SEC-03"
+      ],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "Helyi stop azonnal bont, visszavonás és jelzésvesztés közvetlen/TURN kapcsolaton is az előírt időben zár."
+        ],
+        "en": [
+          "Local stop is immediate and revocation/signaling loss terminates direct and TURN sessions within the specified lifetime."
+        ]
+      },
+      "label_names": [
+        "remote-support",
+        "security"
+      ],
+      "github_issue_number": 52,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/52"
+    },
+    {
+      "id": "MIDAS-052",
+      "kind": "task",
+      "phase": 2,
+      "milestone": "M2",
+      "title": {
+        "hu": "TURN-elérés és tiltott célok tesztje",
+        "en": "TURN connectivity and forbidden-destination tests"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-047",
+        "MIDAS-006",
+        "MIDAS-040"
+      ],
+      "requirements": [
+        "SEC-05"
+      ],
+      "legacy_ids": [
+        "F2-08"
+      ],
+      "acceptance": {
+        "hu": [
+          "Közvetlen és relézett út működik, rövid életű hitelesítés és IPv4/IPv6 belsőcím-tiltás tesztelve."
+        ],
+        "en": [
+          "Direct/relayed connectivity works and short-lived authentication plus IPv4/IPv6 internal-destination blocks are tested."
+        ]
+      },
+      "label_names": [
+        "remote-support",
+        "server"
+      ],
+      "github_issue_number": 53,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/53"
+    },
+    {
+      "id": "MIDAS-053",
+      "kind": "task",
+      "phase": 2,
+      "milestone": "M2",
+      "title": {
+        "hu": "Böngészős távsegítő nézet és eszköztár",
+        "en": "Browser remote-support view and toolbar"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-049",
+        "MIDAS-050",
+        "MIDAS-052",
+        "MIDAS-031",
+        "MIDAS-040"
+      ],
+      "requirements": [
+        "UI-02",
+        "UI-04",
+        "UI-07"
+      ],
+      "legacy_ids": [
+        "F2-09"
+      ],
+      "acceptance": {
+        "hu": [
+          "A tesztelt böngészőkben látszik a mód és a célgép, a kapcsolatjelző valós adatot ad, a támogatott rendszerbillentyűk elérhetők."
+        ],
+        "en": [
+          "Tested browsers show mode/target, real connection statistics and controls for supported system keys."
+        ]
+      },
+      "label_names": [
+        "remote-support",
+        "dashboard"
+      ],
+      "github_issue_number": 54,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/54"
+    },
+    {
+      "id": "MIDAS-054",
+      "kind": "task",
+      "phase": 2,
+      "milestone": "M2",
+      "title": {
+        "hu": "Fizikai billentyűk, szöveg, IME és kurzor",
+        "en": "Physical keys, text, IME and cursor"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-047",
+        "MIDAS-053",
+        "MIDAS-040"
+      ],
+      "requirements": [
+        "REMOTE-08"
+      ],
+      "legacy_ids": [
+        "F2-10"
+      ],
+      "acceptance": {
+        "hu": [
+          "Magyar és eltérő kiosztás, egérmódosítók és SAS-kérés célgépre kötötten működik."
+        ],
+        "en": [
+          "Hungarian/mismatched layouts, mouse modifiers and SAS requests work for the authorized target."
+        ]
+      },
+      "label_names": [
+        "remote-support",
+        "security"
+      ],
+      "github_issue_number": 55,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/55"
+    },
+    {
+      "id": "MIDAS-055",
+      "kind": "task",
+      "phase": 2,
+      "milestone": "M2",
+      "title": {
+        "hu": "Munkameneten belüli vágólap és fájlátvitel",
+        "en": "In-session clipboard and file transfer"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P1",
+      "depends_on": [
+        "MIDAS-053",
+        "MIDAS-051",
+        "MIDAS-040"
+      ],
+      "requirements": [
+        "REMOTE-08",
+        "SEC-04"
+      ],
+      "legacy_ids": [
+        "F2-11"
+      ],
+      "acceptance": {
+        "hu": [
+          "Engedélyezett irányokban folytatható fájlátvitel működik, tartalom- és vágólaptitok nem kerül auditba."
+        ],
+        "en": [
+          "Authorized transfers resume correctly and file/clipboard secrets stay out of audit."
+        ]
+      },
+      "label_names": [
+        "remote-support",
+        "security"
+      ],
+      "github_issue_number": 56,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/56"
+    },
+    {
+      "id": "MIDAS-056",
+      "kind": "task",
+      "phase": 2,
+      "milestone": "M2",
+      "title": {
+        "hu": "Chat az aktív távsegítésben",
+        "en": "Chat during an active support session"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P2",
+      "depends_on": [
+        "MIDAS-053",
+        "MIDAS-034",
+        "MIDAS-040"
+      ],
+      "requirements": [
+        "UI-06"
+      ],
+      "legacy_ids": [
+        "F2-12"
+      ],
+      "acceptance": {
+        "hu": [
+          "Az elfogadott munkamenet két résztvevője üzenetet vált, lezárás után a csatorna megszűnik."
+        ],
+        "en": [
+          "The two authorized participants exchange chat messages and the channel ends with the session."
+        ]
+      },
+      "label_names": [
+        "remote-support",
+        "agent"
+      ],
+      "github_issue_number": 57,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/57"
+    },
+    {
+      "id": "MIDAS-057",
+      "kind": "task",
+      "phase": 2,
+      "milestone": "M2",
+      "title": {
+        "hu": "Mobilos távvezérlési bevitel",
+        "en": "Mobile remote-control input"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P2",
+      "depends_on": [
+        "MIDAS-053",
+        "MIDAS-054",
+        "MIDAS-014",
+        "MIDAS-040"
+      ],
+      "requirements": [
+        "UI-08"
+      ],
+      "legacy_ids": [
+        "F2-14"
+      ],
+      "acceptance": {
+        "hu": [
+          "Valódi telefonon kattintás, másodlagos kattintás, nagyítás és szövegbevitel kipróbált."
+        ],
+        "en": [
+          "Tap, secondary click, zoom and text input are exercised on a real phone."
+        ]
+      },
+      "label_names": [
+        "remote-support",
+        "dashboard"
+      ],
+      "github_issue_number": 58,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/58"
+    },
+    {
+      "id": "MIDAS-058",
+      "kind": "task",
+      "phase": 2,
+      "milestone": "M2",
+      "title": {
+        "hu": "Windows-, UAC-, böngésző- és késleltetési mátrix",
+        "en": "Windows/UAC/browser and latency matrix"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-051",
+        "MIDAS-043",
+        "MIDAS-044",
+        "MIDAS-045",
+        "MIDAS-053",
+        "MIDAS-054",
+        "MIDAS-055",
+        "MIDAS-056",
+        "MIDAS-057",
+        "MIDAS-040"
+      ],
+      "requirements": [
+        "REMOTE-03",
+        "REMOTE-07",
+        "REMOTE-08",
+        "SERVER-03"
+      ],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "Konzol, RDP, zárolás, UAC-jelszókérés, normál/admin és szoftveres út mérése dokumentált, a támogatás az eredményt követi."
+        ],
+        "en": [
+          "Measurements document console/RDP, lock, credential prompts, both modes and software encoding, with support claims matching results."
+        ]
+      },
+      "label_names": [
+        "remote-support",
+        "security"
+      ],
+      "github_issue_number": 59,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/59"
+    },
+    {
+      "id": "MIDAS-059",
+      "kind": "task",
+      "phase": 2,
+      "milestone": "M2",
+      "title": {
+        "hu": "A két résztvevős használhatósági próba valódi kapcsolattal",
+        "en": "Two-participant usability trial over a real connection"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-058",
+        "MIDAS-019",
+        "MIDAS-040"
+      ],
+      "requirements": [
+        "UI-06",
+        "UI-07",
+        "UI-08"
+      ],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "Az adminpanelről induló elutasítás, új kérés elfogadása, UAC és helyi bontás önállóan követhető mindkét oldalon.",
+          "Magyar és angol, billentyűzetes, mobil dashboardos és helyi képernyőolvasós próba is készül."
+        ],
+        "en": [
+          "Operator initiation, decline, fresh acceptance, UAC and local stop are understandable unaided on both ends.",
+          "Include Hungarian and English, keyboard, mobile-dashboard and local screen-reader trials."
+        ]
+      },
+      "label_names": [
+        "dashboard",
+        "agent"
+      ],
+      "github_issue_number": 60,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/60"
+    },
+    {
+      "id": "MIDAS-060",
+      "kind": "gate",
+      "phase": 2,
+      "milestone": "M2",
+      "title": {
+        "hu": "2. fázis ellenőrzése és mérföldkőzárás",
+        "en": "Review phase 2 and close its milestone"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-041",
+        "MIDAS-042",
+        "MIDAS-043",
+        "MIDAS-044",
+        "MIDAS-045",
+        "MIDAS-046",
+        "MIDAS-047",
+        "MIDAS-048",
+        "MIDAS-049",
+        "MIDAS-050",
+        "MIDAS-051",
+        "MIDAS-052",
+        "MIDAS-053",
+        "MIDAS-054",
+        "MIDAS-055",
+        "MIDAS-056",
+        "MIDAS-057",
+        "MIDAS-058",
+        "MIDAS-059",
+        "MIDAS-040"
+      ],
+      "requirements": [],
+      "legacy_ids": [
+        "F2-15"
+      ],
+      "acceptance": {
+        "hu": [
+          "Mindkét távvezérlési mód normál és rendszergazdai fiókkal, UAC-val, helyi leállítással és külön szabályzatos szervereléréssel igazolt. A teljes mátrix és a két felület használhatósága elfogadva; minden vállalt feladat ellenőrzött Done."
+        ],
+        "en": [
+          "Verify both remote modes with standard and administrator accounts, UAC, local stop and separately authorized server access. Accept the complete test matrix and both interfaces' usability; all committed work is reviewed Done."
+        ]
+      },
+      "label_names": [
+        "documentation"
+      ],
+      "github_issue_number": 61,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/61"
+    },
+    {
+      "id": "MIDAS-061",
+      "kind": "task",
+      "phase": 3,
+      "milestone": "M3",
+      "title": {
+        "hu": "Verziózott szkriptek és aláírt futtatási felhatalmazás",
+        "en": "Versioned scripts and signed execution grants"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-022",
+        "MIDAS-011",
+        "MIDAS-012",
+        "MIDAS-060"
+      ],
+      "requirements": [
+        "SEC-03"
+      ],
+      "legacy_ids": [
+        "F3-01"
+      ],
+      "acceptance": {
+        "hu": [
+          "Módosított, lejárt vagy más ügyfélhez tartozó feladat elutasított, az identitás és paraméter auditált."
+        ],
+        "en": [
+          "Modified, expired and cross-tenant jobs are rejected and execution identity/parameters are audited safely."
+        ]
+      },
+      "label_names": [
+        "automation",
+        "security"
+      ],
+      "github_issue_number": 62,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/62"
+    },
+    {
+      "id": "MIDAS-062",
+      "kind": "task",
+      "phase": 3,
+      "milestone": "M3",
+      "title": {
+        "hu": "Ütemező, futásállapot és duplikációvédelem",
+        "en": "Scheduler, run state and duplicate protection"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-061",
+        "MIDAS-060"
+      ],
+      "requirements": [
+        "UI-05",
+        "PERF-03",
+        "SEC-03"
+      ],
+      "legacy_ids": [
+        "F3-02"
+      ],
+      "acceptance": {
+        "hu": [
+          "Megszakítás és újrakézbesítés után a futás állapota egyeztethető, ugyanaz a nem ismételhető művelet nem indul duplán."
+        ],
+        "en": [
+          "Interrupted/re-delivered jobs reconcile their state without duplicating non-repeatable operations."
+        ]
+      },
+      "label_names": [
+        "automation",
+        "security"
+      ],
+      "github_issue_number": 63,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/63"
+    },
+    {
+      "id": "MIDAS-063",
+      "kind": "task",
+      "phase": 3,
+      "milestone": "M3",
+      "title": {
+        "hu": "Karbantartási ablakok és szerver-újraindítási profil",
+        "en": "Maintenance windows and server reboot policy"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-062",
+        "MIDAS-028",
+        "MIDAS-060"
+      ],
+      "requirements": [
+        "SERVER-04"
+      ],
+      "legacy_ids": [
+        "F3-03"
+      ],
+      "acceptance": {
+        "hu": [
+          "A feladat a jóváhagyott időben fut, a halasztás és újraindítás eredménye gépenként követhető."
+        ],
+        "en": [
+          "Jobs obey approved windows and per-device postponement/reboot outcomes remain visible."
+        ]
+      },
+      "label_names": [
+        "automation"
+      ],
+      "github_issue_number": 64,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/64"
+    },
+    {
+      "id": "MIDAS-064",
+      "kind": "task",
+      "phase": 3,
+      "milestone": "M3",
+      "title": {
+        "hu": "Windows Update jóváhagyás és újraindítás",
+        "en": "Windows Update approvals and reboot handling"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-063",
+        "MIDAS-060"
+      ],
+      "requirements": [
+        "SERVER-01",
+        "SERVER-04"
+      ],
+      "legacy_ids": [
+        "F3-04"
+      ],
+      "acceptance": {
+        "hu": [
+          "Próbacsoporton a jóváhagyott javítás települ, értesítés és újraindítás ellenőrzött."
+        ],
+        "en": [
+          "A test group installs approved patches with verified notification and restart behavior."
+        ]
+      },
+      "label_names": [
+        "automation"
+      ],
+      "github_issue_number": 65,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/65"
+    },
+    {
+      "id": "MIDAS-065",
+      "kind": "task",
+      "phase": 3,
+      "milestone": "M3",
+      "title": {
+        "hu": "Gépszintű és felhasználói alkalmazásfrissítések",
+        "en": "Machine-wide and per-user application updates"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P1",
+      "depends_on": [
+        "MIDAS-063",
+        "MIDAS-060"
+      ],
+      "requirements": [
+        "SERVER-01"
+      ],
+      "legacy_ids": [
+        "F3-05"
+      ],
+      "acceptance": {
+        "hu": [
+          "A megfelelő futtatási környezetet választja, a WinGet-elérés hiánya látható, jóváhagyott csomagút kipróbált."
+        ],
+        "en": [
+          "Select the proper execution context, show unavailable WinGet support and validate an approved package route."
+        ]
+      },
+      "label_names": [
+        "automation"
+      ],
+      "github_issue_number": 66,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/66"
+    },
+    {
+      "id": "MIDAS-066",
+      "kind": "task",
+      "phase": 3,
+      "milestone": "M3",
+      "title": {
+        "hu": "apt- és dnf-frissítési ciklus",
+        "en": "apt and dnf update cycle"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-063",
+        "MIDAS-060"
+      ],
+      "requirements": [
+        "SERVER-01"
+      ],
+      "legacy_ids": [
+        "F3-06"
+      ],
+      "acceptance": {
+        "hu": [
+          "Debian/Ubuntu és Rocky Linux gépeken az ablak és jóváhagyás szerint fut, újraindítási igény visszaérkezik."
+        ],
+        "en": [
+          "Debian/Ubuntu and Rocky hosts update under approval/windows and report reboot requirements."
+        ]
+      },
+      "label_names": [
+        "automation"
+      ],
+      "github_issue_number": 67,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/67"
+    },
+    {
+      "id": "MIDAS-067",
+      "kind": "task",
+      "phase": 3,
+      "milestone": "M3",
+      "title": {
+        "hu": "Jóváhagyott MSI- és EXE-csomagok terítése",
+        "en": "Deploy approved MSI and EXE packages"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P1",
+      "depends_on": [
+        "MIDAS-062",
+        "MIDAS-060"
+      ],
+      "requirements": [
+        "SEC-03"
+      ],
+      "legacy_ids": [
+        "F3-07"
+      ],
+      "acceptance": {
+        "hu": [
+          "Ellenőrzött csomag kiválasztott csoportra települ, a sikertelen futások és kilépési kódok látszanak."
+        ],
+        "en": [
+          "Verified packages deploy to the selected group with visible failures and exit codes."
+        ]
+      },
+      "label_names": [
+        "automation",
+        "security"
+      ],
+      "github_issue_number": 68,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/68"
+    },
+    {
+      "id": "MIDAS-068",
+      "kind": "task",
+      "phase": 3,
+      "milestone": "M3",
+      "title": {
+        "hu": "Riasztáshoz kötött javító feladat",
+        "en": "Alert-triggered remediation job"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P1",
+      "depends_on": [
+        "MIDAS-062",
+        "MIDAS-029",
+        "MIDAS-060"
+      ],
+      "requirements": [
+        "PERF-03"
+      ],
+      "legacy_ids": [
+        "F3-08"
+      ],
+      "acceptance": {
+        "hu": [
+          "A jóváhagyott szkript riasztásra lefut, ismétlődése kontrollált és eredménye a riasztáshoz kapcsolódik."
+        ],
+        "en": [
+          "An approved script runs on an alert, controls repetition and links its result to the alert."
+        ]
+      },
+      "label_names": [
+        "automation"
+      ],
+      "github_issue_number": 69,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/69"
+    },
+    {
+      "id": "MIDAS-069",
+      "kind": "task",
+      "phase": 3,
+      "milestone": "M3",
+      "title": {
+        "hu": "Külön engedélyű távoli PowerShell és Linux-shell",
+        "en": "Separately authorized PowerShell and Linux shell"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P1",
+      "depends_on": [
+        "MIDAS-062",
+        "MIDAS-031",
+        "MIDAS-060"
+      ],
+      "requirements": [
+        "UI-02",
+        "SERVER-01",
+        "SEC-01"
+      ],
+      "legacy_ids": [
+        "F2-13"
+      ],
+      "acceptance": {
+        "hu": [
+          "Választott futtatási identitás, hatókör, megszakítás és audit működik grafikus munkamenet nélkül."
+        ],
+        "en": [
+          "Chosen execution identity, scope, cancellation and audit work without a graphical session."
+        ]
+      },
+      "label_names": [
+        "automation",
+        "security"
+      ],
+      "github_issue_number": 70,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/70"
+    },
+    {
+      "id": "MIDAS-070",
+      "kind": "task",
+      "phase": 3,
+      "milestone": "M3",
+      "title": {
+        "hu": "Önálló háttérfájlkezelő és folyamat-/szolgáltatásműveletek",
+        "en": "Background files, processes and service operations"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P1",
+      "depends_on": [
+        "MIDAS-062",
+        "MIDAS-031",
+        "MIDAS-060"
+      ],
+      "requirements": [
+        "UI-02",
+        "SERVER-01",
+        "SEC-01"
+      ],
+      "legacy_ids": [
+        "F2-13"
+      ],
+      "acceptance": {
+        "hu": [
+          "A kiválasztott identitás és célhatókör érvényesül, a gép műveleti eredménye látszik és auditált."
+        ],
+        "en": [
+          "Selected identity and scope are enforced and per-device outcomes are visible and audited."
+        ]
+      },
+      "label_names": [
+        "automation",
+        "security"
+      ],
+      "github_issue_number": 71,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/71"
+    },
+    {
+      "id": "MIDAS-071",
+      "kind": "task",
+      "phase": 3,
+      "milestone": "M3",
+      "title": {
+        "hu": "Tartományba léptetés előellenőrzése és OU-jogosultság",
+        "en": "Domain-join preflight and delegated OU authorization"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-036",
+        "MIDAS-038",
+        "MIDAS-062",
+        "MIDAS-060"
+      ],
+      "requirements": [
+        "AD-01",
+        "AD-05"
+      ],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "A célgép, tartomány és OU előnézete, DNS/idő/kiadás ellenőrzése és külön jogosultsága működik."
+        ],
+        "en": [
+          "Device/domain/OU preview, DNS/time/edition checks and separate authorization work."
+        ]
+      },
+      "label_names": [
+        "automation"
+      ],
+      "github_issue_number": 72,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/72"
+    },
+    {
+      "id": "MIDAS-072",
+      "kind": "task",
+      "phase": 3,
+      "milestone": "M3",
+      "title": {
+        "hu": "Védett offline domain join csomag",
+        "en": "Protected offline domain join package"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-071",
+        "MIDAS-060"
+      ],
+      "requirements": [
+        "AD-06",
+        "SEC-03"
+      ],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "A connector külön írási identitással provisionál, csak a célagent kapja meg titkosítva, a tárolt másolat élettartama kezelt."
+        ],
+        "en": [
+          "The connector provisions with a separate write identity, encrypts delivery to the target agent and manages stored-copy lifetime."
+        ]
+      },
+      "label_names": [
+        "automation",
+        "security"
+      ],
+      "github_issue_number": 73,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/73"
+    },
+    {
+      "id": "MIDAS-073",
+      "kind": "task",
+      "phase": 3,
+      "milestone": "M3",
+      "title": {
+        "hu": "Domain trust és visszatérés ellenőrzése",
+        "en": "Verify domain trust and agent return"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-072",
+        "MIDAS-063",
+        "MIDAS-060"
+      ],
+      "requirements": [
+        "AD-07",
+        "SERVER-04"
+      ],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "Jóváhagyott újraindítás után a tagság és az agent visszatérése igazolt, bizonytalan kimenetel nem okoz vak ismétlést."
+        ],
+        "en": [
+          "Approved reboot is followed by verified trust and agent return, and uncertain outcomes never trigger blind retries."
+        ]
+      },
+      "label_names": [
+        "automation"
+      ],
+      "github_issue_number": 74,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/74"
+    },
+    {
+      "id": "MIDAS-074",
+      "kind": "gate",
+      "phase": 3,
+      "milestone": "M3",
+      "title": {
+        "hu": "3. fázis ellenőrzése és mérföldkőzárás",
+        "en": "Review phase 3 and close its milestone"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-061",
+        "MIDAS-062",
+        "MIDAS-063",
+        "MIDAS-064",
+        "MIDAS-065",
+        "MIDAS-066",
+        "MIDAS-067",
+        "MIDAS-068",
+        "MIDAS-069",
+        "MIDAS-070",
+        "MIDAS-071",
+        "MIDAS-072",
+        "MIDAS-073",
+        "MIDAS-060"
+      ],
+      "requirements": [],
+      "legacy_ids": [
+        "F3-09"
+      ],
+      "acceptance": {
+        "hu": [
+          "A szkriptek, frissítések, önálló háttéreszközök és ellenőrzött Windows-tartományba léptetés elfogadva. A hibák, újrapróbálás és újraindítás kezelése igazolt; minden vállalt feladat ellenőrzött Done."
+        ],
+        "en": [
+          "Accept scripts, updates, independent background tools and verified Windows domain joining. Verify failure, retry and reboot handling; all committed work is reviewed Done."
+        ]
+      },
+      "label_names": [
+        "documentation"
+      ],
+      "github_issue_number": 75,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/75"
+    },
+    {
+      "id": "MIDAS-075",
+      "kind": "task",
+      "phase": 4,
+      "milestone": "M4",
+      "title": {
+        "hu": "Linux-szervertelepítő és ellenőrzött csomagtárolók",
+        "en": "Linux server installer and verified package repositories"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-016",
+        "MIDAS-074"
+      ],
+      "requirements": [
+        "SEC-06"
+      ],
+      "legacy_ids": [
+        "F4-01"
+      ],
+      "acceptance": {
+        "hu": [
+          "Debian, Ubuntu és Rocky Linux tiszta telepítésen és frissítésen végigmegy a teljes stackkel."
+        ],
+        "en": [
+          "The full stack passes clean installation and upgrade on Debian, Ubuntu and Rocky Linux."
+        ]
+      },
+      "label_names": [
+        "server",
+        "security"
+      ],
+      "github_issue_number": 76,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/76"
+    },
+    {
+      "id": "MIDAS-076",
+      "kind": "task",
+      "phase": 4,
+      "milestone": "M4",
+      "title": {
+        "hu": "Windows-szervertelepítő és szolgáltatásfiókok",
+        "en": "Windows server installer and service accounts"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-016",
+        "MIDAS-074"
+      ],
+      "requirements": [
+        "SEC-06"
+      ],
+      "legacy_ids": [
+        "F4-02"
+      ],
+      "acceptance": {
+        "hu": [
+          "Windows Server 2022/2025 tiszta gépen a MIDAS, PostgreSQL és eturnal együtt települ és frissül."
+        ],
+        "en": [
+          "MIDAS, PostgreSQL and eturnal install and upgrade together on clean Windows Server 2022/2025 hosts."
+        ]
+      },
+      "label_names": [
+        "server",
+        "security"
+      ],
+      "github_issue_number": 77,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/77"
+    },
+    {
+      "id": "MIDAS-077",
+      "kind": "task",
+      "phase": 4,
+      "milestone": "M4",
+      "title": {
+        "hu": "Védett kódaláírás és telepítési reputációs próba",
+        "en": "Protected code signing and distribution reputation tests"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-075",
+        "MIDAS-076",
+        "MIDAS-033",
+        "MIDAS-074"
+      ],
+      "requirements": [
+        "SEC-06"
+      ],
+      "legacy_ids": [
+        "F4-03"
+      ],
+      "acceptance": {
+        "hu": [
+          "Saját Windows-binárisok aláírtak és időbélyegzettek, kulcs a védett aláíróban, a valós terjesztési út kipróbált."
+        ],
+        "en": [
+          "Project Windows binaries are signed/timestamped, keys remain protected and actual distribution routes are tested."
+        ]
+      },
+      "label_names": [
+        "agent",
+        "security"
+      ],
+      "github_issue_number": 78,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/78"
+    },
+    {
+      "id": "MIDAS-078",
+      "kind": "task",
+      "phase": 4,
+      "milestone": "M4",
+      "title": {
+        "hu": "Aláírt agentönfrissítés, gyűrűk és visszaállás",
+        "en": "Signed agent updates, rings and rollback"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-077",
+        "MIDAS-023",
+        "MIDAS-024",
+        "MIDAS-074"
+      ],
+      "requirements": [
+        "SEC-06"
+      ],
+      "legacy_ids": [
+        "F4-04"
+      ],
+      "acceptance": {
+        "hu": [
+          "Hibás csomag elutasított, hibás tesztkiadás engedélyezett korábbi verzióra áll vissza és nem terjed tovább."
+        ],
+        "en": [
+          "Invalid packages are rejected and a failed test release rolls back to an approved prior version without wider rollout."
+        ]
+      },
+      "label_names": [
+        "agent",
+        "security"
+      ],
+      "github_issue_number": 79,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/79"
+    },
+    {
+      "id": "MIDAS-079",
+      "kind": "task",
+      "phase": 4,
+      "milestone": "M4",
+      "title": {
+        "hu": "Külső ellenőrzőpont és auditlánc",
+        "en": "External checkpoints and audit chain"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P1",
+      "depends_on": [
+        "MIDAS-012",
+        "MIDAS-074"
+      ],
+      "requirements": [
+        "SEC-04"
+      ],
+      "legacy_ids": [
+        "F4-05"
+      ],
+      "acceptance": {
+        "hu": [
+          "Átírás, törlés és naplóvég-csonkolás külső bizonyítékkal kimutatható, titkok kizárása ellenőrzött."
+        ],
+        "en": [
+          "External evidence detects rewriting, deletion and tail truncation and verifies secret exclusion."
+        ]
+      },
+      "label_names": [
+        "server",
+        "security"
+      ],
+      "github_issue_number": 80,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/80"
+    },
+    {
+      "id": "MIDAS-080",
+      "kind": "task",
+      "phase": 4,
+      "milestone": "M4",
+      "title": {
+        "hu": "Mentés és teljes visszaállítás másik gépen",
+        "en": "Backup and full recovery on another host"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-075",
+        "MIDAS-076",
+        "MIDAS-022",
+        "MIDAS-074"
+      ],
+      "requirements": [
+        "SEC-02",
+        "SEC-06"
+      ],
+      "legacy_ids": [
+        "F4-06"
+      ],
+      "acceptance": {
+        "hu": [
+          "Adat, konfiguráció és kulcshelyreállítás kipróbált, a visszavont agent helyreállítás után is kizárt."
+        ],
+        "en": [
+          "Data/config/key recovery is exercised and revoked agents remain excluded after restoration."
+        ]
+      },
+      "label_names": [
+        "server",
+        "security"
+      ],
+      "github_issue_number": 81,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/81"
+    },
+    {
+      "id": "MIDAS-081",
+      "kind": "task",
+      "phase": 4,
+      "milestone": "M4",
+      "title": {
+        "hu": "SBOM, kiadási aláírás és buildigazolás",
+        "en": "SBOM, release signatures and build provenance"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P1",
+      "depends_on": [
+        "MIDAS-004",
+        "MIDAS-077",
+        "MIDAS-074"
+      ],
+      "requirements": [
+        "SEC-06"
+      ],
+      "legacy_ids": [
+        "F4-07"
+      ],
+      "acceptance": {
+        "hu": [
+          "A kiadás forrása, függőségei és aláírásai letölthetők és ellenőrizhetők."
+        ],
+        "en": [
+          "Release source, dependencies and signatures are available and verifiable."
+        ]
+      },
+      "label_names": [
+        "security"
+      ],
+      "github_issue_number": 82,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/82"
+    },
+    {
+      "id": "MIDAS-082",
+      "kind": "task",
+      "phase": 4,
+      "milestone": "M4",
+      "title": {
+        "hu": "Ügyfél- és globális vészleállítás",
+        "en": "Customer and global emergency stop"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-051",
+        "MIDAS-062",
+        "MIDAS-011",
+        "MIDAS-074"
+      ],
+      "requirements": [
+        "SEC-06"
+      ],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "A választott hatókör új műveleteit felfüggeszti és aktív felhatalmazásait visszavonja, az audit megmarad."
+        ],
+        "en": [
+          "The selected scope suspends new actions and revokes active grants while preserving audit."
+        ]
+      },
+      "label_names": [
+        "server",
+        "security"
+      ],
+      "github_issue_number": 83,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/83"
+    },
+    {
+      "id": "MIDAS-083",
+      "kind": "task",
+      "phase": 4,
+      "milestone": "M4",
+      "title": {
+        "hu": "Független biztonsági felülvizsgálat és javítás",
+        "en": "Independent security review and remediation"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-082",
+        "MIDAS-079",
+        "MIDAS-081",
+        "MIDAS-080",
+        "MIDAS-078",
+        "MIDAS-074"
+      ],
+      "requirements": [
+        "SEC-01",
+        "SEC-02",
+        "SEC-03",
+        "SEC-04",
+        "SEC-05",
+        "SEC-06"
+      ],
+      "legacy_ids": [
+        "F4-08"
+      ],
+      "acceptance": {
+        "hu": [
+          "Fenyegetésmodell és külső vizsgálat alapján a kritikus/magas találatok javítottak, visszateszteltek."
+        ],
+        "en": [
+          "Threat modeling and external review findings of critical/high severity are fixed and retested."
+        ]
+      },
+      "label_names": [
+        "security"
+      ],
+      "github_issue_number": 84,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/84"
+    },
+    {
+      "id": "MIDAS-084",
+      "kind": "task",
+      "phase": 4,
+      "milestone": "M4",
+      "title": {
+        "hu": "Ügyfelenkénti adatkezelés és megőrzési szabályok",
+        "en": "Customer data-handling and retention arrangements"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P1",
+      "depends_on": [
+        "MIDAS-079",
+        "MIDAS-080",
+        "MIDAS-074"
+      ],
+      "requirements": [],
+      "legacy_ids": [
+        "F4-09"
+      ],
+      "acceptance": {
+        "hu": [
+          "A pilot adatkezelési szerepei, megőrzése, hozzáférése és alkalmazandó kötelezettségei dokumentáltak."
+        ],
+        "en": [
+          "Pilot data roles, retention, access and applicable obligations are documented."
+        ]
+      },
+      "label_names": [
+        "documentation",
+        "security"
+      ],
+      "github_issue_number": 85,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/85"
+    },
+    {
+      "id": "MIDAS-085",
+      "kind": "task",
+      "phase": 4,
+      "milestone": "M4",
+      "title": {
+        "hu": "Platform-, terhelési és használhatósági regresszió",
+        "en": "Platform, load and usability regression checks"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-078",
+        "MIDAS-058",
+        "MIDAS-059",
+        "MIDAS-035",
+        "MIDAS-039",
+        "MIDAS-074"
+      ],
+      "requirements": [
+        "PERF-03",
+        "UI-08",
+        "REMOTE-07"
+      ],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "A deklarált támogatási mátrix, műveleti korlátok és korábbi használhatósági próbák ismét sikerülnek."
+        ],
+        "en": [
+          "The declared support matrix, authorization boundaries and prior usability trials pass again."
+        ]
+      },
+      "label_names": [
+        "security"
+      ],
+      "github_issue_number": 86,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/86"
+    },
+    {
+      "id": "MIDAS-086",
+      "kind": "task",
+      "phase": 4,
+      "milestone": "M4",
+      "title": {
+        "hu": "Első ügyfél bevezetése és pilotüzem",
+        "en": "First customer deployment and pilot operation"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-083",
+        "MIDAS-084",
+        "MIDAS-085",
+        "MIDAS-074"
+      ],
+      "requirements": [],
+      "legacy_ids": [
+        "F4-10"
+      ],
+      "acceptance": {
+        "hu": [
+          "Javított biztonsági találatok után bevezetett ügyfél egy hónapos incidensmentes próbaüzeme dokumentált."
+        ],
+        "en": [
+          "After security remediation, the first customer's month-long incident-free pilot is documented."
+        ]
+      },
+      "label_names": [
+        "documentation"
+      ],
+      "github_issue_number": 87,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/87"
+    },
+    {
+      "id": "MIDAS-087",
+      "kind": "gate",
+      "phase": 4,
+      "milestone": "M4",
+      "title": {
+        "hu": "4. fázis ellenőrzése és mérföldkőzárás",
+        "en": "Review phase 4 and close its milestone"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-075",
+        "MIDAS-076",
+        "MIDAS-077",
+        "MIDAS-078",
+        "MIDAS-079",
+        "MIDAS-080",
+        "MIDAS-081",
+        "MIDAS-082",
+        "MIDAS-083",
+        "MIDAS-084",
+        "MIDAS-085",
+        "MIDAS-086",
+        "MIDAS-074"
+      ],
+      "requirements": [],
+      "legacy_ids": [
+        "F4-11"
+      ],
+      "acceptance": {
+        "hu": [
+          "A biztonsági és visszaállítási próbák elfogadva; a kritikus és magas kockázatú hibák javítva; az első ügyfél egy hónapos incidensmentes pilotja lezárva. Minden vállalt feladat ellenőrzött Done."
+        ],
+        "en": [
+          "Accept security and recovery tests; fix critical and high-risk findings; complete the first customer's one-month incident-free pilot. All committed work is reviewed Done."
+        ]
+      },
+      "label_names": [
+        "documentation"
+      ],
+      "github_issue_number": 88,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/88"
+    },
+    {
+      "id": "MIDAS-088",
+      "kind": "task",
+      "phase": 5,
+      "milestone": "M5",
+      "title": {
+        "hu": "Linux grafikus távsegítés X11-en",
+        "en": "Graphical Linux remote support on X11"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P1",
+      "depends_on": [
+        "MIDAS-053",
+        "MIDAS-087"
+      ],
+      "requirements": [
+        "REMOTE-01",
+        "REMOTE-07"
+      ],
+      "legacy_ids": [
+        "F5-01"
+      ],
+      "acceptance": {
+        "hu": [
+          "X11 gépen helyi jóváhagyással, bevitelkezeléssel és leállítással végigmegy a kapcsolat."
+        ],
+        "en": [
+          "An X11 host completes a session with local consent, input and termination."
+        ]
+      },
+      "label_names": [
+        "remote-support",
+        "security"
+      ],
+      "github_issue_number": 89,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/89"
+    },
+    {
+      "id": "MIDAS-089",
+      "kind": "task",
+      "phase": 5,
+      "milestone": "M5",
+      "title": {
+        "hu": "Wayland távsegítés és portálengedélyek",
+        "en": "Wayland support and portal permissions"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P1",
+      "depends_on": [
+        "MIDAS-088",
+        "MIDAS-087"
+      ],
+      "requirements": [
+        "REMOTE-01",
+        "REMOTE-07"
+      ],
+      "legacy_ids": [
+        "F5-01"
+      ],
+      "acceptance": {
+        "hu": [
+          "A kijelölt Wayland környezetben a portál, rögzítés, bevitel és jogosultságok tényleges gépen kipróbáltak."
+        ],
+        "en": [
+          "Portal consent, capture, input and permissions are tested on the designated real Wayland environment."
+        ]
+      },
+      "label_names": [
+        "remote-support",
+        "security"
+      ],
+      "github_issue_number": 90,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/90"
+    },
+    {
+      "id": "MIDAS-090",
+      "kind": "task",
+      "phase": 5,
+      "milestone": "M5",
+      "title": {
+        "hu": "Telepítés nélküli, attended gyorssegítség",
+        "en": "Portable attended quick support"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P1",
+      "depends_on": [
+        "MIDAS-077",
+        "MIDAS-053",
+        "MIDAS-048",
+        "MIDAS-087"
+      ],
+      "requirements": [
+        "REMOTE-01",
+        "REMOTE-07"
+      ],
+      "legacy_ids": [
+        "F5-02"
+      ],
+      "acceptance": {
+        "hu": [
+          "A rövid kód után az admin kérése helyben jóváhagyható, kilépés lezárja az ideiglenes komponenseket és felhatalmazást."
+        ],
+        "en": [
+          "After short-code pairing, an operator request is locally approved and exit invalidates temporary components/grants."
+        ]
+      },
+      "label_names": [
+        "remote-support",
+        "security"
+      ],
+      "github_issue_number": 91,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/91"
+    },
+    {
+      "id": "MIDAS-091",
+      "kind": "task",
+      "phase": 5,
+      "milestone": "M5",
+      "title": {
+        "hu": "WASAPI/Opus hangátvitel",
+        "en": "WASAPI/Opus audio transmission"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P2",
+      "depends_on": [
+        "MIDAS-053",
+        "MIDAS-087"
+      ],
+      "requirements": [
+        "SEC-05"
+      ],
+      "legacy_ids": [
+        "F5-03"
+      ],
+      "acceptance": {
+        "hu": [
+          "Engedélyezett hang szinkronban hallható, kikapcsolás és lezárás megszünteti az adatfolyamot."
+        ],
+        "en": [
+          "Authorized audio is synchronized and stops when disabled or the session ends."
+        ]
+      },
+      "label_names": [
+        "remote-support",
+        "security"
+      ],
+      "github_issue_number": 92,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/92"
+    },
+    {
+      "id": "MIDAS-092",
+      "kind": "task",
+      "phase": 5,
+      "milestone": "M5",
+      "title": {
+        "hu": "Szabályozott felvétel és hitelesítési felületek kizárása",
+        "en": "Governed recording and credential-surface exclusion"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P2",
+      "depends_on": [
+        "MIDAS-084",
+        "MIDAS-053",
+        "MIDAS-087"
+      ],
+      "requirements": [
+        "REMOTE-08",
+        "SEC-04"
+      ],
+      "legacy_ids": [
+        "F5-04"
+      ],
+      "acceptance": {
+        "hu": [
+          "Az engedélyezett felvétel megőrzése, hozzáférése és UAC/bejelentkezési kizárása a pufferre is ellenőrzött."
+        ],
+        "en": [
+          "Authorized recording verifies retention, access and UAC/sign-in exclusion including buffered frames."
+        ]
+      },
+      "label_names": [
+        "remote-support",
+        "security"
+      ],
+      "github_issue_number": 93,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/93"
+    },
+    {
+      "id": "MIDAS-093",
+      "kind": "task",
+      "phase": 5,
+      "milestone": "M5",
+      "title": {
+        "hu": "Entra ID és AD FS OIDC-belépés",
+        "en": "Entra ID and AD FS OIDC sign-in"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P1",
+      "depends_on": [
+        "MIDAS-009",
+        "MIDAS-011",
+        "MIDAS-087"
+      ],
+      "requirements": [
+        "SEC-01"
+      ],
+      "legacy_ids": [
+        "F5-05"
+      ],
+      "acceptance": {
+        "hu": [
+          "Megbízható issuer+subject, callbackkorreláció és csoporthatókör tesztelve, ügyfelek nem keverednek."
+        ],
+        "en": [
+          "Trusted issuer/subject, callback correlation and group scope are tested without tenant mixing."
+        ]
+      },
+      "label_names": [
+        "server",
+        "security"
+      ],
+      "github_issue_number": 94,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/94"
+    },
+    {
+      "id": "MIDAS-094",
+      "kind": "task",
+      "phase": 5,
+      "milestone": "M5",
+      "title": {
+        "hu": "PWA Web Push valódi mobilokon",
+        "en": "PWA Web Push on real phones"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P1",
+      "depends_on": [
+        "MIDAS-014",
+        "MIDAS-029",
+        "MIDAS-087"
+      ],
+      "requirements": [
+        "UI-08"
+      ],
+      "legacy_ids": [
+        "F5-06"
+      ],
+      "acceptance": {
+        "hu": [
+          "Jóváhagyott feliratkozás értesít Androidon és iPhone-on a támogatott telepítési környezetben."
+        ],
+        "en": [
+          "Authorized subscriptions notify real Android and iPhone devices in supported installation contexts."
+        ]
+      },
+      "label_names": [
+        "dashboard"
+      ],
+      "github_issue_number": 95,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/95"
+    },
+    {
+      "id": "MIDAS-095",
+      "kind": "task",
+      "phase": 5,
+      "milestone": "M5",
+      "title": {
+        "hu": "Ügyfélriport és ütemezett export",
+        "en": "Customer reports and scheduled export"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P2",
+      "depends_on": [
+        "MIDAS-062",
+        "MIDAS-031",
+        "MIDAS-079",
+        "MIDAS-087"
+      ],
+      "requirements": [
+        "SEC-01"
+      ],
+      "legacy_ids": [
+        "F5-07"
+      ],
+      "acceptance": {
+        "hu": [
+          "A kiválasztott ügyfél riportja saját adatokból készül, PDF és ütemezett kézbesítés ellenőrzött."
+        ],
+        "en": [
+          "The selected customer's report uses only its data, with validated PDF/export and scheduled delivery."
+        ]
+      },
+      "label_names": [
+        "dashboard",
+        "automation"
+      ],
+      "github_issue_number": 96,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/96"
+    },
+    {
+      "id": "MIDAS-096",
+      "kind": "gate",
+      "phase": 5,
+      "milestone": "M5",
+      "title": {
+        "hu": "5. fázis ellenőrzése és mérföldkőzárás",
+        "en": "Review phase 5 and close its milestone"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-088",
+        "MIDAS-089",
+        "MIDAS-090",
+        "MIDAS-091",
+        "MIDAS-092",
+        "MIDAS-093",
+        "MIDAS-094",
+        "MIDAS-095",
+        "MIDAS-087"
+      ],
+      "requirements": [],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "A mérföldkő minden vállalt bővítésének önálló elfogadási, jogosultsági és regressziós próbája sikeres, dokumentációja kész; minden vállalt feladat ellenőrzött Done. Külön el nem fogadott javaslat nem zárási feltétel."
+        ],
+        "en": [
+          "Each committed extension passes its acceptance, authorization and regression trials and has documentation; all committed work is reviewed Done. Unapproved proposals are not closure criteria."
+        ]
+      },
+      "label_names": [
+        "documentation"
+      ],
+      "github_issue_number": 97,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/97"
+    },
+    {
+      "id": "MIDAS-097",
+      "kind": "proposal",
+      "phase": null,
+      "milestone": null,
+      "title": {
+        "hu": "Ticketing, ügyfélportál és felhasználói segítségkérés",
+        "en": "Ticketing, customer portal and user-initiated support requests"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P2",
+      "depends_on": [],
+      "requirements": [],
+      "legacy_ids": [
+        "F5-08",
+        "F1-14"
+      ],
+      "acceptance": {
+        "hu": [
+          "Csak külön scope-döntés után tervezhető. Előbb a ticketing és a portál kapcsolata, jogosultságai és adatkezelése tisztázandó; a jelenlegi agentben nincs „Segítséget kérek” funkció."
+        ],
+        "en": [
+          "Schedule only after a separate scope decision. Define ticketing/portal integration, authorization and data handling first; the current agent has no Request help action."
+        ]
+      },
+      "decision_required": true,
+      "label_names": [
+        "dashboard",
+        "documentation"
+      ],
+      "github_issue_number": 98,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/98"
+    },
+    {
+      "id": "MIDAS-098",
+      "kind": "proposal",
+      "phase": null,
+      "milestone": null,
+      "title": {
+        "hu": "Windows LAPS-integráció",
+        "en": "Windows LAPS integration"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P2",
+      "depends_on": [],
+      "requirements": [],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "Külön döntés és jogosultsági terv után: rövid ideig elérhető helyi adminhitelesítő, audit, naplóból és felvételből kizárt titok."
+        ],
+        "en": [
+          "After a separate decision and authorization design: short-lived access to local administrator credentials, auditing and exclusion of secrets from logs and recordings."
+        ]
+      },
+      "decision_required": true,
+      "label_names": [
+        "security",
+        "agent"
+      ],
+      "github_issue_number": 99,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/99"
+    },
+    {
+      "id": "MIDAS-099",
+      "kind": "proposal",
+      "phase": null,
+      "milestone": null,
+      "title": {
+        "hu": "Időszakos jogosultság és két kezelő jóváhagyása",
+        "en": "Temporary grants and two-person approval"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P2",
+      "depends_on": [],
+      "requirements": [],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "Külön döntés után: lejáró, célgépre és műveletre szűkített jog, veszélyes műveletnél két külön kezelő engedélye."
+        ],
+        "en": [
+          "After a separate decision: expiring grants scoped to device and action, with approval by two distinct operators for high-impact actions."
+        ]
+      },
+      "decision_required": true,
+      "label_names": [
+        "security"
+      ],
+      "github_issue_number": 100,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/100"
+    },
+    {
+      "id": "MIDAS-100",
+      "kind": "proposal",
+      "phase": null,
+      "milestone": null,
+      "title": {
+        "hu": "Biztonsági karantén és szabályozott feloldás",
+        "en": "Security quarantine and controlled release"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P2",
+      "depends_on": [],
+      "requirements": [],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "Külön döntés után: ügyfelenként engedélyezett hálózati elkülönítés, működő helyi helyreállítás és auditált feloldás."
+        ],
+        "en": [
+          "After a separate decision: per-customer authorization for network isolation, a working local recovery path and audited release."
+        ]
+      },
+      "decision_required": true,
+      "label_names": [
+        "security",
+        "agent"
+      ],
+      "github_issue_number": 101,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/101"
+    },
+    {
+      "id": "MIDAS-101",
+      "kind": "proposal",
+      "phase": null,
+      "milestone": null,
+      "title": {
+        "hu": "Csak megtekintés távsegítségi mód",
+        "en": "View-only remote support mode"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P2",
+      "depends_on": [],
+      "requirements": [],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "Külön döntés után: egyértelmű helyi tájékoztatás, bevitel tiltása és külön jóváhagyás a vezérlésre váltás előtt."
+        ],
+        "en": [
+          "After a separate decision: clear local disclosure, disabled input and separate consent before switching to control."
+        ]
+      },
+      "decision_required": true,
+      "label_names": [
+        "remote-support"
+      ],
+      "github_issue_number": 102,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/102"
+    },
+    {
+      "id": "MIDAS-102",
+      "kind": "proposal",
+      "phase": null,
+      "milestone": null,
+      "title": {
+        "hu": "Flottaszintű megfelelőségi nézet",
+        "en": "Fleet compliance view"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P2",
+      "depends_on": [],
+      "requirements": [],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "Külön döntés után: agentfrissítési gyűrűk, BitLocker, Defender, javítások és függő újraindítások ügyfélszigetelt áttekintése; az adat frissessége és a hiányzó adat látszik."
+        ],
+        "en": [
+          "After a separate decision: a tenant-isolated overview of agent update rings, BitLocker, Defender, patches and pending reboots; show freshness and missing data."
+        ]
+      },
+      "decision_required": true,
+      "label_names": [
+        "dashboard",
+        "agent"
+      ],
+      "github_issue_number": 103,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/103"
+    }
+  ],
+  "label_taxonomy": [
+    "security",
+    "server",
+    "agent",
+    "dashboard",
+    "remote-support",
+    "automation",
+    "documentation"
+  ]
+}

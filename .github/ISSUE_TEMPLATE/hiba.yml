@@ -1,6 +1,5 @@
 name: Hibajelentés
 description: Valami nem úgy működik, ahogy kellene
-labels: ["bug"]
 body:
   - type: markdown
     attributes:
@@ -46,4 +45,4 @@ body:
     id: rendszer
     attributes:
       label: Operációs rendszer és böngésző
-      placeholder: pl. Windows 11 24H2, Chrome 140
+      placeholder: pl. Windows 11, Chrome

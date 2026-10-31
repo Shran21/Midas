@@ -1,0 +1,22 @@
+{
+  "name": "midas",
+  "private": true,
+  "version": "0.1.0",
+  "license": "AGPL-3.0-only",
+  "packageManager": "pnpm@12.16.1",
+  "engines": {
+    "node": ">=24.22.2 <25",
+    "pnpm": "12.16.1"
+  },
+  "scripts": {
+    "dev": "concurrently --kill-others --names server,dashboard \"cargo run --locked -p midas-server\" \"pnpm --filter @midas/dashboard dev\"",
+    "build": "pnpm --filter @midas/dashboard build",
+    "typecheck": "pnpm --filter @midas/dashboard typecheck",
+    "lint": "biome check .",
+    "format": "biome check --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.4",
+    "concurrently": "9.2.1"
+  }
+}
