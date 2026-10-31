@@ -4,7 +4,13 @@
 
 ## Magyar
 
-A jelenlegi alap egy helyi Rust-szerverből és egy React indítóoldalból áll. A szerver HTTP-t használ, kizárólag loopback címen indul, és a GET /health/live végpontot szolgálja ki. Az állapotválasz a folyamat működését jelzi. A TLS, az adatbázis, a bejelentkezés és az agentkapcsolat további feladatok.
+A jelenlegi alap egy helyi Rust-szerverből és egy React üzemeltetői előnézetből áll. A szerver HTTP-t használ, kizárólag loopback címen indul, és a GET /health/live végpontot szolgálja ki. Az állapotválasz a folyamat működését jelzi. A TLS, az adatbázis, a bejelentkezés és az agentkapcsolat további feladatok.
+
+### Mappaszerkezet
+
+A `server/` a Rust-szerver, a `web-panel/` a webes felület forrása. Az `agent/agent-windows/` és `agent/agent-linux/` jelenleg a platformagentek tervét tartalmazza; az agent még nem futtatható. A Cargo- és pnpm-workspace gyökere közös marad.
+
+A webpanel keresése, szűrése, kártyás és listás nézete, eszközadatlapja, témaváltása és nyelvváltása helyben működik. A bemutatóadatok a `web-panel/src/data.ts` fájlban vannak; a kapcsolatellenőrzés kizárólag a helyi szerver állapotát kéri le. A témát és nyelvet a böngésző tárolja. Nincs automatikus hálózati lekérdezési ciklus.
 
 ### Eszközök
 
@@ -42,7 +48,7 @@ A felület a http://127.0.0.1:5173 címen érhető el. A Vite a /health kérése
 | just fmt | Rust- és frontend-formázás |
 | just release | Optimalizált Rust-bináris és frontend build |
 
-A szerver binárisa a target/debug vagy target/release könyvtárba, a frontend az apps/dashboard/dist könyvtárba kerül. Ezek fejlesztői buildek; az aláírt terjesztési csomagok későbbi feladatok.
+A szerver binárisa a target/debug vagy target/release könyvtárba, a frontend a web-panel/dist könyvtárba kerül. Ezek fejlesztői buildek; az aláírt terjesztési csomagok későbbi feladatok.
 
 A szerver külön a cargo run --locked -p midas-server paranccsal is indítható. A --bind vagy MIDAS_BIND csak loopback címet fogad el; alapértéke 127.0.0.1:7443. A RUST_LOG szabályozza a strukturált JSON-napló részletességét.
 
@@ -54,7 +60,13 @@ A Cargo.lock és pnpm-lock.yaml verziókövetett. A közös parancsok és a CI r
 
 ## English
 
-The current foundation consists of a local Rust server and a React launch page. The server uses HTTP, binds only to loopback addresses and exposes GET /health/live. Its response indicates process liveness. TLS, database access, sign-in and agent connections are subsequent tasks.
+The current foundation consists of a local Rust server and a React operator preview. The server uses HTTP, binds only to loopback addresses and exposes GET /health/live. Its response indicates process liveness. TLS, database access, sign-in and agent connections are subsequent tasks.
+
+### Directory layout
+
+`server/` contains the Rust server and `web-panel/` the web interface. `agent/agent-windows/` and `agent/agent-linux/` currently document the planned platform agents; there is no runnable agent yet. Cargo and pnpm share the repository root.
+
+Search, filters, cards/list views, device details, themes and languages work locally. Sample data lives in `web-panel/src/data.ts`; the connection check only queries the local server. The browser stores theme and language preferences. There is no automatic network polling loop.
 
 ### Tools
 
@@ -92,7 +104,7 @@ Open http://127.0.0.1:5173. Vite forwards /health requests to http://127.0.0.1:7
 | just fmt | Format Rust and frontend sources |
 | just release | Optimized Rust binary and frontend build |
 
-Server binaries go to target/debug or target/release; frontend output goes to apps/dashboard/dist. These are development builds. Signed distribution packages are later work.
+Server binaries go to target/debug or target/release; frontend output goes to web-panel/dist. These are development builds. Signed distribution packages are later work.
 
 Run the server separately with cargo run --locked -p midas-server. The --bind option or MIDAS_BIND accepts only loopback addresses and defaults to 127.0.0.1:7443. RUST_LOG controls structured JSON logging.
 

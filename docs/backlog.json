@@ -565,7 +565,8 @@
       "priority": "P0",
       "depends_on": [
         "MIDAS-009",
-        "MIDAS-011"
+        "MIDAS-011",
+        "MIDAS-103"
       ],
       "requirements": [
         "UI-01",
@@ -847,7 +848,8 @@
         "MIDAS-016",
         "MIDAS-017",
         "MIDAS-018",
-        "MIDAS-019"
+        "MIDAS-019",
+        "MIDAS-103"
       ],
       "requirements": [],
       "legacy_ids": [
@@ -4007,6 +4009,45 @@
       ],
       "github_issue_number": 103,
       "github_issue_url": "https://github.com/Shran21/Midas/issues/103"
+    },
+    {
+      "id": "MIDAS-103",
+      "kind": "task",
+      "phase": 0,
+      "milestone": "M0",
+      "title": {
+        "hu": "Üzemeltetői előnézet és komponensenkénti mappaszerkezet",
+        "en": "Operator console preview and component directory layout"
+      },
+      "initial_status": "Backlog",
+      "kickoff_status": "Backlog",
+      "priority": "P0",
+      "depends_on": [
+        "MIDAS-001",
+        "MIDAS-002"
+      ],
+      "requirements": [
+        "UI-08"
+      ],
+      "legacy_ids": [],
+      "acceptance": {
+        "hu": [
+          "A szerver a server/, a webpanel a web-panel/, a platformok az agent/agent-windows/ és agent/agent-linux/ mappába kerülnek ugyanabban a repóban. A dokumentáció és a közös parancsok követik az útvonalakat; a Windows- és Linux-build sikeres.",
+          "Az üzemeltetői előnézet világos és sötét témát, magyar és angol nyelvet, navigációt, kereshető és szűrhető eszközlistát, valamint eszközrészleteket ad. A választott téma és nyelv megmarad újratöltéskor.",
+          "A mintaadatok egyértelműen jelöltek; az előnézet nem hajt végre távoli műveletet. A tényleges szerverkapcsolat állapota ettől elkülönül. A szűk nézet és a billentyűzetes használat ellenőrzött."
+        ],
+        "en": [
+          "Server code lives in server/, the web panel in web-panel/, and platform agents in agent/agent-windows/ and agent/agent-linux/ in one repository. Documentation and shared commands use the new paths; Windows and Linux builds pass.",
+          "The operator preview provides light/dark themes, Hungarian/English text, navigation, searchable and filterable devices and device details. Theme and language choices persist after reload.",
+          "Sample data is clearly labeled and the preview performs no remote operations. Actual server connection status is separate. Narrow layouts and keyboard interaction are verified."
+        ]
+      },
+      "label_names": [
+        "dashboard",
+        "server"
+      ],
+      "github_issue_number": 104,
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/104"
     }
   ],
   "label_taxonomy": [

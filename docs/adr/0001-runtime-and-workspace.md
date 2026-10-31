@@ -4,7 +4,7 @@
 
 ## Magyar
 
-A szerver és az agent Rustban készül, közös Cargo-workspace-ben. A dashboard React és TypeScript, pnpm-workspace-ben. Az asztali felülethez Tauri 2-t használunk.
+A szerver és az agent Rustban készül, közös Cargo-workspace-ben. A dashboard React és TypeScript, pnpm-workspace-ben. Az asztali felülethez Tauri 2-t használunk. A szerver forrása a server/, a dashboardé a web-panel/, a platformagenteké az agent/agent-windows/ és agent/agent-linux/ mappába kerül. A közös workspace nem jelent közös futtatási jogosultságot.
 
 A Rust típus- és tulajdonosi modellje segíti a hosszú ideig futó szolgáltatások és a privilegizált komponensek fejlesztését. A Windows API-khoz szükséges nem biztonságos műveletek később kis, külön felülvizsgálható modulokba kerülnek. Az új crate-ekben alapértelmezésben tiltott az unsafe kód.
 
@@ -16,7 +16,7 @@ A licenc AGPL-3.0-only. A későbbi kodekek és telepítőcsomagok terjesztési 
 
 ## English
 
-The server and agent use Rust in a shared Cargo workspace. The dashboard uses React and TypeScript in a pnpm workspace. The desktop interface uses Tauri 2.
+The server and agent use Rust in a shared Cargo workspace. The dashboard uses React and TypeScript in a pnpm workspace. The desktop interface uses Tauri 2. Server sources live in server/, the dashboard in web-panel/, and platform agents in agent/agent-windows/ and agent/agent-linux/. Sharing a workspace does not grant shared runtime privileges.
 
 Rust's type and ownership model supports development of long-running services and privileged components. Required unsafe Windows API calls will live in small, separately reviewed modules. New crates deny unsafe code by default.
 

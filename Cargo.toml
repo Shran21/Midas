@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/midas-server"]
+members = ["server"]
 resolver = "3"
 
 [workspace.package]

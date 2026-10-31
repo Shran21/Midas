@@ -1,6 +1,6 @@
 packages:
-  - apps/*
-  - packages/*
+  - web-panel
+  - shared/*
 minimumReleaseAge: 1440
 onlyBuiltDependencies: []
 strictDepBuilds: true

@@ -6,13 +6,21 @@ A MIDAS saját szerveren üzemeltethető, nyílt forráskódú távfelügyeleti 
 
 ## Állapot
 
-Az alapok megvalósítása elindult: Rust-szerver helyi állapotvégponttal, magyar–angol fejlesztői indítóoldal és közös buildparancsok. A Windowsos távsegítés és az UAC kezelése a későbbi prototípus része. A 0–5. fázis felülvizsgált feladatai a [GitHub Projectben](https://github.com/users/Shran21/projects/4) követhetők: 96 ütemezett tétel és 6 külön javaslat.
+Az alapok megvalósítása elindult: Rust-szerver helyi állapotvégponttal, magyar–angol üzemeltetői előnézet világos és sötét témával és közös buildparancsok. A Windowsos távsegítés és az UAC kezelése a későbbi prototípus része. A 0–5. fázis felülvizsgált feladatai a [GitHub Projectben](https://github.com/users/Shran21/projects/4) követhetők: 97 ütemezett tétel és 6 külön javaslat.
 
 - A [rendszerterv](docs/rendszerterv.md) tartalmazza az architektúrát, a platformokat, a biztonsági modellt és az ütemtervet.
 - A [működési követelmények](docs/kovetelmenyek.md) írják le az agent és az adminpanel használatát, a jogosultságokat és az elfogadási próbákat.
 - A [feladatfelosztás](docs/feladatlista.md) minden tételhez státuszt, mérföldkövet, függőséget és elfogadási feltételt rendel. A közreműködéshez lásd a [hozzájárulási útmutatót](CONTRIBUTING.md).
 
 Fejlesztői indítás: `just setup`, majd `just dev`. [Környezet és parancsok](docs/fejlesztes.md) · [Biztonság](SECURITY.md)
+
+## Mappák
+
+- `server/`: a központi Rust-szerver.
+- `web-panel/`: a React/TypeScript webpanel.
+- `agent/agent-windows/` és `agent/agent-linux/`: a tervezett platformagentek helye.
+
+Az előnézet kereshető, szűrhető mintaeszközöket és eszközadatlapot mutat. A mintaadatok nem jelentenek beiratkozott eszközöket; távoli művelet nem indítható.
 
 ## Tervezett működés
 
@@ -45,13 +53,21 @@ MIDAS is a design for a self-hosted, open-source remote monitoring and managemen
 
 ### Status
 
-Foundation implementation has started: a Rust server with a local liveness endpoint, a Hungarian/English development launch page and shared build commands. Windows remote support and UAC interaction belong to the subsequent prototype. The reviewed phases 0–5 are tracked in the [GitHub Project](https://github.com/users/Shran21/projects/4): 96 scheduled items and 6 separate proposals.
+Foundation implementation has started: a Rust server with a local liveness endpoint, a Hungarian/English operator preview with light and dark themes and shared build commands. Windows remote support and UAC interaction belong to the subsequent prototype. The reviewed phases 0–5 are tracked in the [GitHub Project](https://github.com/users/Shran21/projects/4): 97 scheduled items and 6 separate proposals.
 
 - The [system plan](docs/rendszerterv.md#english) covers architecture, platforms, security and delivery.
 - The [operating requirements](docs/kovetelmenyek.md#english) describe the agent and admin panel, permissions and acceptance trials.
 - The [task allocation](docs/feladatlista.md#english) assigns status, milestone, dependencies and acceptance to each item. See the [contribution guide](CONTRIBUTING.md#english) for contributing.
 
 Development startup: `just setup`, then `just dev`. [Environment and commands](docs/fejlesztes.md#english) · [Security](SECURITY.md#english)
+
+### Directories
+
+- `server/`: the central Rust server.
+- `web-panel/`: the React/TypeScript web panel.
+- `agent/agent-windows/` and `agent/agent-linux/`: locations for the planned platform agents.
+
+The preview offers searchable, filterable sample devices and device details. Sample data does not represent enrolled devices, and remote operations are unavailable.
 
 ### Planned experience
 

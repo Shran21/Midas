@@ -173,7 +173,7 @@ importers:
         specifier: 9.2.1
         version: 9.2.1
 
-  apps/dashboard:
+  web-panel:
     dependencies:
       react:
         specifier: 19.3.1

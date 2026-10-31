@@ -6,9 +6,11 @@
 
 2026. október 31. · Közzétett kezdő felosztás. Az aktuális állapot a [GitHub Projectben](https://github.com/users/Shran21/projects/4) követhető.
 
-**96 ütemezett tétel**: 90 megvalósítási vagy előkészítési feladat és 6 fáziszárás. **6 további javaslat** mérföldkő nélkül. A 74 korábbi feladat azonosítói a részletes feltételeknél visszakereshetők; a bontás és az áthelyezés megőrizte az eredeti szándékot a felülvizsgált követelményekkel együtt.
+**97 ütemezett tétel**: 91 megvalósítási vagy előkészítési feladat és 6 fáziszárás. **6 további javaslat** mérföldkő nélkül. A 74 korábbi feladat azonosítói a részletes feltételeknél visszakereshetők; a bontás és az áthelyezés megőrizte az eredeti szándékot a felülvizsgált követelményekkel együtt.
 
 A [backlog.json](backlog.json) tartalmazza ugyanazokat az azonosítókat, kétnyelvű címeket és elfogadási feltételeket, függőségeket, prioritást, kezdő státuszt és mérföldkövet. Az itt szereplő elfogadási feltételek mellett a hivatkozott [követelmények](kovetelmenyek.md) és a [fázis elfogadási próbái](rendszerterv.md#ütemterv) is kötelezők.
+
+A MIDAS-103 az első fejlesztési kör után hozzáadott M0-feladat: komponensenkénti mappaszerkezet és két témát használó üzemeltetői előnézet. Az alábbi induló státuszösszesítés az eredeti 102 tétel importját rögzíti.
 
 ### Induló sapkák
 
@@ -30,7 +32,7 @@ Az M0–M5 helyi kulcs, nem GitHub-mérföldkőszám. A célrepót, Projectet é
 
 | Kulcs | Mérföldkő | Tételek kapuval együtt | Zárófeladat | Előző kapu |
 | --- | --- | --- | --- | --- |
-| M0 | 0. Alapok | 20 | MIDAS-020 | — |
+| M0 | 0. Alapok | 21 | MIDAS-020 | — |
 | M1 | 1. Agent és monitorozás | 20 | MIDAS-040 | MIDAS-020 |
 | M2 | 2. Távsegítés | 20 | MIDAS-060 | MIDAS-040 |
 | M3 | 3. Automatizált karbantartás | 14 | MIDAS-074 | MIDAS-060 |
@@ -57,13 +59,14 @@ P0: elsőbbséget igénylő alapműködés, biztonság vagy kapu; P1: a fázison
 | MIDAS-010 | Megbízható helyi AD-belépés és csoportleképezés | Backlog | P1 | MIDAS-008, MIDAS-007 |
 | MIDAS-011 | Szerepek, egyedi engedélyek és célhatókör | Backlog | P0 | MIDAS-008, MIDAS-007 |
 | MIDAS-012 | Csak hozzáfűzhető alapaudit | Backlog | P1 | MIDAS-007, MIDAS-008 |
-| MIDAS-013 | Kétnyelvű dashboardváz és közös komponensek | Backlog | P0 | MIDAS-009, MIDAS-011 |
+| MIDAS-013 | Kétnyelvű dashboardváz és közös komponensek | Backlog | P0 | MIDAS-009, MIDAS-011, MIDAS-103 |
 | MIDAS-014 | Mobilnézet, fókuszkezelés és PWA-alapok | Backlog | P1 | MIDAS-013 |
 | MIDAS-015 | Ügyfél-, telephely- és felhasználókezelés | Backlog | P0 | MIDAS-013, MIDAS-011, MIDAS-012 |
 | MIDAS-016 | Egyszeri beállító folyamat a végleges HTTPS-originen | Backlog | P0 | MIDAS-006, MIDAS-008, MIDAS-013 |
 | MIDAS-017 | Korai WebRTC- és kódoló-prototípus | Backlog | P0 | MIDAS-001, MIDAS-006 |
 | MIDAS-018 | Normál kapcsolatú UAC és védett beviteli út próbája | Backlog | P0 | MIDAS-017 |
 | MIDAS-019 | Adminpanel és helyi jóváhagyás használhatósági prototípusa | Backlog | P0 | MIDAS-013, MIDAS-014 |
+| MIDAS-103 | Üzemeltetői előnézet és komponensenkénti mappaszerkezet | Backlog | P0 | MIDAS-001, MIDAS-002 |
 | MIDAS-020 | 0. fázis ellenőrzése és mérföldkőzárás | Backlog | P0 | A fázis összes többi tétele |
 
 **Elfogadási feltételek és visszakereshetőség**
@@ -87,6 +90,7 @@ P0: elsőbbséget igénylő alapműködés, biztonság vagy kapu; P1: a fázison
 - **MIDAS-017:** Valódi Windows-asztal böngészőből látható, a mérési jegyzőkönyv dönt a WebRTC-integrációról. Követelmény: PERF-04. Korábbi azonosító: F2-01.
 - **MIDAS-018:** Standard felhasználónál a böngésző kezeli a valódi secure-desktop UAC-t, helyi leállítással és védelmek kikapcsolása nélkül. Követelmény: REMOTE-03, REMOTE-05, REMOTE-06, REMOTE-07. Korábbi azonosító: —.
 - **MIDAS-019:** A kezelő indít kérést, az új felhasználó érti és elutasítja, majd új kérésből enged és bont. Billentyűzetes próba is sikerül. A mobil adminpanel és a helyi jóváhagyó ablak képernyőolvasós próbája is dokumentált, mindkét nyelven. Követelmény: UI-04, UI-06, UI-07, UI-08. Korábbi azonosító: —.
+- **MIDAS-103:** A szerver a server/, a webpanel a web-panel/, a platformok az agent/agent-windows/ és agent/agent-linux/ mappába kerülnek ugyanabban a repóban. A dokumentáció és a közös parancsok követik az útvonalakat; a Windows- és Linux-build sikeres. Az üzemeltetői előnézet világos és sötét témát, magyar és angol nyelvet, navigációt, kereshető és szűrhető eszközlistát, valamint eszközrészleteket ad. A választott téma és nyelv megmarad újratöltéskor. A mintaadatok egyértelműen jelöltek; az előnézet nem hajt végre távoli műveletet. A tényleges szerverkapcsolat állapota ettől elkülönül. A szűk nézet és a billentyűzetes használat ellenőrzött. Követelmény: UI-08. Korábbi azonosító: —.
 - **MIDAS-020:** A fázis összes vállalt feladata ellenőrzött Done; a fázis próbáinak bizonyítéka, a státuszelőzmények és a következő fázis feltételei áttekintve. Az UAC/WebRTC- és használhatósági prototípus döntése dokumentált. Követelmény: —. Korábbi azonosító: F0-15.
 
 ### 1. Agent és monitorozás
@@ -318,9 +322,11 @@ Ezek még nem vállalt funkciók, mind Backlogban maradnak. Külön döntés né
 
 October 31, 2026 · Published initial allocation. Track current state in the [GitHub Project](https://github.com/users/Shran21/projects/4).
 
-**96 scheduled items**: 90 implementation/preparation tasks and 6 phase closures. **6 further proposals** have no milestone. All 74 earlier task identifiers are traceable below; splitting and moving work preserves its intent subject to the reviewed requirements.
+**97 scheduled items**: 91 implementation/preparation tasks and 6 phase closures. **6 further proposals** have no milestone. All 74 earlier task identifiers are traceable below; splitting and moving work preserves its intent subject to the reviewed requirements.
 
 [backlog.json](backlog.json) contains the same IDs, bilingual titles and acceptance criteria, dependencies, priority, initial status and milestone. Applicable [requirements](kovetelmenyek.md#english) and [phase acceptance trials](rendszerterv.md#roadmap) remain mandatory in addition to the criteria below.
+
+MIDAS-103 was added to M0 after the first implementation round: component directories and an operator preview with two themes. The initial status totals below describe the original 102-item import.
 
 ### Initial statuses
 
@@ -342,7 +348,7 @@ M0–M5 are local keys, not GitHub milestone numbers. The publication fields in 
 
 | Key | Milestone | Items including gate | Closure task | Previous gate |
 | --- | --- | --- | --- | --- |
-| M0 | 0. Foundations | 20 | MIDAS-020 | — |
+| M0 | 0. Foundations | 21 | MIDAS-020 | — |
 | M1 | 1. Agent and monitoring | 20 | MIDAS-040 | MIDAS-020 |
 | M2 | 2. Remote support | 20 | MIDAS-060 | MIDAS-040 |
 | M3 | 3. Automated maintenance | 14 | MIDAS-074 | MIDAS-060 |
@@ -369,13 +375,14 @@ P0: core behavior, security or gates needing precedence; P1: work ordered afterw
 | MIDAS-010 | Trusted local AD sign-in and group mapping | Backlog | P1 | MIDAS-008, MIDAS-007 |
 | MIDAS-011 | Roles, overrides and target scope | Backlog | P0 | MIDAS-008, MIDAS-007 |
 | MIDAS-012 | Append-only baseline audit | Backlog | P1 | MIDAS-007, MIDAS-008 |
-| MIDAS-013 | Bilingual dashboard shell and shared components | Backlog | P0 | MIDAS-009, MIDAS-011 |
+| MIDAS-013 | Bilingual dashboard shell and shared components | Backlog | P0 | MIDAS-009, MIDAS-011, MIDAS-103 |
 | MIDAS-014 | Mobile layout, focus handling and PWA foundations | Backlog | P1 | MIDAS-013 |
 | MIDAS-015 | Customer, site and user management | Backlog | P0 | MIDAS-013, MIDAS-011, MIDAS-012 |
 | MIDAS-016 | Single-use setup on the final HTTPS origin | Backlog | P0 | MIDAS-006, MIDAS-008, MIDAS-013 |
 | MIDAS-017 | Early WebRTC and encoder proof | Backlog | P0 | MIDAS-001, MIDAS-006 |
 | MIDAS-018 | Normal-session UAC and protected input proof | Backlog | P0 | MIDAS-017 |
 | MIDAS-019 | Admin-panel and local-consent usability prototype | Backlog | P0 | MIDAS-013, MIDAS-014 |
+| MIDAS-103 | Operator console preview and component directory layout | Backlog | P0 | MIDAS-001, MIDAS-002 |
 | MIDAS-020 | Review phase 0 and close its milestone | Backlog | P0 | All other phase items |
 
 **Acceptance criteria and traceability**
@@ -399,6 +406,7 @@ P0: core behavior, security or gates needing precedence; P1: work ordered afterw
 - **MIDAS-017:** A browser displays a real Windows desktop and measurements determine the WebRTC integration. Requirements: PERF-04. Legacy ID: F2-01.
 - **MIDAS-018:** A browser controls real secure-desktop UAC for a standard user with local termination and security policies enabled. Requirements: REMOTE-03, REMOTE-05, REMOTE-06, REMOTE-07. Legacy ID: —.
 - **MIDAS-019:** The operator initiates, a new user understands/declines, then accepts a new request and ends it, including keyboard testing. Document mobile admin-panel and screen-reader trials on the local consent dialog, in both languages. Requirements: UI-04, UI-06, UI-07, UI-08. Legacy ID: —.
+- **MIDAS-103:** Server code lives in server/, the web panel in web-panel/, and platform agents in agent/agent-windows/ and agent/agent-linux/ in one repository. Documentation and shared commands use the new paths; Windows and Linux builds pass. The operator preview provides light/dark themes, Hungarian/English text, navigation, searchable and filterable devices and device details. Theme and language choices persist after reload. Sample data is clearly labeled and the preview performs no remote operations. Actual server connection status is separate. Narrow layouts and keyboard interaction are verified. Requirements: UI-08. Legacy IDs: —.
 - **MIDAS-020:** All committed phase work is reviewed Done; inspect phase evidence, status histories and next-phase prerequisites. Record the UAC/WebRTC and usability prototype decisions. Requirements: —. Legacy ID: F0-15.
 
 ### 1. Agent and monitoring

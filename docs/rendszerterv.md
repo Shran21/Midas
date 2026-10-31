@@ -400,38 +400,39 @@ A tervezett monorepó Cargo- és pnpm-workspace-t használ. Közös parancsok le
 
 ```text
 MIDAS/
-├── Cargo.toml                    # Rust workspace, közös függőségverziók
-├── rust-toolchain.toml           # rögzített Rust-verzió
-├── pnpm-workspace.yaml           # a felületek workspace-e
-├── justfile                      # dev, test, lint, release parancsok
-├── crates/
-│   ├── midas-proto/              # protobuf üzenetek: agent–szerver
-│   ├── midas-server/             # axum API, WebSocket, jelzéscsere, beállító mód
-│   │   └── src/modules/          # identity, tenancy, devices, monitoring,
-│   │                             # alerts, automation, remote, audit
-│   ├── midas-agent-core/         # platformfüggetlen agent-logika
-│   ├── midas-agent-windows/      # szolgáltatás és külön UAC-komponens
-│   ├── midas-directory/          # ügyfél helyi AD-connectorja
-│   ├── midas-agent-linux/        # systemd szolgáltatás
-│   ├── midas-session/            # elkülönített WebRTC-transzport és normál munkamenet-segéd
-│   └── midas-capture/            # rögzítés, színkonverzió, HW- és szoftveres kódolás
-├── apps/
-│   ├── dashboard/                # React + Vite, mobilnézettel és beállító varázslóval
-│   ├── desktop/                  # Tauri 2 asztali app
-│   └── quicksupport/             # gyorssegítség, telepítés nélkül
-├── packages/
-│   └── ui/                       # közös komponensek és dizájn-tokenek
-├── installer/
-│   ├── agent/                    # agent MSI (WiX)
-│   ├── server-windows/           # szerver-telepítő: setup.exe (WiX)
-│   └── server-linux/             # .deb, .rpm és systemd unitok
-├── deploy/                       # docker-compose.yml, eturnal.yml
-├── tests/                        # integrációs és végponttól végpontig tesztek
+├── Cargo.toml
+├── rust-toolchain.toml
+├── pnpm-workspace.yaml
+├── justfile
+├── server/
+│   ├── src/modules/
+│   └── installer/
+├── web-panel/
+├── agent/
+│   ├── agent-core/
+│   ├── agent-windows/
+│   │   ├── service/
+│   │   ├── session/
+│   │   ├── uac/
+│   │   └── installer/
+│   ├── agent-linux/
+│   │   ├── service/
+│   │   └── installer/
+│   ├── desktop/
+│   ├── directory/
+│   ├── session/
+│   ├── capture/
+│   └── quicksupport/
+├── shared/
+│   ├── protocol/
+│   └── ui/
+├── deploy/
+├── tests/
 └── docs/
-    ├── rendszerterv.md           # architektúra és közös ütemterv
-    ├── kovetelmenyek.md          # ellenőrizhető működési követelmények
-    └── adr/                      # döntési jegyzetek
+    └── adr/
 ```
+
+A szerver és a webpanel már a külön mappájából épül. A platformagentek mappái egyelőre a tervet rögzítik. A további ágak a tervezett komponensek helyét mutatják; az adott feladattal jönnek létre. A közös agentlogika az agent-core, a közös szerződések és felületi elemek a shared mappába kerülnek.
 
 ## Ütemterv
 
@@ -674,7 +675,7 @@ The planned `midas-server setup --config setup.toml` flow uses the same checks, 
 
 The proposed monorepo has Cargo and pnpm workspaces with shared `just dev`, `just test`, `just lint` and `just release` commands. `just dev` will start PostgreSQL, eturnal, the Rust server and the Vite development server. The Visual Studio IDE is optional. Native Windows builds require the MSVC toolchain and Windows SDK. Cross-compilation can speed up supported components. Accept Windows installers, UAC, GPU behavior and mobile input on their respective real platforms.
 
-The [proposed directory tree](#repó-struktúra-és-fejlesztés) locates shared protocol, server modules, agent core and OS services, the UAC component, directory connector, session worker and capture code under `crates/`. `apps/` contains the dashboard, desktop app and quick support. `packages/ui/` holds shared components. `installer/` separates agent MSI, Windows server setup and Linux .deb/.rpm packages. `deploy/`, `tests/` and `docs/adr/` hold deployment configuration, tests and decision records. The phase 0 CI builds and checks on Windows and Linux. Later CI also exercises installers and upgrades on clean hosts.
+The [directory tree](#repó-struktúra-és-fejlesztés) separates server/ and web-panel/ at the repository root. agent/ contains agent-windows/ and agent-linux/ plus planned shared agent logic, desktop, directory, session, capture and quick-support components. shared/ will contain protocol and reusable UI modules. Installer code stays with its server or platform agent. The server and web panel already build from their own directories; platform agent directories currently contain planning notes, and other planned folders will be created with their implementation tasks. Phase 0 CI checks Windows and Linux. Later CI also exercises installers and upgrades on clean hosts.
 
 ### Roadmap
 

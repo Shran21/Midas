@@ -4,8 +4,8 @@
     "includes": [
       "package.json",
       "biome.json",
-      "apps/**",
-      "packages/**",
+      "web-panel/**",
+      "shared/**",
       "!**/node_modules",
       "!**/dist"
     ]
