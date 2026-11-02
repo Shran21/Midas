@@ -74,7 +74,7 @@ P0: elsőbbséget igénylő alapműködés, biztonság vagy kapu; P1: a fázison
 - **MIDAS-001:** Tiszta klónon a dokumentált Windows- és Linux-build, formázás és ellenőrzés lefut. Követelmény: —. Korábbi azonosító: F0-01.
 - **MIDAS-002:** A megerősített célrepóban a kétnyelvű terv, licenc és sablonok elérhetők, a projekt és a mérföldkövek helyesen kapcsolódnak. Követelmény: —. Korábbi azonosító: —.
 - **MIDAS-003:** A projektnézetek a feladatokkal azonos mérföldkő-, prioritás- és címkeadatokat mutatnak. Új feladat duplikáció nélkül kapcsolható a projekthez. Követelmény: —. Korábbi azonosító: —.
-- **MIDAS-004:** Egy hibás módosítást a CI megállít, a célág védelme az elkészült ellenőrzésekre hivatkozik. Követelmény: SEC-06. Korábbi azonosító: F0-02.
+- **MIDAS-004:** A hibás módosítást a CI elutasítja. Helyi ellenőrzés után a változás közvetlenül mainre kerül, külön fejlesztési ág és PR nélkül; elfogadásához ugyanazon commit Windows-, Linux- és biztonsági ellenőrzése sikeres. A feltöltés előtti kötelező CI-feltétel nincs bekapcsolva; a lineáris előzmény, a force push és a main törlésének tiltása megmarad. Követelmény: SEC-06. Korábbi azonosító: F0-02.
 - **MIDAS-005:** A közzétett útmutató tartalmazza a privát hibabejelentést, a hozzájárulás feltételeit, a licencet és a Rust/Tauri/WebRTC döntéseket. Követelmény: SEC-06. Korábbi azonosító: F0-03.
 - **MIDAS-006:** HTTPS-válasz, állapotvégpont és naplózás működik. A későbbi agentbeiratkozás és az mTLS-üzem külön útvonalat kap. Követelmény: SEC-02. Korábbi azonosító: F0-04.
 - **MIDAS-007:** Két ügyfél adatai hibás alkalmazásszűrő és újrahasznált adatbázis-kapcsolat mellett is elkülönülnek a próbában. Követelmény: SEC-01. Korábbi azonosító: F0-05.
@@ -390,7 +390,7 @@ P0: core behavior, security or gates needing precedence; P1: work ordered afterw
 - **MIDAS-001:** A clean clone builds and runs the documented formatting and checks on Windows and Linux. Requirements: —. Legacy ID: F0-01.
 - **MIDAS-002:** The confirmed target repository contains bilingual plans, license and templates, with correct project and milestone links. Requirements: —. Legacy ID: —.
 - **MIDAS-003:** Project views show the same milestone, priority and label values as their issues. New issues can be linked without creating duplicate project items. Requirements: —. Legacy ID: —.
-- **MIDAS-004:** CI rejects a deliberately broken change and branch protection references existing checks. Requirements: SEC-06. Legacy ID: F0-02.
+- **MIDAS-004:** CI rejects broken changes. After local checks, changes go directly to main without development branches or PRs; acceptance requires successful Windows, Linux and security checks on that exact commit. Pre-push required CI checks are disabled; linear history and prohibitions on force pushes and main deletion remain enabled. Requirements: SEC-06. Legacy ID: F0-02.
 - **MIDAS-005:** Published guidance covers private vulnerability reporting, contribution requirements, licensing and Rust/Tauri/WebRTC decisions. Requirements: SEC-06. Legacy ID: F0-03.
 - **MIDAS-006:** HTTPS, health endpoint and logging work, with distinct enrollment and operational mTLS routes. Requirements: SEC-02. Legacy ID: F0-04.
 - **MIDAS-007:** Negative tests isolate two tenants with a faulty application filter and reused database connections. Requirements: SEC-01. Legacy ID: F0-05.

@@ -244,10 +244,10 @@
       ],
       "acceptance": {
         "hu": [
-          "Egy hibás módosítást a CI megállít, a célág védelme az elkészült ellenőrzésekre hivatkozik."
+          "A hibás módosítást a CI elutasítja. Helyi ellenőrzés után a változás közvetlenül mainre kerül, külön fejlesztési ág és PR nélkül; elfogadásához ugyanazon commit Windows-, Linux- és biztonsági ellenőrzése sikeres. A feltöltés előtti kötelező CI-feltétel nincs bekapcsolva; a lineáris előzmény, a force push és a main törlésének tiltása megmarad."
         ],
         "en": [
-          "CI rejects a deliberately broken change and branch protection references existing checks."
+          "CI rejects broken changes. After local checks, changes go directly to main without development branches or PRs; acceptance requires successful Windows, Linux and security checks on that exact commit. Pre-push required CI checks are disabled; linear history and prohibitions on force pushes and main deletion remain enabled."
         ]
       },
       "label_names": [
