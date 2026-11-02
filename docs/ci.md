@@ -26,7 +26,7 @@ A kiírt mappát add az aktuális terminál `PATH` változójához, majd futtasd
 
 ### A main ág védelme
 
-A main módosítása pull requesten keresztül, sikeres `Verify (ubuntu-24.04)`, `Verify (windows-2022)` és `Security` ellenőrzés után történik. A kötelező ellenőrzések a GitHub Actions alkalmazáshoz kötöttek. Az ágnak naprakésznek kell lennie; a védelem az adminisztrátorra is érvényes. A force push és az ágtörlés tiltott, a nyitott felülvizsgálati beszélgetéseket rendezni kell. Egyetlen projektgazda mellett nincs kötelező második jóváhagyó; a kötelező CI-ellenőrzéseket ez nem kapcsolja ki.
+A main ágra csak olyan commit tölthető, amelynél sikeres a `Verify (ubuntu-24.04)`, `Verify (windows-2022)` és `Security` ellenőrzés. A kötelező ellenőrzések a GitHub Actions alkalmazáshoz kötöttek. Az ágnak naprakésznek kell lennie; a védelem az adminisztrátorra is érvényes. A force push és az ágtörlés tiltott. Pull request nem kötelező: az ellenőrzött commit közvetlenül feltölthető.
 
 Ezek fejlesztési ellenőrzések. Nem helyettesítik a jogosultsági és ügyfélszigetelési teszteket, a valódi UAC-próbát vagy az éles pilot előtti független biztonsági felülvizsgálatot.
 
@@ -54,6 +54,6 @@ Add the printed directory to the current terminal's `PATH`, then run `just secur
 
 ### Main branch protection
 
-Changes to main go through a pull request with successful `Verify (ubuntu-24.04)`, `Verify (windows-2022)` and `Security` checks. Required checks are bound to the GitHub Actions application. The branch must be up to date, and protection also applies to administrators. Force pushes and branch deletion are prohibited; review conversations must be resolved. With a sole project owner, a second approving reviewer is not required; mandatory CI checks remain enforced.
+Only commits with successful `Verify (ubuntu-24.04)`, `Verify (windows-2022)` and `Security` checks may be pushed to main. Required checks are bound to the GitHub Actions application. The branch must be up to date, and protection also applies to administrators. Force pushes and branch deletion are prohibited. Pull requests are optional: a verified commit may be pushed directly.
 
 These are development checks. They do not replace authorization and tenant-isolation tests, real UAC trials or independent security review before production pilot.
