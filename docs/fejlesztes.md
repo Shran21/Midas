@@ -47,6 +47,7 @@ A felület a http://127.0.0.1:5173 címen érhető el. A Vite a /health kérése
 | just lint | Rust formázás, Clippy és frontend-ellenőrzés |
 | just fmt | Rust- és frontend-formázás |
 | just release | Optimalizált Rust-bináris és frontend build |
+| just security | Függőség- és Git-előzmény-ellenőrzés, külön telepített biztonsági eszközökkel |
 
 A szerver binárisa a target/debug vagy target/release könyvtárba, a frontend a web-panel/dist könyvtárba kerül. Ezek fejlesztői buildek; az aláírt terjesztési csomagok későbbi feladatok.
 
@@ -57,6 +58,8 @@ A szerver külön a cargo run --locked -p midas-server paranccsal is indítható
 A Cargo.lock és pnpm-lock.yaml verziókövetett. A közös parancsok és a CI rögzített feloldást használnak. A pnpm nem futtat függőségi telepítőszkripteket, és legalább egynapos csomagkiadásokat enged.
 
 Új környezetben a just setup, just lint, just test és just release sorrend igazolja a teljes alapot. A CI Windows és Linux gépen, friss klónból futtatja ugyanezeket. A Windows UAC, GPU és későbbi agentfunkciók próbái külön célgépet igényelnek.
+
+[CI és biztonsági ellenőrzések](ci.md)
 
 ## English
 
@@ -103,6 +106,7 @@ Open http://127.0.0.1:5173. Vite forwards /health requests to http://127.0.0.1:7
 | just lint | Rust formatting, Clippy and frontend checks |
 | just fmt | Format Rust and frontend sources |
 | just release | Optimized Rust binary and frontend build |
+| just security | Dependency and Git-history checks, with separately installed security tools |
 
 Server binaries go to target/debug or target/release; frontend output goes to web-panel/dist. These are development builds. Signed distribution packages are later work.
 
@@ -113,3 +117,5 @@ Run the server separately with cargo run --locked -p midas-server. The --bind op
 Commit Cargo.lock and pnpm-lock.yaml. Shared commands and CI use locked dependency resolution. pnpm does not execute dependency installation scripts and requires package releases to be at least one day old.
 
 On a fresh checkout, run just setup, just lint, just test and just release to verify the foundation. CI runs the same commands on fresh Windows and Linux checkouts. Windows UAC, GPU and subsequent agent features require separate target-machine testing.
+
+[CI and security checks](ci.md#english)

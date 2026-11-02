@@ -4,3 +4,5 @@ packages:
 minimumReleaseAge: 1440
 onlyBuiltDependencies: []
 strictDepBuilds: true
+overrides:
+  concurrently>shell-quote: 1.12.0

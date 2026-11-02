@@ -162,6 +162,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  concurrently>shell-quote: 1.12.0
+
 importers:
 
   .:
@@ -697,8 +700,8 @@ packages:
   scheduler@0.28.0:
     resolution: {integrity: sha512-juorfCmIkIw8tT+p5BXSm6PJjQF/ycEYmKyzURCIt/RaZIhL+PulbQ9Yu2z1HdOJDdqDTlxA1+xKBmHXJsczAw==}
 
-  shell-quote@1.8.3:
-    resolution: {integrity: sha512-ObmnIF4hXNg1BqhnHmgbDETF8dLPCggZWBjkQfhZpbszZnYur5DUljTcCHii5LC3J5E0yeO/1LIMyH+UvHQgyw==}
+  shell-quote@1.12.0:
+    resolution: {integrity: sha512-PcByqNyT/38F2kDNi006HAMRJaULuBzq/FOsw3qdZvX/GA9W/jamDaRskgHjubHiftXK5sIFxLNkvrXUwcof6Q==}
     engines: {node: '>= 0.4'}
 
   source-map-js@1.2.2:
@@ -990,7 +993,7 @@ snapshots:
     dependencies:
       chalk: 4.1.2
       rxjs: 7.8.2
-      shell-quote: 1.8.3
+      shell-quote: 1.12.0
       supports-color: 8.1.1
       tree-kill: 1.2.2
       yargs: 17.7.2
@@ -1113,7 +1116,7 @@ snapshots:
 
   scheduler@0.28.0: {}
 
-  shell-quote@1.8.3: {}
+  shell-quote@1.12.0: {}
 
   source-map-js@1.2.2: {}
 

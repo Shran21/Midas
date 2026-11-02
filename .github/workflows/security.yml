@@ -1,0 +1,48 @@
+name: Security
+
+on:
+  push:
+    branches: [main, "implementation/**"]
+  pull_request:
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security:
+    name: Security
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version-file: .node-version
+      - name: Install toolchain
+        run: rustup toolchain install 1.99.1 --profile minimal
+      - name: Install package manager
+        run: npm install --global pnpm@12.16.1
+      - name: Install security tools
+        run: python .github/scripts/install-security-tools.py
+      - name: Verify secret detection
+        run: python .github/scripts/check-secret-detection.py
+      - name: Scan Git history
+        run: gitleaks git --redact --no-banner --log-opts="HEAD"
+      - name: Audit Rust dependencies
+        run: cargo audit --file Cargo.lock --deny warnings
+      - name: Check Rust dependency policy
+        run: cargo deny --locked --all-features check
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Audit frontend dependencies
+        run: pnpm audit --audit-level low

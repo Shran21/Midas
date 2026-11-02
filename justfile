@@ -29,3 +29,10 @@ fmt:
 release:
     cargo build --workspace --release --locked
     pnpm build
+
+security:
+    python .github/scripts/check-secret-detection.py
+    gitleaks git --redact --no-banner --log-opts=HEAD
+    cargo audit --file Cargo.lock --deny warnings
+    cargo deny --locked --all-features check
+    pnpm audit --audit-level low
