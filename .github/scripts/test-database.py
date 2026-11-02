@@ -1,3 +1,4 @@
+import csv
 import os
 import pathlib
 import secrets
@@ -30,6 +31,13 @@ temporary_root = pathlib.Path(os.environ.get('RUNNER_TEMP', tempfile.gettempdir(
 with tempfile.TemporaryDirectory(prefix='midas-postgres-', dir=temporary_root) as directory:
     work = pathlib.Path(directory).resolve()
     assert work.is_relative_to(temporary_root) and work != temporary_root
+    if os.name == 'nt':
+        identity = subprocess.check_output(['whoami', '/user', '/fo', 'csv', '/nh'],
+                                           text=True, creationflags=flags)
+        sid = next(csv.reader(identity.strip().splitlines()))[1]
+        # PostgreSQL drops the administrator token; OWNER RIGHTS alone cannot grant access.
+        subprocess.run(['icacls', str(work), '/grant:r', f'*{sid}:(OI)(CI)F'],
+                       check=True, stdout=subprocess.DEVNULL, creationflags=flags)
     data = work / 'data'
     password = secrets.token_urlsafe(32)
     password_file = work / 'password'
