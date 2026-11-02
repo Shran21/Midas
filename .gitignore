@@ -11,3 +11,4 @@ dist/
 *.pfx
 *.p12
 *.log
+__pycache__/

@@ -22,6 +22,18 @@ jobs:
         os: [ubuntu-24.04, windows-2022]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
+    services:
+      postgres:
+        image: ${{ matrix.os == 'ubuntu-24.04' && 'postgres:18.6@sha256:3a4264520e121176619f54ff867d12774bc81e95e7b84db58d63bccdb6144b81' || '' }}
+        env:
+          POSTGRES_DB: midas_test_isolation
+          POSTGRES_USER: midas_test_admin
+          POSTGRES_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U midas_test_admin -d midas_test_isolation"
+          --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -41,5 +53,16 @@ jobs:
         run: just lint
       - name: Test
         run: just test
+      - name: Install test database (Windows)
+        if: runner.os == 'Windows'
+        run: python .github/scripts/install-postgres.py
+      - name: Database isolation (Windows)
+        if: runner.os == 'Windows'
+        run: just test-database
+      - name: Database isolation (Linux)
+        if: runner.os == 'Linux'
+        env:
+          MIDAS_TEST_DATABASE_ADMIN_URL: postgresql://midas_test_admin:${{ github.run_id }}-${{ github.run_attempt }}@127.0.0.1:5432/midas_test_isolation
+        run: just test-database
       - name: Build
         run: just release

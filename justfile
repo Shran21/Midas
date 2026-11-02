@@ -17,6 +17,9 @@ test:
     cargo test --workspace --locked
     pnpm typecheck
 
+test-database:
+    python .github/scripts/test-database.py
+
 lint:
     cargo fmt --all -- --check
     cargo clippy --workspace --all-targets --locked -- -D warnings

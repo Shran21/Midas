@@ -19,6 +19,10 @@ async fn main() -> Result<(), TransportError> {
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .json()
         .init();
+    let database = midas_server::database::Database::from_env().await?;
+    if database.is_some() {
+        tracing::info!("runtime database connected");
+    }
     if args.tls_cert.is_none() && args.acme_domain.is_empty() {
         let listener = tokio::net::TcpListener::bind(args.bind).await?;
         tracing::info!(address = %listener.local_addr()?, "development server listening");

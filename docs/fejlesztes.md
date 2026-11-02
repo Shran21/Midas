@@ -4,7 +4,7 @@
 
 ## Magyar
 
-A jelenlegi alap egy helyi Rust-szerverből és egy React üzemeltetői előnézetből áll. A szerver HTTP-t használ, kizárólag loopback címen indul, és a GET /health/live végpontot szolgálja ki. Az állapotválasz a folyamat működését jelzi. A HTTPS/mTLS és ACME indítás a [szerver útmutatójában](szerver.md) szerepel. Az adatbázis, a bejelentkezés és az agentkapcsolat további feladatok.
+A jelenlegi alap egy helyi Rust-szerverből és egy React üzemeltetői előnézetből áll. A fejlesztői szerver HTTP-t használ, kizárólag loopback címen indul, és a GET /health/live végpontot szolgálja ki. Az állapotválasz a folyamat működését jelzi. A HTTPS/mTLS és ACME indítás a [szerver útmutatójában](szerver.md), a PostgreSQL-séma, migráció és ügyfélszigetelés az [adatbázis útmutatójában](adatbazis.md) szerepel. A bejelentkezés és az agentkapcsolat további feladatok.
 
 ### Mappaszerkezet
 
@@ -63,7 +63,7 @@ A Cargo.lock és pnpm-lock.yaml verziókövetett. A közös parancsok és a CI r
 
 ## English
 
-The current foundation consists of a local Rust server and a React operator preview. The server uses HTTP, binds only to loopback addresses and exposes GET /health/live. Its response indicates process liveness. See the [server guide](szerver.md#english) for HTTPS/mTLS and ACME startup. Database access, sign-in and agent connections are subsequent tasks.
+The current foundation consists of a local Rust server and a React operator preview. The development server uses HTTP, binds only to loopback addresses and exposes GET /health/live. Its response indicates process liveness. See the [server guide](szerver.md#english) for HTTPS/mTLS and ACME startup and the [database guide](adatbazis.md#english) for PostgreSQL schema, migrations and tenant isolation. Sign-in and agent connections are subsequent tasks.
 
 ### Directory layout
 
