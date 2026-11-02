@@ -60,6 +60,10 @@ pub struct Database {
 }
 
 impl Database {
+    pub(crate) fn pool(&self) -> &PgPool {
+        &self.pool
+    }
+
     pub async fn connect(
         url: &str,
         local_plaintext: bool,

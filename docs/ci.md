@@ -14,6 +14,8 @@ A `Foundations` workflow friss Windows- és Linux-környezetben futtatja a form�
 
 Az eszközök verziója és archívumának SHA-256 összege a telepítőszkriptben rögzített. A workflow-k csak olvasási jogosultságot kapnak; a checkout nem tárol hitelesítő adatot, és a külső műveletek commitra rögzítettek. Függőségfrissítéshez külön felülvizsgált változtatás kell.
 
+A natív OpenSSL első fordítása hosszabb. A Rust-függőségek és fordítási eredményeik gyorsítótára platformhoz, toolchainhez, függőséglistához és fordítási beállításokhoz kötött. Csak sikeres main-feltöltés menthet gyorsítótárat; a projekt saját csomagjait nem mentjük bele. A lint, teszt, adatbázispróba és kiadási build gyorsítótár-találat esetén is lefut.
+
 ### Helyi futtatás
 
 Windows/Linux x86_64 rendszeren a projekt gyökeréből:
@@ -43,6 +45,8 @@ The `Foundations` workflow runs formatting, lint, tests and release builds on fr
 - `pnpm audit --audit-level low` includes development dependencies. No advisories or registry failures are ignored. The `concurrently` transitive `shell-quote` dependency is pinned to the patched 1.12.0 release.
 
 Tool versions and archive SHA-256 hashes are pinned in the installer. Workflows have read-only permissions, checkout does not retain credentials, and external actions are pinned to commits. Dependency updates require a separately reviewed change.
+
+Initial native OpenSSL compilation takes longer. Rust dependency artifacts are cached by platform, toolchain, dependency manifests and compiler settings. Only successful main pushes save caches; workspace crates are excluded. Lint, tests, database checks and release builds still run on cache hits.
 
 ### Local execution
 

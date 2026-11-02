@@ -12,7 +12,7 @@ Az alapok megvalósítása elindult: Rust-szerver helyi állapotvégponttal, mag
 - A [működési követelmények](docs/kovetelmenyek.md) írják le az agent és az adminpanel használatát, a jogosultságokat és az elfogadási próbákat.
 - A [feladatfelosztás](docs/feladatlista.md) minden tételhez státuszt, mérföldkövet, függőséget és elfogadási feltételt rendel. A közreműködéshez lásd a [hozzájárulási útmutatót](CONTRIBUTING.md).
 
-Fejlesztői indítás: `just setup`, majd `just dev`. A szerveralap támogatja a TLS 1.3-at, az elkülönített mTLS-agentfigyelőt, az ACME tanúsítványkezelést és a PostgreSQL ügyfélszigetelést. [Környezet és parancsok](docs/fejlesztes.md) · [HTTPS és agentcsatorna](docs/szerver.md) · [Adatbázis](docs/adatbazis.md) · [Biztonság](SECURITY.md)
+Fejlesztői indítás: `just setup`, majd `just dev`. A szerveralap támogatja a TLS 1.3-at, az elkülönített mTLS-agentfigyelőt, az ACME tanúsítványkezelést és a PostgreSQL ügyfélszigetelést. [Környezet és parancsok](docs/fejlesztes.md) · [HTTPS és agentcsatorna](docs/szerver.md) · [Adatbázis](docs/adatbazis.md) · [Hitelesítés](docs/hitelesites.md) · [Biztonság](SECURITY.md)
 
 ## Mappák
 
@@ -59,7 +59,7 @@ Foundation implementation has started: a Rust server with a local liveness endpo
 - The [operating requirements](docs/kovetelmenyek.md#english) describe the agent and admin panel, permissions and acceptance trials.
 - The [task allocation](docs/feladatlista.md#english) assigns status, milestone, dependencies and acceptance to each item. See the [contribution guide](CONTRIBUTING.md#english) for contributing.
 
-Development startup: `just setup`, then `just dev`. The server foundation supports TLS 1.3, a separate mTLS agent listener, ACME certificate management and PostgreSQL tenant isolation. [Environment and commands](docs/fejlesztes.md#english) · [HTTPS and agent transport](docs/szerver.md#english) · [Database](docs/adatbazis.md#english) · [Security](SECURITY.md#english)
+Development startup: `just setup`, then `just dev`. The server foundation supports TLS 1.3, a separate mTLS agent listener, ACME certificate management and PostgreSQL tenant isolation. [Environment and commands](docs/fejlesztes.md#english) · [HTTPS and agent transport](docs/szerver.md#english) · [Database](docs/adatbazis.md#english) · [Authentication](docs/hitelesites.md#english) · [Security](SECURITY.md#english)
 
 ### Directories
 

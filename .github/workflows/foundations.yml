@@ -21,7 +21,7 @@ jobs:
       matrix:
         os: [ubuntu-24.04, windows-2022]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 50
     services:
       postgres:
         image: ${{ matrix.os == 'ubuntu-24.04' && 'postgres:18.6@sha256:3a4264520e121176619f54ff867d12774bc81e95e7b84db58d63bccdb6144b81' || '' }}
@@ -47,6 +47,18 @@ jobs:
         run: npm install --global pnpm@12.16.1
       - name: Install command runner
         run: python .github/scripts/install-just.py
+      - name: Install native Perl (Windows)
+        if: runner.os == 'Windows'
+        run: python .github/scripts/install-perl.py
+      - name: Restore Rust dependencies
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+        with:
+          key: ${{ matrix.os }}
+          env-vars: OPENSSL
+          cache-bin: false
+          cache-workspace-crates: false
+          cache-on-failure: false
+          save-if: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
       - name: Install dependencies
         run: just setup
       - name: Lint

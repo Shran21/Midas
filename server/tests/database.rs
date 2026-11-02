@@ -5,6 +5,9 @@ use sqlx::{
 };
 use uuid::Uuid;
 
+#[path = "support/authentication.rs"]
+mod authentication;
+
 #[test]
 fn database_transport_requires_verified_tls_or_explicit_loopback() {
     let secure =
@@ -98,7 +101,10 @@ async fn postgres_isolates_tenants_and_reused_connections() {
             .fetch_one(&mut admin)
             .await
             .unwrap();
-    assert_eq!(applied, 1);
+    assert_eq!(
+        applied,
+        midas_server::database::MIGRATIONS.iter().count() as i64
+    );
     assert!(Database::connect(&url, true, 1).await.is_err());
     assert!(Database::connect(&migrator_url, true, 1).await.is_err());
     assert!(migrate(&runtime_url, true).await.is_err());
@@ -299,6 +305,9 @@ async fn postgres_isolates_tenants_and_reused_connections() {
         .unwrap();
     assert_eq!(owner_rows, 0);
     owner.close().await.unwrap();
+    let authentication_database = Database::connect(&runtime_url, true, 4).await.unwrap();
+    authentication::verify(&authentication_database, &mut admin).await;
+    authentication_database.close().await;
     pool.close().await;
     database.close().await;
     admin.close().await.unwrap();

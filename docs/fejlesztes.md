@@ -18,6 +18,7 @@ A webpanel keresése, szűrése, kártyás és listás nézete, eszközadatlapja
 - Node.js 24.22.2 és pnpm 12.16.1.
 - just 1.59.0.
 - Windowson a Visual Studio C++ buildeszközei és Windows SDK; Linuxon C/C++ linker és fordítóeszközök.
+- Natív Perl és make/nmake az OpenSSL forrásból fordításához. Windowson a `python .github/scripts/install-perl.py` ellenőrzőösszeghez kötött hordozható Perlt készít elő a projekt `.local/tools` mappájában. Ezután PowerShellben: `$env:OPENSSL_SRC_PERL = "$PWD\.local\tools\perl-5.42.3.1\perl\bin\perl.exe"`. Linuxon a rendszer Perl- és make-csomagja használható.
 
 A Windows MSVC-környezethez a [Microsoft leírása](https://learn.microsoft.com/en-us/windows/dev-environment/rust/setup) ad telepítési lépéseket. A just telepítése a [hivatalos útmutatóban](https://github.com/casey/just#installation) szerepel.
 
@@ -44,6 +45,7 @@ A felület a http://127.0.0.1:5173 címen érhető el. A Vite a /health kérése
 | just dev | Helyi szerver és frontend együtt |
 | just build | Rust debug build és frontend build |
 | just test | Rust-tesztek és TypeScript-típusellenőrzés |
+| just test-database | PostgreSQL ügyfélszigetelési és hitelesítési próbák külön tesztklaszteren |
 | just lint | Rust formázás, Clippy és frontend-ellenőrzés |
 | just fmt | Rust- és frontend-formázás |
 | just release | Optimalizált Rust-bináris és frontend build |
@@ -56,6 +58,8 @@ A szerver külön a cargo run --locked -p midas-server paranccsal is indítható
 ### Függőségek és ellenőrzés
 
 A Cargo.lock és pnpm-lock.yaml verziókövetett. A közös parancsok és a CI rögzített feloldást használnak. A pnpm nem futtat függőségi telepítőszkripteket, és legalább egynapos csomagkiadásokat enged.
+
+A passkeyréteg a rögzített `webauthn-rs 0.5.5` verziót használja, a Cargo.lockban rögzített OpenSSL-forrás statikus fordításával. A TLS továbbra is rustls-alapú. Az első Rust-build emiatt hosszabb; a futtatáshoz külön OpenSSL-telepítés nem kell. [Hitelesítési réteg és integrációs feltételek](hitelesites.md).
 
 Új környezetben a just setup, just lint, just test és just release sorrend igazolja a teljes alapot. A CI Windows és Linux gépen, friss klónból futtatja ugyanezeket. A Windows UAC, GPU és későbbi agentfunkciók próbái külön célgépet igényelnek.
 
@@ -77,6 +81,7 @@ Search, filters, cards/list views, device details, themes and languages work loc
 - Node.js 24.22.2 and pnpm 12.16.1.
 - just 1.59.0.
 - Windows: Visual Studio C++ build tools and Windows SDK. Linux: a C/C++ linker and build tools.
+- Native Perl and make/nmake for building OpenSSL from source. On Windows, run `python .github/scripts/install-perl.py` and set `$env:OPENSSL_SRC_PERL = "$PWD\.local\tools\perl-5.42.3.1\perl\bin\perl.exe"` in PowerShell. The checksum-pinned portable tool stays inside `.local/tools`. Linux can use system Perl/make packages.
 
 Follow [Microsoft's guide](https://learn.microsoft.com/en-us/windows/dev-environment/rust/setup) for the Windows MSVC prerequisites and the [official instructions](https://github.com/casey/just#installation) for just.
 
@@ -103,6 +108,7 @@ Open http://127.0.0.1:5173. Vite forwards /health requests to http://127.0.0.1:7
 | just dev | Run the local server and frontend together |
 | just build | Rust debug and frontend builds |
 | just test | Rust tests and TypeScript type checking |
+| just test-database | PostgreSQL tenant isolation and authentication against a separate test cluster |
 | just lint | Rust formatting, Clippy and frontend checks |
 | just fmt | Format Rust and frontend sources |
 | just release | Optimized Rust binary and frontend build |
@@ -119,3 +125,5 @@ Commit Cargo.lock and pnpm-lock.yaml. Shared commands and CI use locked dependen
 On a fresh checkout, run just setup, just lint, just test and just release to verify the foundation. CI runs the same commands on fresh Windows and Linux checkouts. Windows UAC, GPU and subsequent agent features require separate target-machine testing.
 
 [CI and security checks](ci.md#english)
+
+The passkey layer pins `webauthn-rs 0.5.5` and statically builds the OpenSSL source pinned in Cargo.lock. TLS still uses rustls. Initial Rust builds take longer; runtime needs no separate OpenSSL installation. See the [authentication integration requirements](hitelesites.md#english).
