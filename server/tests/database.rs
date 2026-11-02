@@ -7,6 +7,8 @@ use uuid::Uuid;
 
 #[path = "support/authentication.rs"]
 mod authentication;
+#[path = "support/sessions.rs"]
+mod sessions;
 
 #[test]
 fn database_transport_requires_verified_tls_or_explicit_loopback() {
@@ -307,6 +309,7 @@ async fn postgres_isolates_tenants_and_reused_connections() {
     owner.close().await.unwrap();
     let authentication_database = Database::connect(&runtime_url, true, 4).await.unwrap();
     authentication::verify(&authentication_database, &mut admin).await;
+    sessions::verify(&authentication_database, &mut admin).await;
     authentication_database.close().await;
     pool.close().await;
     database.close().await;

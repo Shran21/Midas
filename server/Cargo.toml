@@ -17,6 +17,7 @@ argon2.workspace = true
 chacha20poly1305.workspace = true
 getrandom.workspace = true
 hex.workspace = true
+hmac.workspace = true
 sha2.workspace = true
 totp-rs.workspace = true
 webauthn-rs.workspace = true
@@ -36,6 +37,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
+tokio-tungstenite.workspace = true
 webauthn-rs-proto.workspace = true
 webauthn-authenticator-rs.workspace = true
 rcgen.workspace = true

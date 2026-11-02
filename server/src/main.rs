@@ -23,6 +23,30 @@ async fn main() -> Result<(), TransportError> {
     if database.is_some() {
         tracing::info!("runtime database connected");
     }
+    let mut web = web_router();
+    if let Some(origin) = &args.auth_origin {
+        use midas_server::auth::{AuthConfig, http::WebAuth, sessions::SessionConfig};
+        let database = database
+            .as_ref()
+            .ok_or("browser authentication requires a database")?;
+        let key = midas_server::config::authentication_key(
+            args.auth_key_file
+                .as_deref()
+                .ok_or("missing authentication key file")?,
+        )?;
+        let auth = WebAuth::new(
+            database,
+            AuthConfig::new(origin.clone(), key),
+            SessionConfig {
+                absolute_lifetime: Duration::from_secs(args.session_seconds),
+                idle_lifetime: Duration::from_secs(args.session_idle_seconds),
+            },
+            args.session_socket_capacity,
+        )
+        .await?;
+        web = web.merge(midas_server::auth::http::router(Arc::new(auth)));
+        tracing::info!("browser authentication enabled");
+    }
     if args.tls_cert.is_none() && args.acme_domain.is_empty() {
         let listener = tokio::net::TcpListener::bind(args.bind).await?;
         tracing::info!(address = %listener.local_addr()?, "development server listening");
@@ -102,12 +126,12 @@ async fn main() -> Result<(), TransportError> {
             axum_server::from_tcp(web_listener)?
                 .acceptor(acceptor)
                 .handle(public_handle)
-                .serve(web_router().into_make_service())
+                .serve(web.into_make_service_with_connect_info::<std::net::SocketAddr>())
                 .await
         } else {
             axum_server::from_tcp_rustls(web_listener, RustlsConfig::from_config(public_config))?
                 .handle(public_handle)
-                .serve(web_router().into_make_service())
+                .serve(web.into_make_service_with_connect_info::<std::net::SocketAddr>())
                 .await
         }
     };

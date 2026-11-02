@@ -1,5 +1,7 @@
 mod challenges;
 mod crypto;
+pub mod http;
+pub mod sessions;
 
 use std::{
     fmt,
