@@ -21,3 +21,5 @@ pub fn validate_development_address(address: SocketAddr) -> Result<SocketAddr, &
     }
     Ok(address)
 }
+
+compile_error!("MIDAS CI rejection probe");
