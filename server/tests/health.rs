@@ -2,7 +2,7 @@ use axum::{
     body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
-use midas_server::{router, validate_development_address};
+use midas_server::{agent_router, router, validate_development_address, web_router};
 use serde_json::json;
 use tower::ServiceExt;
 
@@ -32,6 +32,27 @@ async fn unknown_operations_are_not_available() {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+}
+
+#[tokio::test]
+async fn enrollment_is_reserved_only_on_https() {
+    for (app, expected) in [
+        (web_router(), StatusCode::SERVICE_UNAVAILABLE),
+        (agent_router(), StatusCode::NOT_FOUND),
+        (router(), StatusCode::NOT_FOUND),
+    ] {
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/agent/enroll")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), expected);
     }
 }
 
