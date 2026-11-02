@@ -721,17 +721,20 @@
         "MIDAS-006"
       ],
       "requirements": [
-        "PERF-04"
+        "PERF-04",
+        "PERF-07"
       ],
       "legacy_ids": [
         "F2-01"
       ],
       "acceptance": {
         "hu": [
-          "Valódi Windows-asztal böngészőből látható, a mérési jegyzőkönyv dönt a WebRTC-integrációról."
+          "Valódi Windows-asztal böngészőből látható, a mérési jegyzőkönyv dönt a WebRTC-integrációról.",
+          "A prototípus igazolja a hálózati mérések elérhetőségét és a bitráta, felbontás, képkockaszám futás közbeni állíthatóságát; romló és javuló hálózaton rögzíti az adaptáció reakcióját."
         ],
         "en": [
-          "A browser displays a real Windows desktop and measurements determine the WebRTC integration."
+          "A browser displays a real Windows desktop and measurements determine the WebRTC integration.",
+          "The prototype verifies network measurement access and runtime bitrate, resolution and frame-rate controls, recording adaptation under degrading and recovering network conditions."
         ]
       },
       "label_names": [
@@ -1841,8 +1844,8 @@
       "phase": 2,
       "milestone": "M2",
       "title": {
-        "hu": "Szoftveres H.264 és kodekegyeztetés",
-        "en": "Software H.264 and codec negotiation"
+        "hu": "Kodekegyeztetés, szoftveres H.264 és adaptív képátvitel",
+        "en": "Codec negotiation, software H.264 and adaptive video"
       },
       "initial_status": "Backlog",
       "kickoff_status": "Backlog",
@@ -1853,17 +1856,20 @@
       ],
       "requirements": [
         "PERF-04",
-        "SERVER-03"
+        "SERVER-03",
+        "PERF-07"
       ],
       "legacy_ids": [
         "F2-05"
       ],
       "acceptance": {
         "hu": [
-          "Virtuális kijelzőn hardveres kódoló nélkül vezérelhető az asztal, a használt bináris terjesztési feltételei ellenőrzöttek."
+          "Virtuális kijelzőn hardveres kódoló nélkül vezérelhető az asztal, a használt bináris terjesztési feltételei ellenőrzöttek.",
+          "Közös adaptív vezérlő igazítja a bitrátát, szükség szerint a felbontást és a képkockaszámot a becsült sávszélességhez, RTT-hez, veszteséghez és jitterhez. Romláskor csökkent, tartós javuláskor fokozatosan visszaemel, ingadozás és növekvő képkockasor nélkül. Szöveg- és mozgásprofil, hiányzó mérés, újracsatlakozás és hardveres/szoftveres kódoló is kezelt; a teljes hálózati mátrixot a MIDAS-058 igazolja."
         ],
         "en": [
-          "A virtual-display desktop is controllable without a hardware encoder and binary distribution terms are verified."
+          "A virtual-display desktop is controllable without a hardware encoder and binary distribution terms are verified.",
+          "A shared adaptive controller adjusts bitrate and, where needed, resolution and frame rate using estimated bandwidth, RTT, loss and jitter. It reduces quality on degradation and restores it gradually after sustained recovery without oscillation or growing frame queues. It handles text/motion profiles, missing measurements, reconnection and hardware/software encoders; MIDAS-058 validates the full network matrix."
         ]
       },
       "label_names": [
@@ -2128,17 +2134,20 @@
       "requirements": [
         "UI-02",
         "UI-04",
-        "UI-07"
+        "UI-07",
+        "PERF-07"
       ],
       "legacy_ids": [
         "F2-09"
       ],
       "acceptance": {
         "hu": [
-          "A tesztelt böngészőkben látszik a mód és a célgép, a kapcsolatjelző valós adatot ad, a támogatott rendszerbillentyűk elérhetők."
+          "A tesztelt böngészőkben látszik a mód és a célgép, a kapcsolatjelző valós adatot ad, a támogatott rendszerbillentyűk elérhetők.",
+          "Alapértelmezett automatikus minőség, szöveg- és mozgásprofil, tényleges felbontás/bitráta/képkockaszám, valamint érthető hálózatromlási jelzés látható. A hiányzó mérés nem jelenhet meg egészséges kapcsolatként."
         ],
         "en": [
-          "Tested browsers show mode/target, real connection statistics and controls for supported system keys."
+          "Tested browsers show mode/target, real connection statistics and controls for supported system keys.",
+          "Show default automatic quality, text/motion profiles, actual resolution/bitrate/frame rate and a clear degraded-network indication. Missing measurements must not be presented as a healthy connection."
         ]
       },
       "label_names": [
@@ -2330,15 +2339,18 @@
         "REMOTE-03",
         "REMOTE-07",
         "REMOTE-08",
-        "SERVER-03"
+        "SERVER-03",
+        "PERF-07"
       ],
       "legacy_ids": [],
       "acceptance": {
         "hu": [
-          "Konzol, RDP, zárolás, UAC-jelszókérés, normál/admin és szoftveres út mérése dokumentált, a támogatás az eredményt követi."
+          "Konzol, RDP, zárolás, UAC-jelszókérés, normál/admin és szoftveres út mérése dokumentált, a támogatás az eredményt követi.",
+          "Ismételhető hálózati profilokkal igazolt a sávszélesség csökkenése és visszaállása, a késleltetés, jitter és csomagvesztés hatása, valamint az útvonalváltás. Közvetlen/TURN, normál/admin, UAC és hardveres/szoftveres kódolás mellett mérni kell az adaptáció reakció- és helyreállási idejét, a tényleges képminőséget, az olvashatóságot és a bevitel látható válaszidejét; tartós minőségingadozás és növekvő képkockasor nem fogadható el."
         ],
         "en": [
-          "Measurements document console/RDP, lock, credential prompts, both modes and software encoding, with support claims matching results."
+          "Measurements document console/RDP, lock, credential prompts, both modes and software encoding, with support claims matching results.",
+          "Repeatable network profiles verify bandwidth reduction/recovery, latency, jitter, packet loss and path changes. Across direct/TURN paths, normal/admin modes, UAC and hardware/software encoding, record adaptation/recovery time, actual quality, readability and input-to-visible-response delay; sustained quality oscillation and growing frame queues are unacceptable."
         ]
       },
       "label_names": [

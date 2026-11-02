@@ -2,7 +2,7 @@
 
 ## Magyar
 
-2026. október 31. · Tervezési szakasz. Az alábbi működést a prototípuson és a fázisok elfogadási próbáin kell igazolni.
+Frissítve: 2026. november 2. Az alábbi működést a prototípuson és a fázisok elfogadási próbáin kell igazolni.
 
 Ez a dokumentum pontosítja a [rendszertervet](rendszerterv.md). Az erőforrásigény, az eszközkezelés, a két távsegítségi mód, az UAC, a szerverek és a tartományi műveletek tekintetében ez az irányadó követelményleírás. A normál munkamenetben is kötelező az UAC-prompt távoli megjelenítése és kezelése.
 
@@ -14,6 +14,7 @@ Ez a dokumentum pontosítja a [rendszertervet](rendszerterv.md). Az erőforrási
 - **PERF-04:** a videós folyamat és a GPU-kódoló csak engedélyezett távsegítés alatt fusson. A késleltetés fontosabb a távsegítés erőforrásigényénél, de a sorok és pufferek ekkor is legyenek korlátosak. A jóváhagyás, a chat és a tálcaikon ne igényeljen folyamatosan nyitott teljes WebView-felületet; a könnyű állandó felület és az igény szerint betöltött Tauri-nézet megoldását prototípus dönti el.
 - **PERF-05:** hálózatkieséskor korlátos helyi tároló, fokozatos visszaküldés és exponenciális újracsatlakozás kell. Metrikáknál lehet összesítés és dokumentált adateldobás; auditot és feladateredményt nem szabad észrevétlenül eldobni. Ha ezeknek nincs helye, az új kockázatos művelet álljon meg, miközben az állapotjelzés és a helyi leállítás működik.
 - **PERF-06:** a dashboard lapozott vagy virtualizált eszközlistát és az éppen látható, engedélyezett adatokra szűrt élő eseményeket használjon. A szerver kötegeljen, és ügyfelenként korlátozza a munkát; ne küldje újra a teljes flottát minden változáskor.
+- **PERF-07:** a távsegítés alapértelmezésben automatikusan alkalmazkodjon a becsült rendelkezésre álló sávszélességhez, az RTT-hez, a csomagvesztéshez és a késleltetés ingadozásához. Romló hálózaton csökkentse, tartós javuláskor fokozatosan növelje a bitrátát és szükség szerint a felbontást, illetve a képkockaszámot. A vezérlés gyors reakciója és a szöveg olvashatósága elsődleges; a szöveg- és mozgásprofil eltérő sorrendben igazíthatja a kép paramétereit. A rövid kilengések ne okozzanak folyamatos minőségváltást, a képkockák ne halmozzanak késést. Hiányzó hálózati mérés nem jelent korlátlan sávszélességet. A hardver és a dekódoló képességeit figyelembe kell venni, önkényes globális erőforrásplafon nélkül. A felület mutassa az automatikus módot, a tényleges felbontást, bitrátát és képkockaszámot. Közvetlen és TURN-kapcsolaton is kell hálózatromlási és helyreállási próba mindkét távvezérlési módban, UAC alatt is; az alkalmazkodás nem módosíthat jogosultságot vagy jóváhagyást.
 
 A háttéragent és az aktív távsegítés az adott feladathoz szükséges erőforrást használhatja, előre rögzített CPU-, GPU-, memória- vagy adatforgalmi plafon nélkül. A prototípuson külön mérjük a háttérben futó agentet, a megnyitott helyi felületet és az élő távsegítést. Windows 11-en a MIDAS felületéhez tartozó WebView2-folyamatokat is beleszámítjuk. Ezekkel a mérésekkel a felesleges terhelést keressük.
 
@@ -116,7 +117,7 @@ A Windows-próba fedje le a normál és rendszergazdai módot standard és admin
 
 ## English
 
-October 31, 2026 · Design stage. Verify the behavior below on the prototype and during phase acceptance tests.
+Updated November 2, 2026. Verify the behavior below on the prototype and during phase acceptance tests.
 
 This document refines the [system plan](rendszerterv.md#english) and takes precedence for resource use, device management, remote support modes, UAC, servers and domain operations. Remote viewing and interaction with UAC prompts are mandatory in normal user-level sessions as well.
 
@@ -128,6 +129,7 @@ This document refines the [system plan](rendszerterv.md#english) and takes prece
 - **PERF-04:** start video workers and GPU encoders only for authorized support sessions. Latency takes priority over support-session resource use, while queues and buffers remain bounded. Consent, chat and the tray icon must not require a permanently open full WebView. Prototype a lightweight resident interface with Tauri views loaded on demand.
 - **PERF-05:** use bounded offline storage, gradual upload and exponential reconnection backoff. Metrics may be aggregated or dropped with explicit reporting; audit records and job results must not be silently discarded. Exhausted audit/result capacity blocks new risky operations while health reporting and local termination remain available.
 - **PERF-06:** paginate or virtualize device lists and scope live events to visible, authorized data. Batch server writes and limit work per customer; do not retransmit the whole fleet on every change.
+- **PERF-07:** remote support defaults to automatic adaptation based on estimated available bandwidth, RTT, packet loss and jitter. Decrease bitrate and, where needed, resolution or frame rate when conditions degrade; increase them gradually after sustained recovery. Responsive control and readable text take priority; text and motion profiles may adjust parameters in different orders. Avoid quality oscillation on brief fluctuations and accumulating stale frames. Missing network measurements never imply unlimited bandwidth. Respect encoder/decoder capabilities without arbitrary global resource ceilings. Show automatic mode and actual resolution, bitrate and frame rate. Test degradation and recovery over direct and TURN paths in both control modes, including UAC; adaptation must not change permissions or consent.
 
 The background agent and active remote support may use the resources their workload needs, without a preset cap on CPU, GPU, memory or network traffic. On the prototype, measure the background agent, the open local interface and live remote support separately. On Windows 11, include the WebView2 processes belonging to the MIDAS interface. Use these measurements to identify unnecessary load.
 
