@@ -2085,3 +2085,16 @@ h1[tabindex="-1"]:focus {
   border-bottom: 1px solid var(--border);
   font-size: 13px;
 }
+@media (pointer: coarse) {
+  .nav-item,
+  .button,
+  .icon-button,
+  .method-switch button,
+  .field input,
+  select {
+    min-height: 44px;
+  }
+  .icon-button {
+    min-width: 44px;
+  }
+}

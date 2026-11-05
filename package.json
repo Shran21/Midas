@@ -13,7 +13,8 @@
     "build": "pnpm --filter @midas/web-panel build",
     "typecheck": "pnpm --filter @midas/web-panel typecheck",
     "lint": "biome check .",
-    "format": "biome check --write ."
+    "format": "biome check --write .",
+    "test:web": "node --test web-panel/test/service-worker.test.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.4",

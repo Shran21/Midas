@@ -296,6 +296,7 @@ export function DeviceDialog({
   onClose: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const opener = useRef<Element | null>(document.activeElement);
   const [section, setSection] = useState<"details" | "monitoring" | "support">(
     "details",
   );
@@ -313,7 +314,12 @@ export function DeviceDialog({
       className="device-dialog"
       aria-labelledby="device-title"
       aria-describedby="device-sample"
-      onClose={onClose}
+      onClose={() => {
+        const target = opener.current;
+        onClose();
+        if (target instanceof HTMLElement && target.isConnected)
+          requestAnimationFrame(() => target.focus());
+      }}
     >
       <div className="dialog-heading">
         <div className="dialog-identity">

@@ -19,6 +19,7 @@ build:
 test:
     cargo test --workspace --locked
     pnpm typecheck
+    pnpm test:web
 
 test-database:
     python .github/scripts/test-database.py
