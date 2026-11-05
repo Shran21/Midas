@@ -24,6 +24,12 @@ Minden alkalmazható tiltás elsőbbséget élvez minden engedéllyel szemben. P
 
 A munkamenet első ellenőrzése után a döntés új adatbázis-állapotból, egy következetes, csak olvasható tranzakcióban készül, amely a munkamenetet is újraellenőrzi. A kért engedélyeket közös lekérdezés értékeli ki; nincs háttérben futó jogosultság-polling vagy elavuló engedélycache. Egy hozzárendelés törlése, csoporttagság változása, szerep kikapcsolása vagy ügyféltagság letiltása a következő döntésben érvényesül. Az adatbázis-kapcsolat ellenőrzése minden ügyfélhez kötött tábla kényszerített RLS-ét megköveteli.
 
+### Ügyfélkörnyezet
+
+A `tenants` a munkamenet technikusának engedélyezett tagságait listázza. Ehhez egy tranzakción belüli technikuskörnyezet csak olvasásra látja a saját tagságait és azok ügyfeleinek nevét; más ügyféladathoz, íráshoz vagy más technikus tagságához nem ad hozzáférést. A környezetet csak ellenőrzött munkamenet állítja be, és a kapcsolat visszaadásakor törlődik.
+
+A `tenant_context` az ügyfél nevét és azokat az engedélyeket adja vissza, amelyekre bármely hatókörben van megadás, és nincs ügyfélszintű tiltás. Ez csak a navigációt igazítja; minden művelet saját, aktuális jogosultság-ellenőrzést kap. Nem tag, letiltott tag és ismeretlen ügyfél ugyanazt a választ kapja.
+
 ### Engedélyek
 
 | Azonosító | Művelet | Friss passkey |
@@ -80,6 +86,12 @@ Administrator never implies cross-tenant membership, bypasses a denial or replac
 Memberships, role assignments and individual overrides use forced tenant RLS. Scope may cover a tenant, site, group or device. Device site/group membership is resolved from actual inventory, never caller assertions. Composite foreign keys preserve tenant ownership of scopes.
 
 Every applicable denial wins over every allow, including narrower device grants and Administrator assignments. A decision without a device covers the whole tenant: it needs a tenant-scope allow and any narrower-scope denial rejects it. `remote.*` permissions always require a concrete device. Disabling a role removes its allows but keeps its denials; remove the assignment to lift them. Missing grants, unknown permissions and wildcards are denied. After the initial session check, decisions read fresh state in a consistent read-only transaction that rechecks the session, batching requested permissions in one query. There is no background policy polling or stale allow cache. Assignment removal, group changes, disabled roles and disabled memberships affect the next decision. Database validation requires forced RLS on every tenant table.
+
+### Tenant context
+
+`tenants` lists the session operator's enabled memberships. A transaction-local operator context can read only its own memberships and those tenants' names; it grants no other tenant data, writes or other operators' memberships. Only a validated session sets it, and pooled connections clear it.
+
+`tenant_context` returns the tenant name and permissions granted at any scope without a tenant-wide denial. It only adapts navigation; every operation keeps its own current authorization check. Non-members, disabled members and unknown tenants receive the same answer.
 
 ### Permission catalog
 

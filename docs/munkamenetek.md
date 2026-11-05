@@ -4,7 +4,7 @@
 
 ## Magyar
 
-A HTTPS-szerver már kiszolgálja a passkey-, jelszó+TOTP- és helyreállítókód-belépést, valamint a saját munkamenetek megtekintését és visszavonását. A webpanel belépőképernyője, az első adminisztrátor létrehozása és a [jogosultsági modul](jogosultsagok.md) bekötése az eszközműveletekbe külön feladat. Nincs nyilvános regisztráció, alapértelmezett fiók vagy általános rendszergazdai hozzáférés pusztán a belépés miatt. A belépések, hibás hitelesítések, kijelentkezések és visszavonások [auditba](audit.md) kerülnek.
+A HTTPS-szerver már kiszolgálja a passkey-, jelszó+TOTP- és helyreállítókód-belépést, valamint a saját munkamenetek megtekintését és visszavonását. A webpanel belépőképernyője mindhárom módot, az ügyfélválasztást és a saját munkamenetek kezelését használja. Az első adminisztrátor létrehozása és a [jogosultsági modul](jogosultsagok.md) bekötése az eszközműveletekbe külön feladat. Nincs nyilvános regisztráció, alapértelmezett fiók vagy általános rendszergazdai hozzáférés pusztán a belépés miatt. A belépések, hibás hitelesítések, kijelentkezések és visszavonások [auditba](audit.md) kerülnek.
 
 ### Bekapcsolás
 
@@ -40,7 +40,9 @@ A hitelesítési válaszok `Cache-Control: no-store` fejlécet kapnak. A kettőz
 | `POST /api/auth/passkey/finish` | `{id, response}` WebAuthn-válasszal és a kötősütivel → új munkamenet |
 | `POST /api/auth/password` | `{login, password, code}` → új munkamenet, ha a jelszó és a TOTP is helyes |
 | `POST /api/auth/recovery` | `{login, code}` → új munkamenet, a kód egyszeri elfogyasztásával |
-| `GET /api/session` | Saját munkamenet és CSRF-token |
+| `GET /api/session` | Saját munkamenet, CSRF-token, valamint a technikus belépési neve és megjelenített neve |
+| `GET /api/tenants` | Azok az ügyfelek, amelyekben a technikus tagsága engedélyezett |
+| `GET /api/tenants/{id}` | Ügyfélnév és a navigációhoz használt engedélyek; nem tag vagy ismeretlen ügyfélnél egyaránt 404 |
 | `GET /api/sessions` | Saját aktív munkamenetek, legfeljebb a legújabb 100; titkok nélkül |
 | `POST /api/session/logout` | Aktuális munkamenet visszavonása és sütik törlése |
 | `DELETE /api/sessions/{id}` | Saját megadott munkamenet visszavonása; más felhasználóé nem törölhető |
@@ -66,7 +68,7 @@ Források: [OWASP munkamenetek](https://cheatsheetseries.owasp.org/cheatsheets/S
 
 ## English
 
-The HTTPS server provides passkey, password+TOTP and recovery-code login, plus inspection and revocation of an operator's own browser sessions. The sign-in UI, first-administrator setup and integration of [authorization](jogosultsagok.md#english) into device operations remain separate work. There is no open registration, default account or implied administrative access. Sign-ins, credential failures, sign-outs and revocations are [audited](audit.md#english).
+The HTTPS server provides passkey, password+TOTP and recovery-code login, plus inspection and revocation of an operator's own browser sessions. The web panel sign-in screen uses all three methods, tenant selection and own-session management. First-administrator setup and integration of [authorization](jogosultsagok.md#english) into device operations remain separate work. There is no open registration, default account or implied administrative access. Sign-ins, credential failures, sign-outs and revocations are [audited](audit.md#english).
 
 ### Configuration
 
@@ -102,7 +104,9 @@ Responses use `Cache-Control: no-store`. Ambiguous duplicate session cookies/Ori
 | `POST /api/auth/passkey/finish` | `{id, response}` with WebAuthn JSON and binding cookie → session |
 | `POST /api/auth/password` | `{login, password, code}` → session after both factors verify |
 | `POST /api/auth/recovery` | `{login, code}` → session, consuming the code once |
-| `GET /api/session` | Current session metadata and CSRF token |
+| `GET /api/session` | Current session metadata, CSRF token and the operator's login and display name |
+| `GET /api/tenants` | Tenants with an enabled membership for the operator |
+| `GET /api/tenants/{id}` | Tenant name and navigation permissions; 404 alike for non-members and unknown tenants |
 | `GET /api/sessions` | Latest 100 active own sessions, without secrets |
 | `POST /api/session/logout` | Revoke current session and clear cookies |
 | `DELETE /api/sessions/{id}` | Revoke an own session; another operator's session cannot be deleted |

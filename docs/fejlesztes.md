@@ -35,7 +35,9 @@ just dev
 
 A fenti telepítési parancsot PowerShellben `npm.cmd install --global pnpm@12.16.1` alakban használd. A just Windows alatt a parancsfájlokat közvetlenül indítja, így nem igényel PowerShell-végrehajtási szabályzatmódosítást.
 
-A felület a http://127.0.0.1:5173 címen érhető el. A Vite a /health kéréseket a http://127.0.0.1:7443 szerverhez továbbítja. Ctrl+C mindkét fejlesztői folyamatot leállítja.
+A felület a http://127.0.0.1:5173 címen érhető el. A Vite a /health és /api kéréseket a http://127.0.0.1:7443 szerverhez továbbítja. Hitelesítés nélkül a webpanel a jelölt mintaadatos előnézetet mutatja. Ctrl+C mindkét fejlesztői folyamatot leállítja.
+
+A belépéssel működő konzolhoz `just dev-auth` indít helyi PostgreSQL-t, migrációt, demóügyfeleket és -fiókokat, saját aláírású localhost-tanúsítványt, valamint HTTPS-szervert és HTTPS-es Vite-felületet a https://localhost:5173 címen. A böngésző a saját aláírású tanúsítványt figyelmeztetéssel jelzi. A [PostgreSQL-binárisok](adatbazis.md) szükségesek. Minden állapot és a helyreállító kódok a `.local/dev-auth/credentials.txt` fájlban maradnak; ezek csak helyi próbára valók. `just dev-auth --reset` mindent újrakezd.
 
 ### Közös parancsok
 
@@ -43,6 +45,7 @@ A felület a http://127.0.0.1:5173 címen érhető el. A Vite a /health kérése
 | --- | --- |
 | just setup | Függőségek telepítése a pnpm-lock.yaml alapján |
 | just dev | Helyi szerver és frontend együtt |
+| just dev-auth | Helyi belépéses konzol PostgreSQL-lel és demóadatokkal |
 | just build | Rust debug build és frontend build |
 | just test | Rust-tesztek és TypeScript-típusellenőrzés |
 | just test-database | PostgreSQL ügyfélszigetelési és hitelesítési próbák külön tesztklaszteren |
@@ -98,7 +101,9 @@ just dev
 
 In PowerShell, use `npm.cmd install --global pnpm@12.16.1` for the package manager installation above. On Windows, just invokes command files directly without requiring a PowerShell execution-policy change.
 
-Open http://127.0.0.1:5173. Vite forwards /health requests to http://127.0.0.1:7443. Ctrl+C stops both development processes.
+Open http://127.0.0.1:5173. Vite forwards /health and /api requests to http://127.0.0.1:7443. Without authentication the web panel shows the labelled sample-data preview. Ctrl+C stops both development processes.
+
+For the signed-in console, `just dev-auth` starts local PostgreSQL, migrations, demo tenants and accounts, a self-signed localhost certificate, an HTTPS server and Vite over HTTPS at https://localhost:5173. Browsers warn about the self-signed certificate. [PostgreSQL binaries](adatbazis.md#english) are required. All state and recovery codes stay in `.local/dev-auth/credentials.txt` for local testing only. `just dev-auth --reset` starts over.
 
 ### Shared commands
 
@@ -106,6 +111,7 @@ Open http://127.0.0.1:5173. Vite forwards /health requests to http://127.0.0.1:7
 | --- | --- |
 | just setup | Install dependencies from pnpm-lock.yaml |
 | just dev | Run the local server and frontend together |
+| just dev-auth | Local signed-in console with PostgreSQL and demo data |
 | just build | Rust debug and frontend builds |
 | just test | Rust tests and TypeScript type checking |
 | just test-database | PostgreSQL tenant isolation and authentication against a separate test cluster |

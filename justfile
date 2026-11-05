@@ -9,6 +9,9 @@ setup:
 dev:
     pnpm dev
 
+dev-auth *args:
+    python .github/scripts/dev-auth.py {{args}}
+
 build:
     cargo build --workspace --locked
     pnpm build

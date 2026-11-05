@@ -132,6 +132,20 @@ pub struct RemoteRequest {
     pub unattended: bool,
 }
 
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct TenantSummary {
+    pub id: Uuid,
+    pub name: String,
+}
+
+/// Navigation hint for the signed-in operator; every operation still needs its own authorization.
+#[derive(Debug, Serialize)]
+pub struct TenantContext {
+    pub id: Uuid,
+    pub name: String,
+    pub capabilities: Vec<Permission>,
+}
+
 /// A current policy decision, not a signed grant or a substitute for consent and execution-time checks.
 #[derive(Debug, Serialize)]
 pub struct AccessDecision {
@@ -224,6 +238,53 @@ impl Authorizer {
             .execute(&mut *tx)
             .await?;
         Ok(tx)
+    }
+
+    /// Tenants with an enabled membership for the session's operator.
+    pub async fn tenants(
+        &self,
+        sessions: &Sessions,
+        token: &SessionToken,
+    ) -> Result<Vec<TenantSummary>> {
+        let identity = sessions.validate(token, false).await?;
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("SELECT set_config('midas.operator_id', $1, true)")
+            .bind(identity.operator_id.to_string())
+            .execute(&mut *tx)
+            .await?;
+        let tenants = sqlx::query_as("SELECT t.id, t.name FROM midas.tenant_memberships m JOIN midas.tenants t ON t.id = m.tenant_id WHERE m.operator_id = $1 AND m.enabled ORDER BY lower(t.name), t.id LIMIT 500")
+            .bind(identity.operator_id).fetch_all(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(tenants)
+    }
+
+    /// Tenant name and permissions granted anywhere in it, minus tenant-wide denials.
+    pub async fn tenant_context(
+        &self,
+        sessions: &Sessions,
+        token: &SessionToken,
+        tenant: Uuid,
+    ) -> Result<TenantContext> {
+        let identity = sessions.validate(token, false).await?;
+        let mut tx = self.tenant_transaction(tenant, true).await?;
+        let name: Option<String> = sqlx::query_scalar("SELECT t.name FROM midas.tenants t JOIN midas.tenant_memberships m ON m.tenant_id = t.id AND m.operator_id = $2 AND m.enabled WHERE t.id = $1")
+            .bind(tenant).bind(identity.operator_id).fetch_optional(&mut *tx).await?;
+        let name = name.ok_or(AccessError::Denied)?;
+        let granted: Vec<String> = sqlx::query_scalar("WITH rules AS (SELECT p.permission, p.effect, r.enabled, a.site_id, a.group_id, a.device_id FROM midas.role_assignments a JOIN midas.roles r ON r.id = a.role_id JOIN midas.role_permissions p ON p.role_id = r.id WHERE a.tenant_id = $1 AND a.operator_id = $2 UNION ALL SELECT permission, effect, true, site_id, group_id, device_id FROM midas.permission_overrides WHERE tenant_id = $1 AND operator_id = $2) SELECT DISTINCT permission FROM rules WHERE effect = 'allow' AND enabled EXCEPT SELECT permission FROM rules WHERE effect = 'deny' AND site_id IS NULL AND group_id IS NULL AND device_id IS NULL")
+            .bind(tenant).bind(identity.operator_id).fetch_all(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(TenantContext {
+            id: tenant,
+            name,
+            capabilities: Permission::ALL
+                .iter()
+                .copied()
+                .filter(|p| granted.iter().any(|g| g == p.as_str()))
+                .collect(),
+        })
     }
 
     pub async fn authorize(

@@ -20,7 +20,7 @@ Fejlesztői indítás: `just setup`, majd `just dev`. A szerveralap támogatja a
 - `web-panel/`: a React/TypeScript webpanel.
 - `agent/agent-windows/` és `agent/agent-linux/`: a tervezett platformagentek helye.
 
-Az előnézet kereshető, szűrhető mintaeszközöket és eszközadatlapot mutat. A mintaadatok nem jelentenek beiratkozott eszközöket; távoli művelet nem indítható.
+Hitelesítéssel a webpanel belépőképernyőt, ügyfélválasztót, jogosultsághoz igazodó navigációt és munkamenet-kezelést ad (`just dev-auth`). Hitelesítés nélkül az előnézet kereshető, szűrhető mintaeszközöket és eszközadatlapot mutat. A mintaadatok nem jelentenek beiratkozott eszközöket; távoli művelet nem indítható.
 
 ## Tervezett működés
 
@@ -67,7 +67,7 @@ Development startup: `just setup`, then `just dev`. The server foundation suppor
 - `web-panel/`: the React/TypeScript web panel.
 - `agent/agent-windows/` and `agent/agent-linux/`: locations for the planned platform agents.
 
-The preview offers searchable, filterable sample devices and device details. Sample data does not represent enrolled devices, and remote operations are unavailable.
+With authentication the web panel provides sign-in, tenant selection, permission-aware navigation and session management (`just dev-auth`). Without authentication the preview offers searchable, filterable sample devices and device details. Sample data does not represent enrolled devices, and remote operations are unavailable.
 
 ### Planned experience
 

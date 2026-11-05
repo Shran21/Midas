@@ -13,6 +13,8 @@ mod authentication;
 mod authorization;
 #[path = "support/sessions.rs"]
 mod sessions;
+#[path = "support/tenants.rs"]
+mod tenants;
 
 #[test]
 fn database_transport_requires_verified_tls_or_explicit_loopback() {
@@ -328,6 +330,7 @@ async fn postgres_isolates_tenants_and_reused_connections() {
     sessions::verify(&authentication_database, &mut admin).await;
     authorization::verify(&authentication_database, &mut admin, &pool).await;
     audit::verify(&authentication_database, &mut admin, &pool).await;
+    tenants::verify(&authentication_database, &mut admin, &pool).await;
     authentication_database.close().await;
     pool.close().await;
     database.close().await;

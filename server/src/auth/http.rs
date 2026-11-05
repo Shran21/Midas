@@ -24,10 +24,12 @@ use zeroize::Zeroizing;
 
 use super::{
     AuthConfig, AuthError, AuthService, Authenticated, AuthenticationMethod, BrowserBinding,
+    Profile,
     sessions::{SessionConfig, SessionInfo, SessionToken, Sessions},
 };
 use crate::{
     audit::{self, Action, Actor, Event, Outcome},
+    authorization::{AccessError, Authorizer, TenantContext, TenantSummary},
     database::Database,
 };
 
@@ -40,6 +42,7 @@ pub struct WebAuth {
     origin: String,
     socket_slots: Arc<Semaphore>,
     pool: PgPool,
+    authorizer: Authorizer,
 }
 
 impl WebAuth {
@@ -59,6 +62,7 @@ impl WebAuth {
             origin,
             socket_slots: Arc::new(Semaphore::new(socket_capacity)),
             pool: database.pool().clone(),
+            authorizer: Authorizer::new(database),
         })
     }
 
@@ -113,6 +117,22 @@ impl From<AuthError> for Failure {
         }
     }
 }
+impl From<AccessError> for Failure {
+    fn from(error: AccessError) -> Self {
+        match error {
+            AccessError::Unauthenticated => Self(StatusCode::UNAUTHORIZED, "authentication_failed"),
+            AccessError::Denied | AccessError::InvalidInput => {
+                Self(StatusCode::NOT_FOUND, "tenant_not_found")
+            }
+            AccessError::FreshPasskeyRequired => {
+                Self(StatusCode::FORBIDDEN, "fresh_passkey_required")
+            }
+            AccessError::Conflict | AccessError::Unavailable => {
+                Self(StatusCode::SERVICE_UNAVAILABLE, "temporarily_unavailable")
+            }
+        }
+    }
+}
 impl IntoResponse for Failure {
     fn into_response(self) -> Response {
         (self.0, Json(serde_json::json!({ "error": self.1 }))).into_response()
@@ -125,6 +145,8 @@ pub fn router(state: Arc<WebAuth>) -> Router {
         .route("/api/sessions", get(list))
         .route("/api/session/logout", post(logout))
         .route("/api/sessions/{id}", delete(revoke))
+        .route("/api/tenants", get(tenants))
+        .route("/api/tenants/{id}", get(tenant))
         .route_layer(middleware::from_fn_with_state(state.clone(), authenticate));
     Router::new()
         .merge(protected)
@@ -265,13 +287,46 @@ async fn authenticate(
 struct SessionResponse {
     session: SessionInfo,
     csrf_token: String,
+    operator: Profile,
 }
 
-async fn current(Extension(context): Extension<Context>) -> Result<Json<SessionResponse>> {
+async fn current(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+) -> Result<Json<SessionResponse>> {
+    let operator = state
+        .auth
+        .profile(context.info.operator_id)
+        .await?
+        .ok_or(AuthError::InvalidCredentials)?;
     Ok(Json(SessionResponse {
         session: context.info,
         csrf_token: context.token.csrf()?.to_string(),
+        operator,
     }))
+}
+async fn tenants(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+) -> Result<Json<Vec<TenantSummary>>> {
+    Ok(Json(
+        state
+            .authorizer
+            .tenants(&state.sessions, &context.token)
+            .await?,
+    ))
+}
+async fn tenant(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<TenantContext>> {
+    Ok(Json(
+        state
+            .authorizer
+            .tenant_context(&state.sessions, &context.token, id)
+            .await?,
+    ))
 }
 async fn list(
     State(state): State<Arc<WebAuth>>,
@@ -486,13 +541,18 @@ async fn signed_in(
     .detail("method", method_name(issued.info.authentication_method));
     event.subject = Some(issued.info.operator_id);
     event.source = Some(source);
-    if state.record(&event).await.is_err() {
+    let operator = match state.record(&event).await {
+        Ok(()) => state.auth.profile(issued.info.operator_id).await,
+        Err(_) => Err(AuthError::Unavailable),
+    };
+    let Ok(Some(operator)) = operator else {
         let _ = state.sessions.revoke(&issued.token, issued.info.id).await;
         return Err(AuthError::Unavailable.into());
-    }
+    };
     let mut response = Json(SessionResponse {
         session: issued.info,
         csrf_token: issued.token.csrf()?.to_string(),
+        operator,
     })
     .into_response();
     set_cookie(

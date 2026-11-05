@@ -155,7 +155,7 @@ pub fn local_plaintext_from_env() -> Result<bool, TransportError> {
 
 async fn reset_context(connection: &mut PgConnection) -> Result<(), sqlx::Error> {
     sqlx::query(
-        "SELECT set_config('midas.tenant_id', '', false), set_config('row_security', 'on', false)",
+        "SELECT set_config('midas.tenant_id', '', false), set_config('midas.operator_id', '', false), set_config('row_security', 'on', false)",
     )
     .execute(connection)
     .await?;

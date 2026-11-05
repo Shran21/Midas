@@ -112,6 +112,12 @@ pub enum AuthenticationMethod {
     RecoveryCode,
 }
 
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct Profile {
+    pub login: String,
+    pub display_name: String,
+}
+
 #[derive(Debug)]
 pub struct Authenticated {
     operator: Uuid,
@@ -529,6 +535,15 @@ impl AuthService {
             version,
             AuthenticationMethod::RecoveryCode,
         ))
+    }
+
+    pub(crate) async fn profile(&self, operator: Uuid) -> Result<Option<Profile>> {
+        Ok(sqlx::query_as(
+            "SELECT login, display_name FROM midas.operators WHERE id = $1 AND enabled",
+        )
+        .bind(operator)
+        .fetch_optional(&self.pool)
+        .await?)
     }
 
     pub(crate) async fn operator_for_login(&self, login: &str) -> Result<Option<Uuid>> {
