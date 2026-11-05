@@ -34,6 +34,20 @@ A 20 bájtos véletlen TOTP-titkot XChaCha20-Poly1305 védi, véletlen 24 bájto
 
 A tíz helyreállító kód egyenként 256 bit véletlent tartalmaz, hexadecimális szövegként. Csak kiadáskor adhatók át a felhasználónak; az adatbázis kizárólag SHA-256 lenyomatot tárol. A felhasználás tranzakcióban törli a kódot. A kód újraindítás után is felhasznált marad; új készlet kiadása a teljes régit érvényteleníti. A helyreállító kód önálló belépési titok, biztonságos, a géptől elkülönített helyen tárolandó.
 
+### Első beállítás és saját passkey
+
+Az első adminisztrátort a kiszolgáló gazdagépén futtatott parancs engedélyezi. A `MIDAS_DATABASE_URL` és `MIDAS_AUTH_ORIGIN` beállításával:
+
+```text
+cargo run --locked -p midas-server --bin midas-setup
+```
+
+A parancs csak akkor ad egyszer használható, alapból 30 perces (`MIDAS_SETUP_MINUTES`, legfeljebb 1440) beállító hivatkozást, ha még nincs platformadminisztrátor. Az új hivatkozás érvényteleníti a korábbi, fel nem használtakat. A titok a hivatkozás `#setup=` részében van, ezért a böngésző nem küldi el kérésként, és a webpanel azonnal törli a címsorból. Az adatbázis csak lenyomatot tárol. A hivatkozást biztonságos csatornán, közvetlenül az első adminisztrátornak add át.
+
+A webpanel a végleges HTTPS-originen kéri a felhasználónevet és a nevet, majd felhasználó-ellenőrzéses passkeyt regisztrál. A befejezés soron belüli zárral fogyasztja el a felhatalmazást, platformadminisztrátorrá teszi a fiókot, auditál és passkeyes munkamenetet nyit. Lejárt, felhasznált, ismeretlen vagy másodszor beküldött felhatalmazás elutasított; a megszakadt kísérlet ugyanazzal a hivatkozással lejáratig folytatható. Más originről indított kérés elutasított.
+
+Bejelentkezés után bárki saját passkeyt regisztrálhat a Munkamenetek nézetben, ha öt percen belül lépett be; így a helyreállító kódokkal létrehozott technikus is áttérhet passkeyre. A regisztráció új munkamenetet ad, a régit visszavonja, és auditba kerül.
+
 ### Próbálkozáskorlátozás
 
 A szerver minden belépési kérés előtt közös, adatbázisban tárolt forrás-IP- és fiókkorlátot alkalmaz. Alapérték: öt perc alatt 100 kérés forrásonként és 20 fiókonként; a passkey-folyamat indítása és befejezése külön kérés. A korlátok állíthatók, a megújulás az adatbázis óráját használja, és az újraindítás nem nullázza őket. Ismeretlen felhasználónév is beleszámít. Adatbázishibánál nincs hitelesítés. A lejárt számlálók időszakosan törlődnek.
@@ -61,6 +75,20 @@ Passwords use Argon2id with independent random salts and `m=19456 KiB,t=2,p=1`. 
 TOTP uses six digits, SHA-1, 30-second steps and adjacent-step tolerance. Enrollment requires proof of possession and consumes its confirmation code. Atomic database updates enforce one use per accepted step, including concurrent attempts; incorrect passwords cannot consume valid codes. Seeds are 20 random bytes, encrypted with XChaCha20-Poly1305, a random 24-byte nonce and operator-bound authenticated context. Supply the 32-byte encryption key through `AuthConfig` from a separate protected secret store. Never log it or put it in Git/command-line arguments. File delivery requires restrictive service-account permissions/Windows ACLs and a protected backup. No automatic replacement key or key rotation is implemented; changing the key makes existing seeds unreadable.
 
 Ten recovery codes each contain 256 random bits, encoded as hexadecimal text. Return them only at issuance; only SHA-256 digests are stored. Transactional deletion permits one successful use, surviving restart. Replacement invalidates the entire old set. A recovery code is a standalone sign-in secret and should be stored securely away from the device.
+
+### First-run setup and own passkeys
+
+A command on the server host authorizes the first administrator. With `MIDAS_DATABASE_URL` and `MIDAS_AUTH_ORIGIN` set:
+
+```text
+cargo run --locked -p midas-server --bin midas-setup
+```
+
+It issues a single-use setup link valid for 30 minutes by default (`MIDAS_SETUP_MINUTES`, at most 1440) only while no platform administrator exists. A new link voids older unused ones. The secret is in the `#setup=` fragment, so browsers do not send it in requests, and the web panel removes it from the address bar at once. The database stores only a digest. Hand the link to the first administrator directly over a secure channel.
+
+On the final HTTPS origin the web panel asks for a login and name and registers a user-verified passkey. Completion consumes the authorization under a row lock, makes the account platform administrator, audits the event and opens a passkey session. Expired, used, unknown or repeated authorizations are rejected; an interrupted attempt can resume with the same link until it expires. Requests from other origins are rejected.
+
+Signed-in operators can register their own passkey in the Sessions view within five minutes of signing in, so technicians created with recovery codes can move to passkeys. Registration issues a new session, revokes the old one and is audited.
 
 All login paths share durable source-IP and account request limits, defaulting to 100/source and 20/account per five minutes. Passkey start and finish each count. Settings are configurable, expiry uses database time and restart does not reset limits. Unknown usernames count too; database failure denies authentication. Expired buckets are periodically deleted. HTTP integration uses the TCP peer address and ignores forwarded headers; explicit trusted-proxy configuration is not implemented. Passkey options reveal credential configuration. Uniform HTTP authentication errors and durable attempt limits mitigate, but do not eliminate, this discovery risk.
 

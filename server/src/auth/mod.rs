@@ -2,6 +2,7 @@ mod challenges;
 mod crypto;
 pub mod http;
 pub mod sessions;
+pub mod setup;
 
 use std::{
     fmt,
@@ -292,7 +293,7 @@ impl AuthService {
         id: &str,
         binding: &BrowserBinding,
         response: &RegisterPublicKeyCredential,
-    ) -> Result<()> {
+    ) -> Result<Authenticated> {
         let pending = self.challenges.take(id, binding)?;
         let Ceremony::Register(state) = pending.ceremony else {
             return Err(AuthError::InvalidCredentials);
@@ -312,7 +313,12 @@ impl AuthService {
         sqlx::query("INSERT INTO midas.passkeys (credential_id, operator_id, credential) VALUES ($1, $2, $3)")
             .bind(passkey.cred_id().as_slice()).bind(user).bind(encoded).execute(&mut *tx).await?;
         tx.commit().await?;
-        Ok(())
+        // Registration requires user verification, so it proves a fresh passkey ceremony.
+        Ok(authenticated(
+            user,
+            pending.version + 1,
+            AuthenticationMethod::Passkey,
+        ))
     }
 
     pub async fn begin_passkey_login(

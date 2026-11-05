@@ -35,6 +35,8 @@ names!(Action {
     SiteCreate => "inventory.site_create",
     OperatorCreate => "access.operator_create",
     PlatformAdminSet => "access.platform_admin_set",
+    SetupComplete => "setup.complete",
+    PasskeyRegister => "auth.passkey_register",
 });
 names!(Outcome {
     Success => "success",

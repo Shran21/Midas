@@ -29,6 +29,8 @@ export function errorText(error: unknown, t: Copy) {
       return t.notFound;
     case "conflict":
       return t.conflict;
+    case "recent_sign_in_required":
+      return t.recentSignInRequired;
     default:
       return t.errorUnavailable;
   }

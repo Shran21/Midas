@@ -169,6 +169,8 @@ pub fn router(state: Arc<WebAuth>) -> Router {
             delete(remove_override),
         )
         .route("/api/tenants/{id}/sites", get(sites).post(create_site))
+        .route("/api/account/passkeys/start", post(enroll_start))
+        .route("/api/account/passkeys/finish", post(enroll_finish))
         .route_layer(middleware::from_fn_with_state(state.clone(), authenticate));
     Router::new()
         .merge(protected)
@@ -176,6 +178,8 @@ pub fn router(state: Arc<WebAuth>) -> Router {
         .route("/api/auth/passkey/finish", post(passkey_finish))
         .route("/api/auth/password", post(password))
         .route("/api/auth/recovery", post(recovery))
+        .route("/api/setup/start", post(setup_start))
+        .route("/api/setup/finish", post(setup_finish))
         .route("/api/session/socket", get(upgrade))
         .layer(DefaultBodyLimit::max(65_536))
         .layer(middleware::from_fn_with_state(
@@ -750,6 +754,132 @@ async fn sign_in(
         }
         Err(error) => Err(error.into()),
     }
+}
+
+fn binding_from(headers: &HeaderMap) -> Result<BrowserBinding> {
+    let encoded = cookie(headers, BINDING_COOKIE)?.ok_or(AuthError::InvalidCredentials)?;
+    let mut bytes = Zeroizing::new([0; 32]);
+    if encoded.len() != 64 {
+        return Err(AuthError::InvalidCredentials.into());
+    }
+    hex::decode_to_slice(encoded, bytes.as_mut()).map_err(|_| AuthError::InvalidCredentials)?;
+    Ok(BrowserBinding::from_bytes(bytes)?)
+}
+
+fn with_binding<T: Serialize>(body: T, binding: &BrowserBinding) -> Result<Response> {
+    let mut response = Json(body).into_response();
+    set_cookie(
+        &mut response,
+        BINDING_COOKIE,
+        &hex::encode(binding.as_bytes()),
+        300,
+    )?;
+    Ok(response)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SetupStart {
+    token: String,
+    login: String,
+    display_name: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Registration {
+    id: String,
+    response: webauthn_rs::prelude::RegisterPublicKeyCredential,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SetupFinish {
+    token: String,
+    id: String,
+    response: webauthn_rs::prelude::RegisterPublicKeyCredential,
+}
+
+async fn setup_start(
+    State(state): State<Arc<WebAuth>>,
+    Json(body): Json<SetupStart>,
+) -> Result<Response> {
+    let binding = BrowserBinding::random()?;
+    let issued = state
+        .auth
+        .begin_setup(
+            &Zeroizing::new(body.token),
+            &body.login,
+            &body.display_name,
+            &binding,
+        )
+        .await?;
+    with_binding(issued, &binding)
+}
+
+async fn setup_finish(
+    State(state): State<Arc<WebAuth>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(body): Json<SetupFinish>,
+) -> Result<Response> {
+    let binding = binding_from(&headers)?;
+    let proof = state
+        .auth
+        .finish_setup(
+            &Zeroizing::new(body.token),
+            &body.id,
+            &binding,
+            &body.response,
+        )
+        .await?;
+    signed_in(&state, proof, &headers, peer.ip()).await
+}
+
+// Adding a credential to an account needs a recent sign-in, so an old stolen cookie cannot persist access.
+async fn enroll_start(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+) -> Result<Response> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| AuthError::Unavailable)?
+        .as_secs() as i64;
+    if now - context.info.authenticated_at > 300 {
+        return Err(Failure(StatusCode::FORBIDDEN, "recent_sign_in_required"));
+    }
+    let binding = BrowserBinding::random()?;
+    let issued = state
+        .auth
+        .begin_registration(context.info.operator_id, &binding)
+        .await?;
+    with_binding(issued, &binding)
+}
+
+async fn enroll_finish(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(body): Json<Registration>,
+) -> Result<Response> {
+    let binding = binding_from(&headers)?;
+    let proof = state
+        .auth
+        .finish_registration(&body.id, &binding, &body.response)
+        .await?;
+    if proof.operator_id() != context.info.operator_id {
+        return Err(AuthError::InvalidCredentials.into());
+    }
+    let mut event = Event::new(
+        Action::PasskeyRegister,
+        Outcome::Success,
+        Actor::session(&context.info),
+    );
+    event.subject = Some(context.info.operator_id);
+    event.source = Some(peer.ip());
+    state.record_best_effort(&event).await;
+    signed_in(&state, proof, &headers, peer.ip()).await
 }
 
 async fn signed_in(

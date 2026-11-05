@@ -241,6 +241,17 @@ const hu = {
   conflict: "Már létezik ilyen elem.",
   accessIntro:
     "A változások azonnal érvényesek és auditba kerülnek. Tiltás mindig erősebb az engedélynél.",
+  setupTitle: "Első beállítás",
+  setupIntro:
+    "Hozd létre az első adminisztrátort. A passkey ehhez a végleges címhez kötődik.",
+  setupAction: "Passkey létrehozása és belépés",
+  setupInvalid:
+    "A beállító hivatkozás érvénytelen, lejárt vagy már felhasznált. Kérj újat a kiszolgáló üzemeltetőjétől.",
+  addPasskey: "Passkey hozzáadása",
+  addPasskeyHint:
+    "Regisztrálj saját passkeyt; a kiemelt műveletekhez erre lesz szükség.",
+  recentSignInRequired:
+    "Passkey hozzáadásához öt percen belüli belépés kell. Lépj be újra.",
 };
 
 const en: Record<keyof typeof hu, string> = {
@@ -480,6 +491,16 @@ const en: Record<keyof typeof hu, string> = {
   conflict: "Such an item already exists.",
   accessIntro:
     "Changes apply immediately and are audited. A denial always wins over an allow.",
+  setupTitle: "First-run setup",
+  setupIntro:
+    "Create the first administrator. The passkey is bound to this final address.",
+  setupAction: "Create passkey and sign in",
+  setupInvalid:
+    "The setup link is invalid, expired or already used. Ask the server operator for a new one.",
+  addPasskey: "Add passkey",
+  addPasskeyHint: "Register your own passkey; privileged actions require it.",
+  recentSignInRequired:
+    "Adding a passkey needs a sign-in within the last five minutes. Sign in again.",
 };
 
 export const translations = { hu, en };

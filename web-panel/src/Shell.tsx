@@ -96,10 +96,12 @@ export function Shell({
   preferences,
   signedIn,
   onSignedOut,
+  onSessionReplaced,
 }: {
   preferences: Preferences;
   signedIn: SignedIn;
   onSignedOut: (reason: SignOutReason) => void;
+  onSessionReplaced: (session: SignedIn) => void;
 }) {
   const { language } = preferences;
   const t = translations[language];
@@ -271,6 +273,7 @@ export function Shell({
         current={signedIn}
         fail={fail}
         onSignedOut={onSignedOut}
+        onSessionReplaced={onSessionReplaced}
       />
     );
   } else if (tenants.state === "loading") {
@@ -503,12 +506,14 @@ function Sessions({
   current,
   fail,
   onSignedOut,
+  onSessionReplaced,
 }: {
   t: Copy;
   language: Language;
   current: SignedIn;
   fail: (error: unknown) => boolean;
   onSignedOut: (reason: SignOutReason) => void;
+  onSessionReplaced: (session: SignedIn) => void;
 }) {
   const [items, setItems] = useState<Load<Session[]>>({ state: "loading" });
   const [error, setError] = useState<string | null>(null);
@@ -574,8 +579,22 @@ function Sessions({
         }
       />
     );
+  const addPasskey = async () => {
+    setError(null);
+    try {
+      onSessionReplaced(await api.addPasskey(current.csrf_token));
+    } catch (failure) {
+      if (!fail(failure)) setError(errorText(failure, t));
+    }
+  };
   return (
     <section className="panel sessions-panel">
+      <div className="passkey-row">
+        <p className="muted">{t.addPasskeyHint}</p>
+        <button type="button" className="button primary" onClick={addPasskey}>
+          {t.addPasskey}
+        </button>
+      </div>
       {error && (
         <p className="form-error" role="alert">
           {error}

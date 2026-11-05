@@ -15,6 +15,8 @@ mod authentication;
 mod authorization;
 #[path = "support/sessions.rs"]
 mod sessions;
+#[path = "support/setup.rs"]
+mod setup;
 #[path = "support/tenants.rs"]
 mod tenants;
 
@@ -333,6 +335,7 @@ async fn postgres_isolates_tenants_and_reused_connections() {
     authorization::verify(&authentication_database, &mut admin, &pool).await;
     audit::verify(&authentication_database, &mut admin, &pool).await;
     tenants::verify(&authentication_database, &mut admin, &pool).await;
+    setup::verify(&authentication_database, &mut admin).await;
     administration::verify(&authentication_database, &mut admin).await;
     authentication_database.close().await;
     pool.close().await;

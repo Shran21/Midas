@@ -199,6 +199,32 @@ export const api = {
       body: { login, display_name },
       csrf,
     }),
+  setup: async (token: string, login: string, display_name: string) => {
+    const issued = await request<{
+      id: string;
+      options: { publicKey: Record<string, unknown> };
+    }>("/api/setup/start", {
+      method: "POST",
+      body: { token, login, display_name },
+    });
+    const response = await createCredential(issued.options.publicKey);
+    return request<SignedIn>("/api/setup/finish", {
+      method: "POST",
+      body: { token, id: issued.id, response },
+    });
+  },
+  addPasskey: async (csrf: string) => {
+    const issued = await request<{
+      id: string;
+      options: { publicKey: Record<string, unknown> };
+    }>("/api/account/passkeys/start", { method: "POST", body: {}, csrf });
+    const response = await createCredential(issued.options.publicKey);
+    return request<SignedIn>("/api/account/passkeys/finish", {
+      method: "POST",
+      body: { id: issued.id, response },
+      csrf,
+    });
+  },
   logout: (csrf: string) =>
     request<void>("/api/session/logout", { method: "POST", csrf }),
 };
@@ -252,6 +278,50 @@ async function getCredential(options: Record<string, unknown>) {
       clientDataJSON: encode(response.clientDataJSON),
       signature: encode(response.signature),
       userHandle: encode(response.userHandle),
+    },
+  };
+}
+
+async function createCredential(options: Record<string, unknown>) {
+  if (!window.PublicKeyCredential || !navigator.credentials) {
+    throw new ApiError(0, "passkey_unsupported");
+  }
+  const user = options.user as {
+    id: string;
+    name: string;
+    displayName: string;
+  };
+  const exclude = Array.isArray(options.excludeCredentials)
+    ? (options.excludeCredentials as { id: string; type: string }[])
+    : [];
+  let credential: Credential | null;
+  try {
+    credential = await navigator.credentials.create({
+      publicKey: {
+        ...(options as unknown as PublicKeyCredentialCreationOptions),
+        challenge: decode(String(options.challenge)),
+        user: { ...user, id: decode(user.id) },
+        excludeCredentials: exclude.map((item) => ({
+          type: "public-key",
+          id: decode(item.id),
+        })),
+      },
+    });
+  } catch {
+    throw new ApiError(0, "passkey_cancelled");
+  }
+  if (!(credential instanceof PublicKeyCredential)) {
+    throw new ApiError(0, "passkey_cancelled");
+  }
+  const response = credential.response as AuthenticatorAttestationResponse;
+  return {
+    id: credential.id,
+    rawId: encode(credential.rawId),
+    type: credential.type,
+    extensions: {},
+    response: {
+      attestationObject: encode(response.attestationObject),
+      clientDataJSON: encode(response.clientDataJSON),
     },
   };
 }
