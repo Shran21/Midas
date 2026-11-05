@@ -7,6 +7,8 @@ use uuid::Uuid;
 
 #[path = "support/authentication.rs"]
 mod authentication;
+#[path = "support/authorization.rs"]
+mod authorization;
 #[path = "support/sessions.rs"]
 mod sessions;
 
@@ -289,6 +291,18 @@ async fn postgres_isolates_tenants_and_reused_connections() {
             "ALTER TABLE midas.sites NO FORCE ROW LEVEL SECURITY",
             "ALTER TABLE midas.sites FORCE ROW LEVEL SECURITY",
         ),
+        (
+            "ALTER TABLE midas.role_assignments NO FORCE ROW LEVEL SECURITY",
+            "ALTER TABLE midas.role_assignments FORCE ROW LEVEL SECURITY",
+        ),
+        (
+            "ALTER TABLE midas.tenant_memberships NO FORCE ROW LEVEL SECURITY",
+            "ALTER TABLE midas.tenant_memberships FORCE ROW LEVEL SECURITY",
+        ),
+        (
+            "ALTER TABLE midas.permission_overrides NO FORCE ROW LEVEL SECURITY",
+            "ALTER TABLE midas.permission_overrides FORCE ROW LEVEL SECURITY",
+        ),
     ] {
         sqlx::raw_sql(grant).execute(&mut admin).await.unwrap();
         assert!(Database::connect(&runtime_url, true, 1).await.is_err());
@@ -310,6 +324,7 @@ async fn postgres_isolates_tenants_and_reused_connections() {
     let authentication_database = Database::connect(&runtime_url, true, 4).await.unwrap();
     authentication::verify(&authentication_database, &mut admin).await;
     sessions::verify(&authentication_database, &mut admin).await;
+    authorization::verify(&authentication_database, &mut admin, &pool).await;
     authentication_database.close().await;
     pool.close().await;
     database.close().await;

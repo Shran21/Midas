@@ -4,6 +4,7 @@ use axum::{Json, Router, routing::get};
 use serde::Serialize;
 
 pub mod auth;
+pub mod authorization;
 pub mod config;
 pub mod database;
 pub mod transport;

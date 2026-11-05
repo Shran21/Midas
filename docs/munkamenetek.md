@@ -4,7 +4,7 @@
 
 ## Magyar
 
-A HTTPS-szerver már kiszolgálja a passkey-, jelszó+TOTP- és helyreállítókód-belépést, valamint a saját munkamenetek megtekintését és visszavonását. A webpanel belépőképernyője, az első adminisztrátor létrehozása és az ügyfélre/eszközre szűkített RBAC külön feladat. Nincs nyilvános regisztráció, alapértelmezett fiók vagy általános rendszergazdai hozzáférés pusztán a belépés miatt.
+A HTTPS-szerver már kiszolgálja a passkey-, jelszó+TOTP- és helyreállítókód-belépést, valamint a saját munkamenetek megtekintését és visszavonását. A webpanel belépőképernyője, az első adminisztrátor létrehozása és a [jogosultsági modul](jogosultsagok.md) bekötése az eszközműveletekbe külön feladat. Nincs nyilvános regisztráció, alapértelmezett fiók vagy általános rendszergazdai hozzáférés pusztán a belépés miatt.
 
 ### Bekapcsolás
 
@@ -66,7 +66,7 @@ Források: [OWASP munkamenetek](https://cheatsheetseries.owasp.org/cheatsheets/S
 
 ## English
 
-The HTTPS server provides passkey, password+TOTP and recovery-code login, plus inspection and revocation of an operator's own browser sessions. The sign-in UI, first-administrator setup and tenant/device RBAC remain separate work. There is no open registration, default account or implied administrative access.
+The HTTPS server provides passkey, password+TOTP and recovery-code login, plus inspection and revocation of an operator's own browser sessions. The sign-in UI, first-administrator setup and integration of [authorization](jogosultsagok.md#english) into device operations remain separate work. There is no open registration, default account or implied administrative access.
 
 ### Configuration
 

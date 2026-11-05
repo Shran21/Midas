@@ -8,7 +8,7 @@ A `midas_server::auth` belső szolgáltatás passkeyt, jelszó+TOTP belépést �
 
 ### Identitás és hozzáférés
 
-A technikus identitása több ügyfélhez kapcsolódhat, ezért az `operators`, `passkeys`, `recovery_codes` és `authentication_attempts` táblák globális hitelesítési adatok. Nem tartalmaznak ügyféloldali eszközadatot, és nem a tenant-RLS választja ki a bejelentkező felhasználót. A korlátozott futtatófiók éri el őket; a későbbi RBAC ellenőrzi külön, melyik ügyfélhez, géphez és művelethez van joga a hitelesített technikusnak.
+A technikus identitása több ügyfélhez kapcsolódhat, ezért az `operators`, `passkeys`, `recovery_codes` és `authentication_attempts` táblák globális hitelesítési adatok. Nem tartalmaznak ügyféloldali eszközadatot, és nem a tenant-RLS választja ki a bejelentkező felhasználót. A korlátozott futtatófiók éri el őket; a [jogosultsági modul](jogosultsagok.md) ellenőrzi külön, melyik ügyfélhez, géphez és művelethez van joga a hitelesített technikusnak.
 
 Az `Authenticated` eredményt csak sikeres ellenőrzés állítja elő. Tartalmazza a technikus azonosítóját, a hitelesítők verzióját, az ellenőrzés időpontját és módját: `passkey`, `password_totp` vagy `recovery_code`. A tartalék mód nem jelent friss passkey-megerősítést. A munkamenet- és műveleti rétegnek ezt, az érvényességet és a fiók aktuális állapotát is ellenőriznie kell.
 
@@ -50,7 +50,7 @@ Források: [webauthn-rs](https://docs.rs/webauthn-rs/0.5.5/webauthn_rs/), [OWASP
 
 The internal `midas_server::auth` service implements passkeys, password+TOTP fallback and single-use recovery codes with durable PostgreSQL storage. [Browser sessions, HTTP endpoints and CSRF](munkamenetek.md#english) can now be enabled on the HTTPS server. Sign-in UI and initial setup remain separate work; the web panel is still a preview.
 
-Operators are global identities that can later receive access to multiple tenants. Authentication tables are not tenant inventory and do not use tenant RLS to identify a signing-in operator. The restricted runtime role accesses them; future RBAC must separately authorize each tenant, device and operation. `Authenticated` carries the operator ID, credential version, verification time and method. TOTP/recovery never imply fresh passkey verification. Session and operation layers must validate these fields and the current account state.
+Operators are global identities that can later receive access to multiple tenants. Authentication tables are not tenant inventory and do not use tenant RLS to identify a signing-in operator. The restricted runtime role accesses them; the [authorization module](jogosultsagok.md#english) separately checks each tenant, device and operation. `Authenticated` carries the operator ID, credential version, verification time and method. TOTP/recovery never imply fresh passkey verification. Session and operation layers must validate these fields and the current account state.
 
 Account creation, credential enrollment and recovery-code replacement are trusted internal provisioning operations. Guard them with setup authorization or administrative authentication/RBAC before exposing HTTP routes. There is no open registration or default account/password. Credential changes increment a version and invalidate ceremonies begun against an older version.
 
