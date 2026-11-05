@@ -3,6 +3,7 @@ use std::net::SocketAddr;
 use axum::{Json, Router, routing::get};
 use serde::Serialize;
 
+pub mod administration;
 pub mod audit;
 pub mod auth;
 pub mod authorization;

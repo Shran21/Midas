@@ -1,0 +1,38 @@
+import type { Language } from "./i18n";
+
+export const permissionNames: Record<Language, Record<string, string>> = {
+  hu: {
+    "device.read": "Eszközadatok megtekintése",
+    "monitor.read": "Monitorozás megtekintése",
+    "remote.view": "Képernyő megtekintése",
+    "remote.control": "Normál távvezérlés",
+    "remote.admin": "Rendszergazdai távvezérlés",
+    "remote.uac.interact": "UAC kezelése",
+    "remote.unattended": "Felügyelet nélküli szerverelérés",
+    "terminal.execute": "Háttérterminál",
+    "files.read": "Fájlok olvasása",
+    "files.write": "Fájlok módosítása",
+    "script.execute": "Szkriptfuttatás",
+    "updates.manage": "Frissítések kezelése",
+    "domain.join": "Tartományba léptetés",
+    "access.manage": "Hozzáférés kezelése",
+    "audit.read": "Audit olvasása",
+  },
+  en: {
+    "device.read": "View device data",
+    "monitor.read": "View monitoring",
+    "remote.view": "View screen",
+    "remote.control": "Normal remote control",
+    "remote.admin": "Administrative remote control",
+    "remote.uac.interact": "Interact with UAC",
+    "remote.unattended": "Unattended server access",
+    "terminal.execute": "Background terminal",
+    "files.read": "Read files",
+    "files.write": "Modify files",
+    "script.execute": "Run scripts",
+    "updates.manage": "Manage updates",
+    "domain.join": "Join domain",
+    "access.manage": "Manage access",
+    "audit.read": "Read audit",
+  },
+};

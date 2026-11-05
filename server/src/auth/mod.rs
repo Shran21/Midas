@@ -116,6 +116,7 @@ pub enum AuthenticationMethod {
 pub struct Profile {
     pub login: String,
     pub display_name: String,
+    pub platform_admin: bool,
 }
 
 #[derive(Debug)]
@@ -539,7 +540,7 @@ impl AuthService {
 
     pub(crate) async fn profile(&self, operator: Uuid) -> Result<Option<Profile>> {
         Ok(sqlx::query_as(
-            "SELECT login, display_name FROM midas.operators WHERE id = $1 AND enabled",
+            "SELECT login, display_name, platform_admin FROM midas.operators WHERE id = $1 AND enabled",
         )
         .bind(operator)
         .fetch_optional(&self.pool)

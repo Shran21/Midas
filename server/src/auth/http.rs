@@ -13,7 +13,7 @@ use axum::{
     http::{HeaderMap, HeaderValue, Method, StatusCode, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
 };
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -28,9 +28,12 @@ use super::{
     sessions::{SessionConfig, SessionInfo, SessionToken, Sessions},
 };
 use crate::{
+    administration::{Administration, CreatedOperator, Member, RoleView},
     audit::{self, Action, Actor, Event, Outcome},
-    authorization::{AccessError, Authorizer, TenantContext, TenantSummary},
-    database::Database,
+    authorization::{
+        AccessError, Authorizer, Effect, Permission, Rule, Scope, TenantContext, TenantSummary,
+    },
+    database::{Database, Site},
 };
 
 const SESSION_COOKIE: &str = "__Host-midas-session";
@@ -43,6 +46,7 @@ pub struct WebAuth {
     socket_slots: Arc<Semaphore>,
     pool: PgPool,
     authorizer: Authorizer,
+    administration: Administration,
 }
 
 impl WebAuth {
@@ -63,6 +67,7 @@ impl WebAuth {
             socket_slots: Arc::new(Semaphore::new(socket_capacity)),
             pool: database.pool().clone(),
             authorizer: Authorizer::new(database),
+            administration: Administration::new(database),
         })
     }
 
@@ -121,13 +126,14 @@ impl From<AccessError> for Failure {
     fn from(error: AccessError) -> Self {
         match error {
             AccessError::Unauthenticated => Self(StatusCode::UNAUTHORIZED, "authentication_failed"),
-            AccessError::Denied | AccessError::InvalidInput => {
-                Self(StatusCode::NOT_FOUND, "tenant_not_found")
-            }
+            AccessError::Denied => Self(StatusCode::NOT_FOUND, "not_found"),
+            AccessError::InvalidInput => Self(StatusCode::BAD_REQUEST, "invalid_request"),
+            AccessError::Escalation => Self(StatusCode::FORBIDDEN, "escalation_denied"),
             AccessError::FreshPasskeyRequired => {
                 Self(StatusCode::FORBIDDEN, "fresh_passkey_required")
             }
-            AccessError::Conflict | AccessError::Unavailable => {
+            AccessError::Conflict => Self(StatusCode::CONFLICT, "conflict"),
+            AccessError::Unavailable => {
                 Self(StatusCode::SERVICE_UNAVAILABLE, "temporarily_unavailable")
             }
         }
@@ -147,6 +153,22 @@ pub fn router(state: Arc<WebAuth>) -> Router {
         .route("/api/sessions/{id}", delete(revoke))
         .route("/api/tenants", get(tenants))
         .route("/api/tenants/{id}", get(tenant))
+        .route("/api/roles", get(roles))
+        .route("/api/admin/tenants", post(create_tenant))
+        .route("/api/admin/operators", post(create_operator))
+        .route("/api/tenants/{id}/members", get(members).post(add_member))
+        .route("/api/tenants/{id}/members/{operator}", put(set_member))
+        .route("/api/tenants/{id}/assignments", post(assign))
+        .route(
+            "/api/tenants/{id}/assignments/{assignment}",
+            delete(unassign),
+        )
+        .route("/api/tenants/{id}/overrides", post(set_override))
+        .route(
+            "/api/tenants/{id}/overrides/{rule}",
+            delete(remove_override),
+        )
+        .route("/api/tenants/{id}/sites", get(sites).post(create_site))
         .route_layer(middleware::from_fn_with_state(state.clone(), authenticate));
     Router::new()
         .merge(protected)
@@ -375,6 +397,211 @@ async fn revoke(
         set_cookie(&mut response, SESSION_COOKIE, "", 0)?;
     }
     Ok(response)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Named {
+    name: String,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NewOperator {
+    login: String,
+    display_name: String,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Enabled {
+    enabled: bool,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NewAssignment {
+    operator: Uuid,
+    role: Uuid,
+    scope: Scope,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NewOverride {
+    operator: Uuid,
+    permission: Permission,
+    effect: Effect,
+    scope: Scope,
+}
+#[derive(Serialize)]
+struct Created {
+    id: Uuid,
+}
+
+async fn roles(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+) -> Result<Json<Vec<RoleView>>> {
+    Ok(Json(
+        state
+            .administration
+            .roles(&state.sessions, &context.token)
+            .await?,
+    ))
+}
+async fn create_tenant(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Json(body): Json<Named>,
+) -> Result<(StatusCode, Json<TenantSummary>)> {
+    let tenant = state
+        .administration
+        .create_tenant(&state.sessions, &context.token, &body.name)
+        .await?;
+    Ok((StatusCode::CREATED, Json(tenant)))
+}
+async fn create_operator(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Json(body): Json<NewOperator>,
+) -> Result<(StatusCode, Json<CreatedOperator>)> {
+    let operator = state
+        .administration
+        .create_operator(
+            &state.auth,
+            &state.sessions,
+            &context.token,
+            &body.login,
+            &body.display_name,
+        )
+        .await?;
+    Ok((StatusCode::CREATED, Json(operator)))
+}
+async fn members(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Vec<Member>>> {
+    Ok(Json(
+        state
+            .administration
+            .members(&state.sessions, &context.token, id)
+            .await?,
+    ))
+}
+async fn add_member(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<Login>,
+) -> Result<(StatusCode, Json<Created>)> {
+    let operator = state
+        .administration
+        .add_member(&state.sessions, &context.token, id, &body.login)
+        .await?;
+    Ok((StatusCode::CREATED, Json(Created { id: operator })))
+}
+async fn set_member(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((id, operator)): Path<(Uuid, Uuid)>,
+    Json(body): Json<Enabled>,
+) -> Result<StatusCode> {
+    state
+        .administration
+        .set_member(&state.sessions, &context.token, id, operator, body.enabled)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+async fn assign(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<NewAssignment>,
+) -> Result<(StatusCode, Json<Created>)> {
+    let assignment = state
+        .administration
+        .assign_role(
+            &state.sessions,
+            &context.token,
+            id,
+            body.operator,
+            body.role,
+            body.scope,
+        )
+        .await?;
+    Ok((StatusCode::CREATED, Json(Created { id: assignment })))
+}
+async fn unassign(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((id, assignment)): Path<(Uuid, Uuid)>,
+) -> Result<StatusCode> {
+    if !state
+        .administration
+        .remove_assignment(&state.sessions, &context.token, id, assignment)
+        .await?
+    {
+        return Err(Failure(StatusCode::NOT_FOUND, "not_found"));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+async fn set_override(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<NewOverride>,
+) -> Result<(StatusCode, Json<Created>)> {
+    let rule = state
+        .administration
+        .set_override(
+            &state.sessions,
+            &context.token,
+            id,
+            body.operator,
+            body.scope,
+            Rule {
+                permission: body.permission,
+                effect: body.effect,
+            },
+        )
+        .await?;
+    Ok((StatusCode::CREATED, Json(Created { id: rule })))
+}
+async fn remove_override(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((id, rule)): Path<(Uuid, Uuid)>,
+) -> Result<StatusCode> {
+    if !state
+        .administration
+        .remove_override(&state.sessions, &context.token, id, rule)
+        .await?
+    {
+        return Err(Failure(StatusCode::NOT_FOUND, "not_found"));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+async fn sites(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Vec<Site>>> {
+    Ok(Json(
+        state
+            .administration
+            .sites(&state.sessions, &context.token, id)
+            .await?,
+    ))
+}
+async fn create_site(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<Named>,
+) -> Result<(StatusCode, Json<Site>)> {
+    let site = state
+        .administration
+        .create_site(&state.sessions, &context.token, id, &body.name)
+        .await?;
+    Ok((StatusCode::CREATED, Json(site)))
 }
 
 #[derive(Deserialize)]

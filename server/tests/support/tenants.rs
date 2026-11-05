@@ -194,7 +194,7 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
     let (cookie, signed_in) = sign_in(&app, "tenant-user", &codes[0]).await;
     assert_eq!(
         signed_in["operator"],
-        json!({ "login": "tenant-user", "display_name": "Ügyfélkezelő" })
+        json!({ "login": "tenant-user", "display_name": "Ügyfélkezelő", "platform_admin": false })
     );
     let (status, session) = call(&app, "GET", "/api/session", Some(&cookie), None).await;
     assert_eq!(status, StatusCode::OK);
@@ -241,7 +241,7 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
         )
         .await;
         assert_eq!(status, StatusCode::NOT_FOUND);
-        assert_eq!(body, json!({ "error": "tenant_not_found" }));
+        assert_eq!(body, json!({ "error": "not_found" }));
     }
     assert_eq!(
         call(&app, "GET", "/api/tenants/not-a-uuid", Some(&cookie), None)

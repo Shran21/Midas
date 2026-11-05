@@ -2,6 +2,7 @@
 use std::{fs, path::PathBuf};
 
 use midas_server::{
+    administration::Administration,
     audit::Actor,
     auth::{AuthConfig, AuthService},
     authorization::{Authorizer, BuiltinRole, Scope},
@@ -64,6 +65,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tenants.push(tenant);
     }
     let (admin, observer) = (operators[0], operators[1]);
+    Administration::new(&database)
+        .set_platform_admin(admin, true, Actor::SYSTEM)
+        .await
+        .map_err(|e| e.to_string())?;
     for (tenant, operator, role) in [
         (tenants[0], admin, BuiltinRole::Administrator),
         (tenants[1], admin, BuiltinRole::Technician),

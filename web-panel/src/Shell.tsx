@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { AccessView, CustomersView } from "./Access";
 import {
   ApiError,
   api,
@@ -16,6 +17,7 @@ import {
 } from "./api";
 import { Icon, type IconName } from "./Icon";
 import { type Copy, type Language, translations } from "./i18n";
+import { permissionNames } from "./permissions";
 import { type Preferences, remember, stored } from "./preferences";
 import { errorText, PreferenceControls } from "./SignIn";
 
@@ -28,6 +30,7 @@ type Section =
   | "automation"
   | "access"
   | "audit"
+  | "customers"
   | "sessions";
 
 const requirements: Record<Section, string[]> = {
@@ -37,6 +40,7 @@ const requirements: Record<Section, string[]> = {
   automation: ["script.execute", "updates.manage"],
   access: ["access.manage"],
   audit: ["audit.read"],
+  customers: [],
   sessions: [],
 };
 const tenantSections: [Section, IconName][] = [
@@ -47,43 +51,6 @@ const tenantSections: [Section, IconName][] = [
   ["access", "shield"],
   ["audit", "list"],
 ];
-
-const permissionNames: Record<Language, Record<string, string>> = {
-  hu: {
-    "device.read": "Eszközadatok megtekintése",
-    "monitor.read": "Monitorozás megtekintése",
-    "remote.view": "Képernyő megtekintése",
-    "remote.control": "Normál távvezérlés",
-    "remote.admin": "Rendszergazdai távvezérlés",
-    "remote.uac.interact": "UAC kezelése",
-    "remote.unattended": "Felügyelet nélküli szerverelérés",
-    "terminal.execute": "Háttérterminál",
-    "files.read": "Fájlok olvasása",
-    "files.write": "Fájlok módosítása",
-    "script.execute": "Szkriptfuttatás",
-    "updates.manage": "Frissítések kezelése",
-    "domain.join": "Tartományba léptetés",
-    "access.manage": "Hozzáférés kezelése",
-    "audit.read": "Audit olvasása",
-  },
-  en: {
-    "device.read": "View device data",
-    "monitor.read": "View monitoring",
-    "remote.view": "View screen",
-    "remote.control": "Normal remote control",
-    "remote.admin": "Administrative remote control",
-    "remote.uac.interact": "Interact with UAC",
-    "remote.unattended": "Unattended server access",
-    "terminal.execute": "Background terminal",
-    "files.read": "Read files",
-    "files.write": "Modify files",
-    "script.execute": "Run scripts",
-    "updates.manage": "Manage updates",
-    "domain.join": "Join domain",
-    "access.manage": "Manage access",
-    "audit.read": "Read audit",
-  },
-};
 
 type Load<T> =
   | { state: "loading" }
@@ -282,11 +249,21 @@ export function Shell({
     automation: t.automationDescription,
     access: t.accessDescription,
     audit: t.auditDescription,
+    customers: t.customersAdminDescription,
     sessions: t.sessionsDescription,
   };
 
   let content: ReactNode;
-  if (section === "sessions") {
+  if (section === "customers" && signedIn.operator.platform_admin) {
+    content = (
+      <CustomersView
+        t={t}
+        csrf={signedIn.csrf_token}
+        fail={fail}
+        onTenantCreated={() => setReload((n) => n + 1)}
+      />
+    );
+  } else if (section === "sessions") {
     content = (
       <Sessions
         t={t}
@@ -384,6 +361,17 @@ export function Shell({
         )}
       </section>
     );
+  } else if (section === "access" && tenantId) {
+    content = (
+      <AccessView
+        key={tenantId}
+        tenant={tenantId}
+        t={t}
+        language={language}
+        csrf={signedIn.csrf_token}
+        fail={fail}
+      />
+    );
   } else if (section === "devices") {
     content = (
       <Empty icon="monitor" title={t.noDevicesTitle} hint={t.noDevicesHint} />
@@ -424,6 +412,12 @@ export function Shell({
             <p className="nav-label">{tenantName ?? t.tenant}</p>
             {tenantSections.map(([target, icon]) => navItem(target, icon))}
           </div>
+          {signedIn.operator.platform_admin && (
+            <div className="nav-group">
+              <p className="nav-label">{t.platform}</p>
+              {navItem("customers", "building")}
+            </div>
+          )}
           <div className="nav-group">
             <p className="nav-label">{t.account}</p>
             {navItem("sessions", "clock")}
@@ -483,11 +477,13 @@ export function Shell({
         <main id="main" tabIndex={-1}>
           <div className="page-heading">
             <div>
-              {section !== "sessions" && tenantName && (
-                <p className="eyebrow">
-                  {t.tenant}: {tenantName}
-                </p>
-              )}
+              {section !== "sessions" &&
+                section !== "customers" &&
+                tenantName && (
+                  <p className="eyebrow">
+                    {t.tenant}: {tenantName}
+                  </p>
+                )}
               <h1 ref={heading} tabIndex={-1}>
                 {title}
               </h1>

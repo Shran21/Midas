@@ -31,6 +31,10 @@ names!(Action {
     OverrideSet => "access.override_set",
     OverrideRemove => "access.override_remove",
     RemoteRequest => "remote.request",
+    TenantCreate => "tenant.create",
+    SiteCreate => "inventory.site_create",
+    OperatorCreate => "access.operator_create",
+    PlatformAdminSet => "access.platform_admin_set",
 });
 names!(Outcome {
     Success => "success",

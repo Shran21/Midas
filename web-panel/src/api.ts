@@ -11,7 +11,42 @@ export type Session = {
 export type SignedIn = {
   session: Session;
   csrf_token: string;
-  operator: { login: string; display_name: string };
+  operator: { login: string; display_name: string; platform_admin: boolean };
+};
+export type Scope =
+  | { kind: "tenant" }
+  | { kind: "site" | "group" | "device"; id: string };
+export type Site = { id: string; name: string };
+export type Role = {
+  id: string;
+  name: string;
+  builtin: boolean;
+  allows: string[];
+  denies: string[];
+};
+export type Member = {
+  operator_id: string;
+  login: string;
+  display_name: string;
+  enabled: boolean;
+  assignments: {
+    id: string;
+    role_id: string;
+    role_name: string;
+    scope: Scope;
+  }[];
+  overrides: {
+    id: string;
+    permission: string;
+    effect: "allow" | "deny";
+    scope: Scope;
+  }[];
+};
+export type CreatedOperator = {
+  id: string;
+  login: string;
+  display_name: string;
+  recovery_codes: string[];
 };
 export type Tenant = { id: string; name: string };
 export type TenantContext = Tenant & { capabilities: string[] };
@@ -91,6 +126,77 @@ export const api = {
   revoke: (id: string, csrf: string) =>
     request<void>(`/api/sessions/${encodeURIComponent(id)}`, {
       method: "DELETE",
+      csrf,
+    }),
+  roles: () => request<Role[]>("/api/roles"),
+  members: (tenant: string) =>
+    request<Member[]>(`/api/tenants/${encodeURIComponent(tenant)}/members`),
+  sites: (tenant: string) =>
+    request<Site[]>(`/api/tenants/${encodeURIComponent(tenant)}/sites`),
+  createSite: (tenant: string, name: string, csrf: string) =>
+    request<Site>(`/api/tenants/${encodeURIComponent(tenant)}/sites`, {
+      method: "POST",
+      body: { name },
+      csrf,
+    }),
+  addMember: (tenant: string, login: string, csrf: string) =>
+    request<{ id: string }>(
+      `/api/tenants/${encodeURIComponent(tenant)}/members`,
+      { method: "POST", body: { login }, csrf },
+    ),
+  setMember: (
+    tenant: string,
+    operator: string,
+    enabled: boolean,
+    csrf: string,
+  ) =>
+    request<void>(
+      `/api/tenants/${encodeURIComponent(tenant)}/members/${encodeURIComponent(operator)}`,
+      { method: "PUT", body: { enabled }, csrf },
+    ),
+  assign: (
+    tenant: string,
+    body: { operator: string; role: string; scope: Scope },
+    csrf: string,
+  ) =>
+    request<{ id: string }>(
+      `/api/tenants/${encodeURIComponent(tenant)}/assignments`,
+      { method: "POST", body, csrf },
+    ),
+  unassign: (tenant: string, id: string, csrf: string) =>
+    request<void>(
+      `/api/tenants/${encodeURIComponent(tenant)}/assignments/${encodeURIComponent(id)}`,
+      { method: "DELETE", csrf },
+    ),
+  override: (
+    tenant: string,
+    body: {
+      operator: string;
+      permission: string;
+      effect: "allow" | "deny";
+      scope: Scope;
+    },
+    csrf: string,
+  ) =>
+    request<{ id: string }>(
+      `/api/tenants/${encodeURIComponent(tenant)}/overrides`,
+      { method: "POST", body, csrf },
+    ),
+  removeOverride: (tenant: string, id: string, csrf: string) =>
+    request<void>(
+      `/api/tenants/${encodeURIComponent(tenant)}/overrides/${encodeURIComponent(id)}`,
+      { method: "DELETE", csrf },
+    ),
+  createTenant: (name: string, csrf: string) =>
+    request<Tenant>("/api/admin/tenants", {
+      method: "POST",
+      body: { name },
+      csrf,
+    }),
+  createOperator: (login: string, display_name: string, csrf: string) =>
+    request<CreatedOperator>("/api/admin/operators", {
+      method: "POST",
+      body: { login, display_name },
       csrf,
     }),
   logout: (csrf: string) =>

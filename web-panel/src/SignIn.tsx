@@ -21,6 +21,14 @@ export function errorText(error: unknown, t: Copy) {
       return t.errorPasskeyUnsupported;
     case "network":
       return t.errorNetwork;
+    case "fresh_passkey_required":
+      return t.freshPasskeyRequired;
+    case "escalation_denied":
+      return t.escalationDenied;
+    case "not_found":
+      return t.notFound;
+    case "conflict":
+      return t.conflict;
     default:
       return t.errorUnavailable;
   }

@@ -30,6 +30,26 @@ A `tenants` a munkamenet technikusának engedélyezett tagságait listázza. Ehh
 
 A `tenant_context` az ügyfél nevét és azokat az engedélyeket adja vissza, amelyekre bármely hatókörben van megadás, és nincs ügyfélszintű tiltás. Ez csak a navigációt igazítja; minden művelet saját, aktuális jogosultság-ellenőrzést kap. Nem tag, letiltott tag és ismeretlen ügyfél ugyanazt a választ kapja.
 
+### Adminisztráció
+
+A platformadminisztrátor a globális technikusidentitás külön jelzője; csak megbízható beállítás (később az első beállítás) adhatja meg, önkiszolgáló módon nem szerezhető. Új ügyfelet hozhat létre, amelynek ő lesz engedélyezett tagja és teljes körű Administratorja, valamint új technikusfiókot, egyszeri kezdeti helyreállító kódokkal. A kódokat csak a létrehozási válasz tartalmazza; az adatbázis csak lenyomatot tárol, az audit pedig titok nélkül rögzíti a létrehozást.
+
+Az ügyfélszintű `access.manage` joggal rendelkező kezelő a tagokat listázhatja, létező technikust pontos felhasználónévvel vehet fel, tagságot engedélyezhet vagy letilthat, szerepet és egyedi engedélyt vagy tiltást rendelhet ügyfél-, telephely-, csoport- vagy géphatókörrel, és telephelyet hozhat létre. Minden változáshoz öt percen belüli passkey-belépés, CSRF-token és ugyanabban a tranzakcióban írt auditbejegyzés kell. A beállítások megtekintéséhez nem kell friss passkey.
+
+Jogosultság nem bővíthető a kezelő saját köre fölé: szerep vagy engedély adásához, tiltás eltávolításához és korábbi jogokkal rendelkező tag újraengedélyezéséhez a kezelőnek az érintett engedélyekkel az egész ügyfélben rendelkeznie kell; ellenkező esetben `escalation_denied` a válasz. Tiltás hozzáadása és jog elvétele mindig megengedett. Nem tag, ismeretlen ügyfél, ismeretlen felhasználónév és nem létező elem egységesen `not_found`. A globális szerepdefiníciók továbbra is csak belső beállítással módosíthatók.
+
+| Végpont | Jogosultság |
+| --- | --- |
+| `POST /api/admin/tenants`, `POST /api/admin/operators` | Platformadminisztrátor, friss passkey |
+| `GET /api/roles` | Bejelentkezett technikus |
+| `GET /api/tenants/{id}/members`, `GET /api/tenants/{id}/sites` | Ügyfélszintű `access.manage` |
+| `POST /api/tenants/{id}/members`, `PUT /api/tenants/{id}/members/{operator}` | `access.manage`, friss passkey |
+| `POST /api/tenants/{id}/assignments`, `DELETE …/assignments/{id}` | `access.manage`, friss passkey, eszkalációvédelem |
+| `POST /api/tenants/{id}/overrides`, `DELETE …/overrides/{id}` | `access.manage`, friss passkey, eszkalációvédelem |
+| `POST /api/tenants/{id}/sites` | `access.manage`, friss passkey |
+
+A webpanel Hozzáférés nézete a tagokat, szerepeket, szabályokat és telephelyeket kezeli; a platformadminisztrátor Ügyfelek nézete új ügyfelet és technikust hoz létre, a kódokat egyszer mutatja meg. A technikus saját passkeyjének regisztrációja az első beállítási folyamattal együtt készül.
+
 ### Engedélyek
 
 | Azonosító | Művelet | Friss passkey |
@@ -92,6 +112,26 @@ Every applicable denial wins over every allow, including narrower device grants 
 `tenants` lists the session operator's enabled memberships. A transaction-local operator context can read only its own memberships and those tenants' names; it grants no other tenant data, writes or other operators' memberships. Only a validated session sets it, and pooled connections clear it.
 
 `tenant_context` returns the tenant name and permissions granted at any scope without a tenant-wide denial. It only adapts navigation; every operation keeps its own current authorization check. Non-members, disabled members and unknown tenants receive the same answer.
+
+### Administration
+
+Platform administrator is a separate flag on the global operator identity. Only trusted provisioning (later the first-run setup) sets it; it cannot be obtained self-service. Platform administrators create tenants, becoming an enabled member and tenant-wide Administrator, and technician accounts with one-time initial recovery codes. Only the creation response contains the codes; the database stores digests and the audit records the creation without secrets.
+
+An operator with tenant-wide `access.manage` can list members, add an existing technician by exact login, enable or disable memberships, assign roles and individual allows or denials at tenant, site, group or device scope, and create sites. Every change requires a passkey sign-in within five minutes, a CSRF token and an audit record in the same transaction. Viewing the configuration does not need a fresh passkey.
+
+Managers cannot exceed their own access: granting a role or allow, removing a denial and re-enabling a member with existing grants require holding every affected permission tenant-wide, otherwise the answer is `escalation_denied`. Adding denials and removing grants are always allowed. Non-members, unknown tenants, unknown logins and missing objects all receive `not_found`. Global role definitions remain internal-only.
+
+| Endpoint | Requirement |
+| --- | --- |
+| `POST /api/admin/tenants`, `POST /api/admin/operators` | Platform administrator, fresh passkey |
+| `GET /api/roles` | Signed-in operator |
+| `GET /api/tenants/{id}/members`, `GET /api/tenants/{id}/sites` | Tenant-wide `access.manage` |
+| `POST /api/tenants/{id}/members`, `PUT /api/tenants/{id}/members/{operator}` | `access.manage`, fresh passkey |
+| `POST /api/tenants/{id}/assignments`, `DELETE …/assignments/{id}` | `access.manage`, fresh passkey, escalation guard |
+| `POST /api/tenants/{id}/overrides`, `DELETE …/overrides/{id}` | `access.manage`, fresh passkey, escalation guard |
+| `POST /api/tenants/{id}/sites` | `access.manage`, fresh passkey |
+
+The web panel's Access view manages members, roles, rules and sites; the platform administrator's Customers view creates tenants and technicians and shows the codes once. Technicians register their own passkey with the first-run setup flow.
 
 ### Permission catalog
 

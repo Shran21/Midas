@@ -37,7 +37,7 @@ A fenti telepítési parancsot PowerShellben `npm.cmd install --global pnpm@12.1
 
 A felület a http://127.0.0.1:5173 címen érhető el. A Vite a /health és /api kéréseket a http://127.0.0.1:7443 szerverhez továbbítja. Hitelesítés nélkül a webpanel a jelölt mintaadatos előnézetet mutatja. Ctrl+C mindkét fejlesztői folyamatot leállítja.
 
-A belépéssel működő konzolhoz `just dev-auth` indít helyi PostgreSQL-t, migrációt, demóügyfeleket és -fiókokat, saját aláírású localhost-tanúsítványt, valamint HTTPS-szervert és HTTPS-es Vite-felületet a https://localhost:5173 címen. A böngésző a saját aláírású tanúsítványt figyelmeztetéssel jelzi. A [PostgreSQL-binárisok](adatbazis.md) szükségesek. Minden állapot és a helyreállító kódok a `.local/dev-auth/credentials.txt` fájlban maradnak; ezek csak helyi próbára valók. `just dev-auth --reset` mindent újrakezd.
+A belépéssel működő konzolhoz `just dev-auth` indít helyi PostgreSQL-t, migrációt, demóügyfeleket és -fiókokat, saját aláírású localhost-tanúsítványt, valamint HTTPS-szervert és HTTPS-es Vite-felületet a https://localhost:5173 címen. A böngésző a saját aláírású tanúsítványt figyelmeztetéssel jelzi. A [PostgreSQL-binárisok](adatbazis.md) szükségesek. Minden állapot és a helyreállító kódok a `.local/dev-auth/credentials.txt` fájlban maradnak; ezek csak helyi próbára valók. A demó `admin` fiók platformadminisztrátor. `just dev-auth --reset` mindent újrakezd, új tanúsítvánnyal.
 
 ### Közös parancsok
 
@@ -103,7 +103,7 @@ In PowerShell, use `npm.cmd install --global pnpm@12.16.1` for the package manag
 
 Open http://127.0.0.1:5173. Vite forwards /health and /api requests to http://127.0.0.1:7443. Without authentication the web panel shows the labelled sample-data preview. Ctrl+C stops both development processes.
 
-For the signed-in console, `just dev-auth` starts local PostgreSQL, migrations, demo tenants and accounts, a self-signed localhost certificate, an HTTPS server and Vite over HTTPS at https://localhost:5173. Browsers warn about the self-signed certificate. [PostgreSQL binaries](adatbazis.md#english) are required. All state and recovery codes stay in `.local/dev-auth/credentials.txt` for local testing only. `just dev-auth --reset` starts over.
+For the signed-in console, `just dev-auth` starts local PostgreSQL, migrations, demo tenants and accounts, a self-signed localhost certificate, an HTTPS server and Vite over HTTPS at https://localhost:5173. Browsers warn about the self-signed certificate. [PostgreSQL binaries](adatbazis.md#english) are required. All state and recovery codes stay in `.local/dev-auth/credentials.txt` for local testing only. The demo `admin` account is a platform administrator. `just dev-auth --reset` starts over with a new certificate.
 
 ### Shared commands
 
