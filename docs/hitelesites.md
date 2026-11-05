@@ -48,6 +48,14 @@ A webpanel a végleges HTTPS-originen kéri a felhasználónevet és a nevet, ma
 
 Bejelentkezés után bárki saját passkeyt regisztrálhat a Munkamenetek nézetben, ha öt percen belül lépett be; így a helyreállító kódokkal létrehozott technikus is áttérhet passkeyre. A regisztráció új munkamenetet ad, a régit visszavonja, és auditba kerül.
 
+### Helyi AD-belépés
+
+Ügyfelenként megadható egy helyi Active Directory: UPN-tartomány, `ldaps://` cím, alap-DN és a címtár tanúsítványát kiadó CA. Titkosítatlan LDAP, StartTLS-visszalépés vagy tanúsítványellenőrzés nélküli kapcsolat nem állítható be; a kapcsolat a megadott CA-val és a gépnévvel ellenőrzött. A beállítás és a csoport–szerep leképezés egyelőre megbízható belső művelet; kezelőfelülete a címtár-connectorral (MIDAS-036) készül.
+
+A technikus `felhasznalo@tartomany` alakban és címtárjelszóval lép be. A szerver ezzel a felhasználóval köt az LDAPS-címtárhoz, csak a saját bejegyzését olvassa (`objectGUID`, `userAccountControl`, `memberOf`, `displayName`), a letiltott fiókot elutasítja, és a fiókot az `objectGUID` alapján köti MIDAS-technikushoz. Üres jelszó nem jut el a címtárig. Azonos nevű helyi fiókot címtáridentitás nem vehet át. Csak leképezett csoporttaggal jöhet létre munkamenet. Minden belépés szinkronizálja a csoportokból származó szerephozzárendeléseket: az eltávolított csoport a következő belépéskor a hozzárendelést is megszünteti. Kézi tiltás és letiltott tagság a címtárszinkronnál is érvényben marad.
+
+A jelszó csak a kötés idejére él a memóriában; nem kerül adatbázisba, naplóba vagy auditba. A címtáras munkamenet tartalék módnak számít: nem helyettesíti a friss passkeyt. A címtár elérhetetlensége vagy hibás tanúsítványa `temporarily_unavailable`, a többi hiba egységes hitelesítési hiba. A már aktív munkamenetek időszakos címtár-újraellenőrzése későbbi feladat.
+
 ### Próbálkozáskorlátozás
 
 A szerver minden belépési kérés előtt közös, adatbázisban tárolt forrás-IP- és fiókkorlátot alkalmaz. Alapérték: öt perc alatt 100 kérés forrásonként és 20 fiókonként; a passkey-folyamat indítása és befejezése külön kérés. A korlátok állíthatók, a megújulás az adatbázis óráját használja, és az újraindítás nem nullázza őket. Ismeretlen felhasználónév is beleszámít. Adatbázishibánál nincs hitelesítés. A lejárt számlálók időszakosan törlődnek.
@@ -89,6 +97,12 @@ It issues a single-use setup link valid for 30 minutes by default (`MIDAS_SETUP_
 On the final HTTPS origin the web panel asks for a login and name and registers a user-verified passkey. Completion consumes the authorization under a row lock, makes the account platform administrator, audits the event and opens a passkey session. Expired, used, unknown or repeated authorizations are rejected; an interrupted attempt can resume with the same link until it expires. Requests from other origins are rejected.
 
 Signed-in operators can register their own passkey in the Sessions view within five minutes of signing in, so technicians created with recovery codes can move to passkeys. Registration issues a new session, revokes the old one and is audited.
+
+Each tenant can configure a local Active Directory: UPN domain, `ldaps://` URL, base DN and the CA that issued the directory certificate. Plaintext LDAP, StartTLS downgrade or unverified connections cannot be configured; connections verify the configured CA and host name. Configuration and group-to-role mappings are trusted internal operations for now; their UI arrives with the directory connector (MIDAS-036).
+
+Technicians sign in as `user@domain` with their directory password. The server binds to LDAPS as that user, reads only their own entry (`objectGUID`, `userAccountControl`, `memberOf`, `displayName`), rejects disabled accounts and links the account to a MIDAS operator by `objectGUID`. Empty passwords never reach the directory. A directory identity never takes over a local account with the same login. Only members of a mapped group receive a session. Every sign-in synchronises group-derived role assignments, so a removed group removes the assignment at the next sign-in. Manual denials and disabled memberships remain in force.
+
+The password lives in memory only for the bind and never reaches the database, logs or audit. Directory sessions count as fallback authentication and never replace a fresh passkey. An unreachable directory or wrong certificate returns `temporarily_unavailable`; other failures are uniform authentication failures. Periodic directory revalidation of active sessions is later work.
 
 All login paths share durable source-IP and account request limits, defaulting to 100/source and 20/account per five minutes. Passkey start and finish each count. Settings are configurable, expiry uses database time and restart does not reset limits. Unknown usernames count too; database failure denies authentication. Expired buckets are periodically deleted. HTTP integration uses the TCP peer address and ignores forwarded headers; explicit trusted-proxy configuration is not implemented. Passkey options reveal credential configuration. Uniform HTTP authentication errors and durable attempt limits mitigate, but do not eliminate, this discovery risk.
 

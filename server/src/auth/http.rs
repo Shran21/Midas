@@ -95,6 +95,7 @@ fn method_name(method: AuthenticationMethod) -> &'static str {
         AuthenticationMethod::Passkey => "passkey",
         AuthenticationMethod::PasswordTotp => "password_totp",
         AuthenticationMethod::RecoveryCode => "recovery_code",
+        AuthenticationMethod::Directory => "directory",
     }
 }
 
@@ -178,6 +179,7 @@ pub fn router(state: Arc<WebAuth>) -> Router {
         .route("/api/auth/passkey/finish", post(passkey_finish))
         .route("/api/auth/password", post(password))
         .route("/api/auth/recovery", post(recovery))
+        .route("/api/auth/directory", post(directory))
         .route("/api/setup/start", post(setup_start))
         .route("/api/setup/finish", post(setup_finish))
         .route("/api/session/socket", get(upgrade))
@@ -695,6 +697,34 @@ async fn password(
     sign_in(
         &state,
         AuthenticationMethod::PasswordTotp,
+        Some(&body.login),
+        peer.ip(),
+        result,
+        &headers,
+    )
+    .await
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DirectoryLogin {
+    login: String,
+    password: String,
+}
+
+async fn directory(
+    State(state): State<Arc<WebAuth>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(body): Json<DirectoryLogin>,
+) -> Result<Response> {
+    let result = state
+        .auth
+        .login_directory(&body.login, Zeroizing::new(body.password), peer.ip())
+        .await;
+    sign_in(
+        &state,
+        AuthenticationMethod::Directory,
         Some(&body.login),
         peer.ip(),
         result,

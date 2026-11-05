@@ -37,6 +37,8 @@ names!(Action {
     PlatformAdminSet => "access.platform_admin_set",
     SetupComplete => "setup.complete",
     PasskeyRegister => "auth.passkey_register",
+    DirectoryConfigure => "access.directory_configure",
+    DirectoryGroupMap => "access.directory_group_map",
 });
 names!(Outcome {
     Success => "success",

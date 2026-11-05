@@ -4,7 +4,7 @@ import { Icon } from "./Icon";
 import { type Copy, type Language, translations } from "./i18n";
 import type { Preferences } from "./preferences";
 
-type Mode = "passkey" | "password" | "recovery";
+type Mode = "passkey" | "password" | "recovery" | "directory";
 
 export function errorText(error: unknown, t: Copy) {
   const code = error instanceof ApiError ? error.code : "unexpected";
@@ -104,7 +104,9 @@ export function SignIn({
           ? await api.passkey(login)
           : mode === "password"
             ? await api.password(login, password, code)
-            : await api.recovery(login, code.trim());
+            : mode === "directory"
+              ? await api.directory(login.trim(), password)
+              : await api.recovery(login, code.trim());
       setPassword("");
       setCode("");
       onSignedIn(session);
@@ -118,6 +120,7 @@ export function SignIn({
     ["passkey", t.methodPasskey],
     ["password", t.methodPassword],
     ["recovery", t.methodRecovery],
+    ["directory", t.methodDirectory],
   ];
   return (
     <div className="signin-page">
@@ -177,7 +180,7 @@ export function SignIn({
               maxLength={254}
             />
           </label>
-          {mode === "password" && (
+          {(mode === "password" || mode === "directory") && (
             <label className="field">
               <span>{t.password}</span>
               <input
@@ -190,7 +193,7 @@ export function SignIn({
               />
             </label>
           )}
-          {mode !== "passkey" && (
+          {(mode === "password" || mode === "recovery") && (
             <label className="field">
               <span>{mode === "password" ? t.totp : t.recoveryCode}</span>
               <input
@@ -210,7 +213,9 @@ export function SignIn({
               ? t.passkeyHint
               : mode === "password"
                 ? t.passwordHint
-                : t.recoveryHint}
+                : mode === "directory"
+                  ? t.directoryHint
+                  : t.recoveryHint}
           </p>
           {error && (
             <p className="form-error" role="alert">

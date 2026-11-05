@@ -527,6 +527,7 @@ function Sessions({
     passkey: t.sessionMethodPasskey,
     password_totp: t.sessionMethodPassword,
     recovery_code: t.sessionMethodRecovery,
+    directory: t.methodDirectory,
   };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: the reload counter re-requests the data

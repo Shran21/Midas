@@ -115,6 +115,7 @@ impl TryFrom<Row> for SessionInfo {
             "passkey" => AuthenticationMethod::Passkey,
             "password_totp" => AuthenticationMethod::PasswordTotp,
             "recovery_code" => AuthenticationMethod::RecoveryCode,
+            "directory" => AuthenticationMethod::Directory,
             _ => return Err(AuthError::Unavailable),
         };
         Ok(Self {
@@ -187,6 +188,7 @@ impl Sessions {
             AuthenticationMethod::Passkey => "passkey",
             AuthenticationMethod::PasswordTotp => "password_totp",
             AuthenticationMethod::RecoveryCode => "recovery_code",
+            AuthenticationMethod::Directory => "directory",
         };
         let verified_at = proof
             .verified_at()

@@ -1,5 +1,6 @@
 mod challenges;
 mod crypto;
+pub mod directory;
 pub mod http;
 pub mod sessions;
 pub mod setup;
@@ -111,6 +112,7 @@ pub enum AuthenticationMethod {
     Passkey,
     PasswordTotp,
     RecoveryCode,
+    Directory,
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]

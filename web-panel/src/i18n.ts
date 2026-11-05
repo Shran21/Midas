@@ -252,6 +252,9 @@ const hu = {
     "Regisztrálj saját passkeyt; a kiemelt műveletekhez erre lesz szükség.",
   recentSignInRequired:
     "Passkey hozzáadásához öt percen belüli belépés kell. Lépj be újra.",
+  methodDirectory: "Címtár",
+  directoryHint:
+    "Szervezeti fiók felhasznalo@tartomany alakban és a címtár jelszava. A kiemelt műveletekhez passkey kell.",
 };
 
 const en: Record<keyof typeof hu, string> = {
@@ -501,6 +504,9 @@ const en: Record<keyof typeof hu, string> = {
   addPasskeyHint: "Register your own passkey; privileged actions require it.",
   recentSignInRequired:
     "Adding a passkey needs a sign-in within the last five minutes. Sign in again.",
+  methodDirectory: "Directory",
+  directoryHint:
+    "Organisation account as user@domain with its directory password. Privileged actions require a passkey.",
 };
 
 export const translations = { hu, en };

@@ -1,4 +1,8 @@
-export type Method = "passkey" | "password_totp" | "recovery_code";
+export type Method =
+  | "passkey"
+  | "password_totp"
+  | "recovery_code"
+  | "directory";
 export type Session = {
   id: string;
   operator_id: string;
@@ -102,6 +106,11 @@ export const api = {
     request<SignedIn>("/api/auth/password", {
       method: "POST",
       body: { login, password, code },
+    }),
+  directory: (login: string, password: string) =>
+    request<SignedIn>("/api/auth/directory", {
+      method: "POST",
+      body: { login, password },
     }),
   recovery: (login: string, code: string) =>
     request<SignedIn>("/api/auth/recovery", {
