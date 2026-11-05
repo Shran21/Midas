@@ -5,6 +5,8 @@ use sqlx::{
 };
 use uuid::Uuid;
 
+#[path = "support/audit.rs"]
+mod audit;
 #[path = "support/authentication.rs"]
 mod authentication;
 #[path = "support/authorization.rs"]
@@ -325,6 +327,7 @@ async fn postgres_isolates_tenants_and_reused_connections() {
     authentication::verify(&authentication_database, &mut admin).await;
     sessions::verify(&authentication_database, &mut admin).await;
     authorization::verify(&authentication_database, &mut admin, &pool).await;
+    audit::verify(&authentication_database, &mut admin, &pool).await;
     authentication_database.close().await;
     pool.close().await;
     database.close().await;

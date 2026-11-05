@@ -1,4 +1,8 @@
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{
+    net::{IpAddr, SocketAddr},
+    sync::Arc,
+    time::Duration,
+};
 
 use axum::{
     Extension, Json, Router,
@@ -12,16 +16,20 @@ use axum::{
     routing::{delete, get, post},
 };
 use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use uuid::Uuid;
 use webauthn_rs::prelude::PublicKeyCredential;
 use zeroize::Zeroizing;
 
 use super::{
-    AuthConfig, AuthError, AuthService, Authenticated, BrowserBinding,
+    AuthConfig, AuthError, AuthService, Authenticated, AuthenticationMethod, BrowserBinding,
     sessions::{SessionConfig, SessionInfo, SessionToken, Sessions},
 };
-use crate::database::Database;
+use crate::{
+    audit::{self, Action, Actor, Event, Outcome},
+    database::Database,
+};
 
 const SESSION_COOKIE: &str = "__Host-midas-session";
 const BINDING_COOKIE: &str = "__Host-midas-login";
@@ -31,6 +39,7 @@ pub struct WebAuth {
     sessions: Sessions,
     origin: String,
     socket_slots: Arc<Semaphore>,
+    pool: PgPool,
 }
 
 impl WebAuth {
@@ -49,6 +58,7 @@ impl WebAuth {
             sessions: Sessions::new(database, sessions)?,
             origin,
             socket_slots: Arc::new(Semaphore::new(socket_capacity)),
+            pool: database.pool().clone(),
         })
     }
 
@@ -57,6 +67,25 @@ impl WebAuth {
     }
     pub fn sessions(&self) -> &Sessions {
         &self.sessions
+    }
+
+    async fn record(&self, event: &Event) -> std::result::Result<(), sqlx::Error> {
+        let mut connection = self.pool.acquire().await?;
+        audit::append_platform(&mut connection, event).await
+    }
+
+    async fn record_best_effort(&self, event: &Event) {
+        if self.record(event).await.is_err() {
+            tracing::error!(action = event.action.as_str(), "audit write failed");
+        }
+    }
+}
+
+fn method_name(method: AuthenticationMethod) -> &'static str {
+    match method {
+        AuthenticationMethod::Passkey => "passkey",
+        AuthenticationMethod::PasswordTotp => "password_totp",
+        AuthenticationMethod::RecoveryCode => "recovery_code",
     }
 }
 
@@ -258,6 +287,13 @@ async fn logout(
         .sessions
         .revoke(&context.token, context.info.id)
         .await?;
+    let mut event = Event::new(
+        Action::SignOut,
+        Outcome::Success,
+        Actor::session(&context.info),
+    );
+    event.subject = Some(context.info.operator_id);
+    state.record_best_effort(&event).await;
     let mut response = StatusCode::NO_CONTENT.into_response();
     set_cookie(&mut response, SESSION_COOKIE, "", 0)?;
     set_cookie(&mut response, BINDING_COOKIE, "", 0)?;
@@ -271,6 +307,14 @@ async fn revoke(
     if !state.sessions.revoke(&context.token, id).await? {
         return Err(Failure(StatusCode::NOT_FOUND, "session_not_found"));
     }
+    let mut event = Event::new(
+        Action::SessionRevoke,
+        Outcome::Success,
+        Actor::session(&context.info),
+    )
+    .detail("session_id", id.to_string());
+    event.subject = Some(context.info.operator_id);
+    state.record_best_effort(&event).await;
     let mut response = StatusCode::NO_CONTENT.into_response();
     if id == context.info.id {
         set_cookie(&mut response, SESSION_COOKIE, "", 0)?;
@@ -324,11 +368,19 @@ async fn passkey_finish(
     }
     hex::decode_to_slice(encoded, bytes.as_mut()).map_err(|_| AuthError::InvalidCredentials)?;
     let binding = BrowserBinding::from_bytes(bytes)?;
-    let proof = state
+    let result = state
         .auth
         .finish_passkey_login(&body.id, peer.ip(), &binding, &body.response)
-        .await?;
-    signed_in(&state, proof, &headers).await
+        .await;
+    sign_in(
+        &state,
+        AuthenticationMethod::Passkey,
+        None,
+        peer.ip(),
+        result,
+        &headers,
+    )
+    .await
 }
 
 #[derive(Deserialize)]
@@ -345,7 +397,7 @@ async fn password(
     headers: HeaderMap,
     Json(body): Json<Password>,
 ) -> Result<Response> {
-    let proof = state
+    let result = state
         .auth
         .login_password_totp(
             &body.login,
@@ -353,8 +405,16 @@ async fn password(
             &Zeroizing::new(body.code),
             peer.ip(),
         )
-        .await?;
-    signed_in(&state, proof, &headers).await
+        .await;
+    sign_in(
+        &state,
+        AuthenticationMethod::PasswordTotp,
+        Some(&body.login),
+        peer.ip(),
+        result,
+        &headers,
+    )
+    .await
 }
 
 #[derive(Deserialize)]
@@ -370,16 +430,66 @@ async fn recovery(
     headers: HeaderMap,
     Json(body): Json<Recovery>,
 ) -> Result<Response> {
-    let proof = state
+    let result = state
         .auth
         .login_recovery(&body.login, Zeroizing::new(body.code), peer.ip())
-        .await?;
-    signed_in(&state, proof, &headers).await
+        .await;
+    sign_in(
+        &state,
+        AuthenticationMethod::RecoveryCode,
+        Some(&body.login),
+        peer.ip(),
+        result,
+        &headers,
+    )
+    .await
 }
 
-async fn signed_in(state: &WebAuth, proof: Authenticated, headers: &HeaderMap) -> Result<Response> {
+// Malformed and rate-limited attempts are not recorded individually so that audit growth stays bounded.
+async fn sign_in(
+    state: &WebAuth,
+    method: AuthenticationMethod,
+    login: Option<&str>,
+    source: IpAddr,
+    result: super::Result<Authenticated>,
+    headers: &HeaderMap,
+) -> Result<Response> {
+    match result {
+        Ok(proof) => signed_in(state, proof, headers, source).await,
+        Err(AuthError::InvalidCredentials) => {
+            let mut event = Event::new(Action::SignIn, Outcome::Failure, Actor::SYSTEM)
+                .detail("method", method_name(method));
+            event.source = Some(source);
+            if let Some(login) = login {
+                event.subject = state.auth.operator_for_login(login).await.unwrap_or(None);
+            }
+            state.record_best_effort(&event).await;
+            Err(AuthError::InvalidCredentials.into())
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
+async fn signed_in(
+    state: &WebAuth,
+    proof: Authenticated,
+    headers: &HeaderMap,
+    source: IpAddr,
+) -> Result<Response> {
     let previous = cookie(headers, SESSION_COOKIE)?.and_then(|s| SessionToken::parse(s).ok());
     let issued = state.sessions.issue(proof, previous.as_ref()).await?;
+    let mut event = Event::new(
+        Action::SignIn,
+        Outcome::Success,
+        Actor::session(&issued.info),
+    )
+    .detail("method", method_name(issued.info.authentication_method));
+    event.subject = Some(issued.info.operator_id);
+    event.source = Some(source);
+    if state.record(&event).await.is_err() {
+        let _ = state.sessions.revoke(&issued.token, issued.info.id).await;
+        return Err(AuthError::Unavailable.into());
+    }
     let mut response = Json(SessionResponse {
         session: issued.info,
         csrf_token: issued.token.csrf()?.to_string(),

@@ -531,6 +531,18 @@ impl AuthService {
         ))
     }
 
+    pub(crate) async fn operator_for_login(&self, login: &str) -> Result<Option<Uuid>> {
+        let Ok(login) = normalize_login(login) else {
+            return Ok(None);
+        };
+        Ok(
+            sqlx::query_scalar("SELECT id FROM midas.operators WHERE login = $1")
+                .bind(login)
+                .fetch_optional(&self.pool)
+                .await?,
+        )
+    }
+
     async fn keys(&self, operator: Uuid) -> Result<Vec<Passkey>> {
         let rows: Vec<String> = sqlx::query_scalar("SELECT credential FROM midas.passkeys WHERE operator_id = $1 ORDER BY credential_id LIMIT 33")
             .bind(operator).fetch_all(&self.pool).await?;

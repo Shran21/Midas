@@ -11,7 +11,7 @@ A szerver PostgreSQL 18-at és SQLx-migrációkat használ. Az első séma az ü
 Hozz létre külön, üres `midas` adatbázist. Annak rendszergazdájaként futtasd a `server/database/bootstrap.sql` fájlt. Ez két bejelentkezés nélküli szerepet és egy külön sémát hoz létre, valamint elveszi a `public` séma általános létrehozási jogát. A parancsot csak az erre a célra létrehozott adatbázison használd; nem módosít meglévő alkalmazássémát, és ismételt szereplétrehozásnál leáll.
 
 - `midas_owner`: a séma, táblák és migrációk tulajdonosa.
-- `midas_runtime`: a futó szerver szerepe; csak a szükséges táblák olvasását és írását kapja meg. Nem törölhet táblát, nem kapcsolhatja ki az RLS-t, nem végezhet `TRUNCATE` műveletet, és nem olvashatja a migrációs nyilvántartást.
+- `midas_runtime`: a futó szerver szerepe; csak a szükséges táblák olvasását és írását kapja meg. Nem törölhet táblát, nem kapcsolhatja ki az RLS-t, nem végezhet `TRUNCATE` műveletet, és nem olvashatja a migrációs nyilvántartást. Az [audittáblákat](audit.md) csak olvashatja és bővítheti.
 
 Külön bejelentkezési fiók tartozzon mindkét szerephez. A migrációs fióknak csak a `midas_owner`, a szerverfióknak csak a `midas_runtime` szerepet add. Egyik se legyen superuser, adatbázis-tulajdonos, `BYPASSRLS`, szerep- vagy adatbázis-létrehozó, illetve replikációs fiók. Jelszót védett titoktárolóból vagy a `psql` interaktív `\password` parancsával adj meg; ne tedd parancssori argumentumba, Gitbe vagy naplóba.
 
@@ -51,7 +51,7 @@ A CI mindkét platformon futtatja a próbát: Windowson a rögzített binárissa
 
 The server uses PostgreSQL 18 and embedded SQLx migrations. The initial schema stores tenants, sites, groups, devices and group membership. Workstation/server and Windows/Linux classifications describe inventory records; they do not imply installed or enrolled agents.
 
-Create a dedicated empty `midas` database and run `server/database/bootstrap.sql` as its administrator. It creates the no-login `midas_owner` and `midas_runtime` roles, a dedicated schema and revokes general CREATE access to `public`. Use a separate login for each role. Runtime credentials must not own the database or schema, be a superuser, bypass RLS, create roles/databases, replicate or hold the owner role, including non-inherited membership. Set passwords through a secret store or interactive `psql \password`, never command-line arguments or Git.
+Create a dedicated empty `midas` database and run `server/database/bootstrap.sql` as its administrator. It creates the no-login `midas_owner` and `midas_runtime` roles, a dedicated schema and revokes general CREATE access to `public`. Use a separate login for each role. Runtime credentials must not own the database or schema, be a superuser, bypass RLS, create roles/databases, replicate or hold the owner role, including non-inherited membership. Set passwords through a secret store or interactive `psql \password`, never command-line arguments or Git. The runtime role can only read and append [audit tables](audit.md#english).
 
 Provide migration credentials through `MIDAS_MIGRATION_DATABASE_URL` and run `cargo run --locked -p midas-server --bin midas-db`. Migration versions/checksums are recorded, and rerunning does not repeat applied changes. The running service does not migrate or need migration credentials.
 

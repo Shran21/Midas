@@ -13,8 +13,10 @@ SELECT
     OR has_schema_privilege(current_user, 'midas', 'CREATE')
     OR has_schema_privilege(current_user, 'public', 'CREATE')
     OR (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = 'midas' AND c.relname IN ('tenants', 'sites', 'device_groups', 'devices', 'device_group_members', 'tenant_memberships', 'role_assignments', 'permission_overrides')
-        AND c.relkind = 'r' AND c.relrowsecurity AND c.relforcerowsecurity) <> 8
+        WHERE n.nspname = 'midas' AND c.relname IN ('tenants', 'sites', 'device_groups', 'devices', 'device_group_members', 'tenant_memberships', 'role_assignments', 'permission_overrides', 'tenant_audit')
+        AND c.relkind = 'r' AND c.relrowsecurity AND c.relforcerowsecurity) <> 9
+    OR has_table_privilege(current_user, 'midas.tenant_audit', 'UPDATE,DELETE')
+    OR has_table_privilege(current_user, 'midas.platform_audit', 'UPDATE,DELETE')
     OR EXISTS (
         SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = 'midas' AND c.relkind = 'r'

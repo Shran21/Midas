@@ -1,13 +1,15 @@
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 use crate::{
+    audit::{self, Action, Actor, Event, Outcome},
     auth::{
         AuthError,
-        sessions::{SessionToken, Sessions},
+        sessions::{SessionInfo, SessionToken, Sessions},
     },
     database::Database,
 };
@@ -182,6 +184,15 @@ impl From<sqlx::Error> for AccessError {
 }
 type Result<T> = std::result::Result<T, AccessError>;
 type DeviceRow = (Option<Uuid>, Vec<Uuid>, String, String, bool, bool);
+type AssignmentRow = (Uuid, Uuid, Option<Uuid>, Option<Uuid>, Option<Uuid>);
+type OverrideRow = (
+    Uuid,
+    String,
+    String,
+    Option<Uuid>,
+    Option<Uuid>,
+    Option<Uuid>,
+);
 
 pub struct Authorizer {
     pool: PgPool,
@@ -222,9 +233,11 @@ impl Authorizer {
         target: Target,
         permission: Permission,
     ) -> Result<AccessDecision> {
-        self.evaluate(sessions, token, target, &[permission]).await
+        let identity = sessions.validate(token, false).await?;
+        self.evaluate(&identity, target, &[permission]).await
     }
 
+    /// Every eligibility decision for an authenticated session is audited; an unaudited allow is never returned.
     pub async fn check_remote_request(
         &self,
         sessions: &Sessions,
@@ -232,6 +245,7 @@ impl Authorizer {
         target: Target,
         request: RemoteRequest,
     ) -> Result<AccessDecision> {
+        let identity = sessions.validate(token, false).await?;
         let mut permissions = vec![
             Permission::DeviceRead,
             Permission::RemoteView,
@@ -246,17 +260,58 @@ impl Authorizer {
         if request.unattended {
             permissions.push(Permission::RemoteUnattended);
         }
-        self.evaluate(sessions, token, target, &permissions).await
+        let result = self.evaluate(&identity, target, &permissions).await;
+        let (outcome, label) = match &result {
+            Ok(_) => (Outcome::Success, "allowed"),
+            Err(AccessError::Denied) => (Outcome::Denied, "denied"),
+            Err(AccessError::FreshPasskeyRequired) => (Outcome::Denied, "fresh_passkey_required"),
+            Err(_) => return result,
+        };
+        let mut event = Event::new(Action::RemoteRequest, outcome, Actor::session(&identity))
+            .detail(
+                "mode",
+                match request.mode {
+                    RemoteMode::Normal => "normal",
+                    RemoteMode::Administrative => "administrative",
+                },
+            )
+            .detail("uac", request.uac)
+            .detail("unattended", request.unattended)
+            .detail("result", label);
+        event.tenant = Some(target.tenant);
+        event.device = target.device;
+        let recorded = self.record_decision(&event).await;
+        match (result, recorded) {
+            (Ok(_), Err(_)) => Err(AccessError::Unavailable),
+            (result, _) => result,
+        }
+    }
+
+    async fn record_decision(&self, event: &Event) -> Result<()> {
+        let tenant = event.tenant.ok_or(AccessError::InvalidInput)?;
+        let mut tx = self.tenant_transaction(tenant, false).await?;
+        match audit::append_tenant(&mut tx, event).await {
+            Ok(()) => {
+                tx.commit().await?;
+                Ok(())
+            }
+            Err(error) => {
+                if AccessError::from(error) != AccessError::InvalidInput {
+                    return Err(AccessError::Unavailable);
+                }
+                drop(tx);
+                let mut connection = self.pool.acquire().await?;
+                Ok(audit::append_platform(&mut connection, event).await?)
+            }
+        }
     }
 
     async fn evaluate(
         &self,
-        sessions: &Sessions,
-        token: &SessionToken,
+        identity: &SessionInfo,
         target: Target,
         permissions: &[Permission],
     ) -> Result<AccessDecision> {
-        let identity = sessions.validate(token, false).await?;
         let mut tx = self.tenant_transaction(target.tenant, true).await?;
         let (member, fresh): (bool, bool) = sqlx::query_as("SELECT EXISTS (SELECT 1 FROM midas.tenant_memberships m WHERE m.tenant_id = $3 AND m.operator_id = s.operator_id AND m.enabled), s.authentication_method = 'passkey' AND s.authenticated_at >= clock_timestamp() - interval '5 minutes' AND s.authenticated_at <= clock_timestamp() + interval '1 second' FROM midas.browser_sessions s JOIN midas.operators o ON o.id = s.operator_id WHERE s.id = $1 AND s.operator_id = $2 AND o.enabled AND s.credential_version = o.credential_version AND s.expires_at > clock_timestamp() AND s.idle_expires_at > clock_timestamp()")
             .bind(identity.id).bind(identity.operator_id).bind(target.tenant).fetch_optional(&mut *tx).await?
@@ -310,17 +365,28 @@ impl Authorizer {
         })
     }
 
-    /// Internal trusted provisioning; expose only behind setup or administrative authorization and audit.
-    pub async fn set_membership(&self, tenant: Uuid, operator: Uuid, enabled: bool) -> Result<()> {
+    /// Internal trusted provisioning; expose only behind setup or administrative authorization.
+    pub async fn set_membership(
+        &self,
+        tenant: Uuid,
+        operator: Uuid,
+        enabled: bool,
+        actor: Actor,
+    ) -> Result<()> {
         let mut tx = self.tenant_transaction(tenant, false).await?;
         sqlx::query("INSERT INTO midas.tenant_memberships (tenant_id, operator_id, enabled) VALUES ($1,$2,$3) ON CONFLICT (tenant_id,operator_id) DO UPDATE SET enabled=excluded.enabled")
             .bind(tenant).bind(operator).bind(enabled).execute(&mut *tx).await?;
+        let mut event =
+            Event::new(Action::MembershipSet, Outcome::Success, actor).detail("enabled", enabled);
+        event.tenant = Some(tenant);
+        event.subject = Some(operator);
+        audit::append_tenant(&mut tx, &event).await?;
         tx.commit().await?;
         Ok(())
     }
 
     /// Internal trusted provisioning; this does not authorize its caller to manage access.
-    pub async fn create_role(&self, name: &str, rules: &[Rule]) -> Result<Uuid> {
+    pub async fn create_role(&self, name: &str, rules: &[Rule], actor: Actor) -> Result<Uuid> {
         if name.trim().is_empty()
             || name != name.trim()
             || name.chars().count() > 100
@@ -345,6 +411,15 @@ impl Authorizer {
             .execute(&mut *tx)
             .await?;
         }
+        let rules: Vec<Value> = rules
+            .iter()
+            .map(|r| json!({ "permission": r.permission.as_str(), "effect": r.effect.as_str() }))
+            .collect();
+        let event = Event::new(Action::RoleCreate, Outcome::Success, actor)
+            .detail("role_id", id.to_string())
+            .detail("name", name)
+            .detail("rules", rules);
+        audit::append_platform(&mut tx, &event).await?;
         tx.commit().await?;
         Ok(id)
     }
@@ -356,60 +431,110 @@ impl Authorizer {
         operator: Uuid,
         role: Uuid,
         scope: Scope,
+        actor: Actor,
     ) -> Result<Uuid> {
         let (site, group, device) = scope.columns();
         let id = Uuid::new_v4();
         let mut tx = self.tenant_transaction(tenant, false).await?;
         sqlx::query("INSERT INTO midas.role_assignments (tenant_id,id,operator_id,role_id,site_id,group_id,device_id) VALUES ($1,$2,$3,$4,$5,$6,$7)")
             .bind(tenant).bind(id).bind(operator).bind(role).bind(site).bind(group).bind(device).execute(&mut *tx).await?;
+        let event = Event::new(Action::RoleAssign, Outcome::Success, actor)
+            .detail("assignment_id", id.to_string())
+            .detail("role_id", role.to_string());
+        audit::append_tenant(
+            &mut tx,
+            &scoped(event, tenant, operator, site, group, device),
+        )
+        .await?;
         tx.commit().await?;
         Ok(id)
     }
 
-    /// Internal trusted provisioning; both allows and denials need administrative authorization and audit.
+    /// Internal trusted provisioning; both allows and denials need administrative authorization.
     pub async fn override_permission(
         &self,
         tenant: Uuid,
         operator: Uuid,
         scope: Scope,
         rule: Rule,
+        actor: Actor,
     ) -> Result<Uuid> {
         let (site, group, device) = scope.columns();
         let id = Uuid::new_v4();
         let mut tx = self.tenant_transaction(tenant, false).await?;
         sqlx::query("INSERT INTO midas.permission_overrides (tenant_id,id,operator_id,permission,effect,site_id,group_id,device_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)")
             .bind(tenant).bind(id).bind(operator).bind(rule.permission.as_str()).bind(rule.effect.as_str()).bind(site).bind(group).bind(device).execute(&mut *tx).await?;
+        let event = Event::new(Action::OverrideSet, Outcome::Success, actor)
+            .detail("override_id", id.to_string())
+            .detail("permission", rule.permission.as_str())
+            .detail("effect", rule.effect.as_str());
+        audit::append_tenant(
+            &mut tx,
+            &scoped(event, tenant, operator, site, group, device),
+        )
+        .await?;
         tx.commit().await?;
         Ok(id)
     }
 
-    /// Internal trusted revocation; tenant authorization and audit belong to the calling administration layer.
-    pub async fn remove_assignment(&self, tenant: Uuid, id: Uuid) -> Result<bool> {
+    /// Internal trusted revocation; the calling administration layer must authorize it.
+    pub async fn remove_assignment(&self, tenant: Uuid, id: Uuid, actor: Actor) -> Result<bool> {
         let mut tx = self.tenant_transaction(tenant, false).await?;
-        let removed =
-            sqlx::query("DELETE FROM midas.role_assignments WHERE tenant_id=$1 AND id=$2")
-                .bind(tenant)
-                .bind(id)
-                .execute(&mut *tx)
-                .await?
-                .rows_affected()
-                == 1;
+        let removed: Option<AssignmentRow> = sqlx::query_as("DELETE FROM midas.role_assignments WHERE tenant_id=$1 AND id=$2 RETURNING operator_id, role_id, site_id, group_id, device_id")
+            .bind(tenant).bind(id).fetch_optional(&mut *tx).await?;
+        let Some((operator, role, site, group, device)) = removed else {
+            return Ok(false);
+        };
+        let event = Event::new(Action::RoleUnassign, Outcome::Success, actor)
+            .detail("assignment_id", id.to_string())
+            .detail("role_id", role.to_string());
+        audit::append_tenant(
+            &mut tx,
+            &scoped(event, tenant, operator, site, group, device),
+        )
+        .await?;
         tx.commit().await?;
-        Ok(removed)
+        Ok(true)
     }
 
     /// Internal trusted revocation; removing a denial may increase access and also requires authorization.
-    pub async fn remove_override(&self, tenant: Uuid, id: Uuid) -> Result<bool> {
+    pub async fn remove_override(&self, tenant: Uuid, id: Uuid, actor: Actor) -> Result<bool> {
         let mut tx = self.tenant_transaction(tenant, false).await?;
-        let removed =
-            sqlx::query("DELETE FROM midas.permission_overrides WHERE tenant_id=$1 AND id=$2")
-                .bind(tenant)
-                .bind(id)
-                .execute(&mut *tx)
-                .await?
-                .rows_affected()
-                == 1;
+        let removed: Option<OverrideRow> = sqlx::query_as("DELETE FROM midas.permission_overrides WHERE tenant_id=$1 AND id=$2 RETURNING operator_id, permission, effect, site_id, group_id, device_id")
+            .bind(tenant).bind(id).fetch_optional(&mut *tx).await?;
+        let Some((operator, permission, effect, site, group, device)) = removed else {
+            return Ok(false);
+        };
+        let event = Event::new(Action::OverrideRemove, Outcome::Success, actor)
+            .detail("override_id", id.to_string())
+            .detail("permission", permission)
+            .detail("effect", effect);
+        audit::append_tenant(
+            &mut tx,
+            &scoped(event, tenant, operator, site, group, device),
+        )
+        .await?;
         tx.commit().await?;
-        Ok(removed)
+        Ok(true)
     }
+}
+
+fn scoped(
+    mut event: Event,
+    tenant: Uuid,
+    operator: Uuid,
+    site: Option<Uuid>,
+    group: Option<Uuid>,
+    device: Option<Uuid>,
+) -> Event {
+    let scope = match (site, group, device) {
+        (Some(id), _, _) => json!({ "kind": "site", "id": id.to_string() }),
+        (_, Some(id), _) => json!({ "kind": "group", "id": id.to_string() }),
+        (_, _, Some(id)) => json!({ "kind": "device", "id": id.to_string() }),
+        _ => json!({ "kind": "tenant" }),
+    };
+    event.tenant = Some(tenant);
+    event.subject = Some(operator);
+    event.device = device;
+    event.detail("scope", scope)
 }

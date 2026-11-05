@@ -4,7 +4,7 @@
 
 ## Magyar
 
-A HTTPS-szerver már kiszolgálja a passkey-, jelszó+TOTP- és helyreállítókód-belépést, valamint a saját munkamenetek megtekintését és visszavonását. A webpanel belépőképernyője, az első adminisztrátor létrehozása és a [jogosultsági modul](jogosultsagok.md) bekötése az eszközműveletekbe külön feladat. Nincs nyilvános regisztráció, alapértelmezett fiók vagy általános rendszergazdai hozzáférés pusztán a belépés miatt.
+A HTTPS-szerver már kiszolgálja a passkey-, jelszó+TOTP- és helyreállítókód-belépést, valamint a saját munkamenetek megtekintését és visszavonását. A webpanel belépőképernyője, az első adminisztrátor létrehozása és a [jogosultsági modul](jogosultsagok.md) bekötése az eszközműveletekbe külön feladat. Nincs nyilvános regisztráció, alapértelmezett fiók vagy általános rendszergazdai hozzáférés pusztán a belépés miatt. A belépések, hibás hitelesítések, kijelentkezések és visszavonások [auditba](audit.md) kerülnek.
 
 ### Bekapcsolás
 
@@ -56,7 +56,7 @@ A WebSocket pontos Origint és érvényes munkamenetsütit kér. Az első üzene
 
 Minden alkalmazásüzenet előtt új adatbázisos ellenőrzés történik. A helyi kijelentkezés/visszavonás külön értesítéssel lezárja a kapcsolatot. Másik példányon vagy közvetlenül az adatbázisban történt változást az aktív kapcsolaton 15 másodpercenként végzett ellenőrzés veszi észre; a következő üzenet már előbb elutasítható. Adatbázis- vagy értesítési hibánál a kapcsolat megszűnik. A hálózati írások öt másodperces időkorlátot kapnak. A csatorna 4 KiB-os üzenetkerete és tíz másodpercenként legfeljebb 30 bejövő üzenete az állapotcsatornát védi, nem médiaátviteli beállítás.
 
-A már megkezdett HTTP-válasz nem hívható vissza. A későbbi privilegizált műveleti rétegnek a végrehajtás határán is ellenőriznie kell az aktuális munkamenetet, ügyfélt, eszközt, engedélyt és szükség esetén a friss passkey-megerősítést. A mostani modul nem helyettesíti az RBAC-t, az auditot vagy a távoli műveleti felhatalmazásokat. Fiókletiltáskor a későbbi adminisztrációs műveletnek a verziót is növelnie kell, hogy újraengedélyezéskor a régi munkamenet se éledjen fel.
+A már megkezdett HTTP-válasz nem hívható vissza. A későbbi privilegizált műveleti rétegnek a végrehajtás határán is ellenőriznie kell az aktuális munkamenetet, ügyfélt, eszközt, engedélyt és szükség esetén a friss passkey-megerősítést. A mostani modul nem helyettesíti az RBAC-t vagy a távoli műveleti felhatalmazásokat. Fiókletiltáskor a későbbi adminisztrációs műveletnek a verziót is növelnie kell, hogy újraengedélyezéskor a régi munkamenet se éledjen fel.
 
 ### Ellenőrzés
 
@@ -66,7 +66,7 @@ Források: [OWASP munkamenetek](https://cheatsheetseries.owasp.org/cheatsheets/S
 
 ## English
 
-The HTTPS server provides passkey, password+TOTP and recovery-code login, plus inspection and revocation of an operator's own browser sessions. The sign-in UI, first-administrator setup and integration of [authorization](jogosultsagok.md#english) into device operations remain separate work. There is no open registration, default account or implied administrative access.
+The HTTPS server provides passkey, password+TOTP and recovery-code login, plus inspection and revocation of an operator's own browser sessions. The sign-in UI, first-administrator setup and integration of [authorization](jogosultsagok.md#english) into device operations remain separate work. There is no open registration, default account or implied administrative access. Sign-ins, credential failures, sign-outs and revocations are [audited](audit.md#english).
 
 ### Configuration
 
@@ -118,7 +118,7 @@ The WebSocket requires exact Origin and a valid cookie. Its first message must b
 
 Each application message rechecks the database. Local logout/revocation notifies and closes open sockets. Active-only checks every 15 seconds detect changes from another instance or directly in the database; the next message can be rejected sooner. Database/notification errors close the connection. Writes have a five-second timeout. The 4 KiB frame/message limit and 30 incoming messages per ten seconds protect this status channel and are not media settings.
 
-An already-started HTTP response cannot be recalled. Future privileged operations must validate live session, tenant, device, permission and fresh passkey requirements at the execution boundary. This module does not replace RBAC, audit or remote-operation grants. Future account-disable operations must also increment credential version so re-enabling cannot revive old sessions.
+An already-started HTTP response cannot be recalled. Future privileged operations must validate live session, tenant, device, permission and fresh passkey requirements at the execution boundary. This module does not replace RBAC or remote-operation grants. Future account-disable operations must also increment credential version so re-enabling cannot revive old sessions.
 
 ### Verification
 

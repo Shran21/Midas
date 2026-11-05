@@ -1,6 +1,7 @@
 use std::net::IpAddr;
 
 use midas_server::{
+    audit::Actor,
     auth::{
         AuthConfig, AuthService, BrowserBinding,
         sessions::{SessionConfig, Sessions},
@@ -167,7 +168,10 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
             )
             .await,
     );
-    policy.set_membership(tenant, user, true).await.unwrap();
+    policy
+        .set_membership(tenant, user, true, Actor::SYSTEM)
+        .await
+        .unwrap();
     check(
         policy
             .authorize(
@@ -179,7 +183,13 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
             .await,
     );
     policy
-        .assign_role(tenant, user, BuiltinRole::Observer.id(), Scope::Tenant)
+        .assign_role(
+            tenant,
+            user,
+            BuiltinRole::Observer.id(),
+            Scope::Tenant,
+            Actor::SYSTEM,
+        )
         .await
         .unwrap();
     policy
@@ -197,7 +207,13 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
             .await,
     );
     policy
-        .assign_role(tenant, user, BuiltinRole::Technician.id(), Scope::Tenant)
+        .assign_role(
+            tenant,
+            user,
+            BuiltinRole::Technician.id(),
+            Scope::Tenant,
+            Actor::SYSTEM,
+        )
         .await
         .unwrap();
     policy
@@ -247,6 +263,7 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
             user,
             Scope::Device(workstation),
             allow(Permission::RemoteUacInteract),
+            Actor::SYSTEM,
         )
         .await
         .unwrap();
@@ -276,6 +293,7 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
             user,
             Scope::Device(workstation),
             allow(Permission::RemoteAdmin),
+            Actor::SYSTEM,
         )
         .await
         .unwrap();
@@ -294,6 +312,7 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
             user,
             Scope::Group(group),
             deny(Permission::RemoteUacInteract),
+            Actor::SYSTEM,
         )
         .await
         .unwrap();
@@ -313,18 +332,29 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
         .unwrap();
     assert!(
         !policy
-            .remove_override(foreign_tenant, denied_uac)
+            .remove_override(foreign_tenant, denied_uac, Actor::SYSTEM)
             .await
             .unwrap()
     );
-    assert!(policy.remove_override(tenant, denied_uac).await.unwrap());
+    assert!(
+        policy
+            .remove_override(tenant, denied_uac, Actor::SYSTEM)
+            .await
+            .unwrap()
+    );
     policy
         .check_remote_request(&sessions, &passkey.token, target(workstation), uac)
         .await
         .unwrap();
 
     let admin_role = policy
-        .assign_role(tenant, user, BuiltinRole::Administrator.id(), Scope::Tenant)
+        .assign_role(
+            tenant,
+            user,
+            BuiltinRole::Administrator.id(),
+            Scope::Tenant,
+            Actor::SYSTEM,
+        )
         .await
         .unwrap();
     let catalog: Vec<String> =
@@ -417,7 +447,13 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
             .await,
     );
     let denied_control = policy
-        .override_permission(tenant, user, Scope::Tenant, deny(Permission::RemoteControl))
+        .override_permission(
+            tenant,
+            user,
+            Scope::Tenant,
+            deny(Permission::RemoteControl),
+            Actor::SYSTEM,
+        )
         .await
         .unwrap();
     policy
@@ -426,6 +462,7 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
             user,
             Scope::Device(workstation),
             allow(Permission::RemoteControl),
+            Actor::SYSTEM,
         )
         .await
         .unwrap();
@@ -435,15 +472,19 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
             .await,
     );
     policy
-        .remove_override(tenant, denied_control)
+        .remove_override(tenant, denied_control, Actor::SYSTEM)
         .await
         .unwrap();
     let restrictive = policy
-        .create_role("No input at this site", &[deny(Permission::RemoteControl)])
+        .create_role(
+            "No input at this site",
+            &[deny(Permission::RemoteControl)],
+            Actor::SYSTEM,
+        )
         .await
         .unwrap();
     let restriction = policy
-        .assign_role(tenant, user, restrictive, Scope::Site(site))
+        .assign_role(tenant, user, restrictive, Scope::Site(site), Actor::SYSTEM)
         .await
         .unwrap();
     check(
@@ -465,6 +506,7 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
             user,
             Scope::Device(outside),
             deny(Permission::FilesWrite),
+            Actor::SYSTEM,
         )
         .await
         .unwrap();
@@ -487,7 +529,10 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
         )
         .await
         .unwrap();
-    policy.remove_override(tenant, denied_files).await.unwrap();
+    policy
+        .remove_override(tenant, denied_files, Actor::SYSTEM)
+        .await
+        .unwrap();
     policy
         .authorize(
             &sessions,
@@ -507,7 +552,10 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
             .check_remote_request(&sessions, &passkey.token, target(workstation), normal())
             .await,
     );
-    policy.remove_assignment(tenant, restriction).await.unwrap();
+    policy
+        .remove_assignment(tenant, restriction, Actor::SYSTEM)
+        .await
+        .unwrap();
     policy
         .check_remote_request(&sessions, &passkey.token, target(workstation), normal())
         .await
@@ -592,6 +640,7 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
             user,
             Scope::Device(server),
             deny(Permission::RemoteUnattended),
+            Actor::SYSTEM,
         )
         .await
         .unwrap();
@@ -601,7 +650,7 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
             .await,
     );
     policy
-        .remove_override(tenant, unattended_denied)
+        .remove_override(tenant, unattended_denied, Actor::SYSTEM)
         .await
         .unwrap();
     let uac_and_admin = RemoteRequest {
@@ -614,11 +663,11 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
         .unwrap();
 
     policy
-        .set_membership(tenant, scoped_user, true)
+        .set_membership(tenant, scoped_user, true, Actor::SYSTEM)
         .await
         .unwrap();
     policy
-        .set_membership(foreign_tenant, scoped_user, true)
+        .set_membership(foreign_tenant, scoped_user, true, Actor::SYSTEM)
         .await
         .unwrap();
     let scoped_assignment = policy
@@ -627,6 +676,7 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
             scoped_user,
             BuiltinRole::Technician.id(),
             Scope::Site(other_site),
+            Actor::SYSTEM,
         )
         .await
         .unwrap();
@@ -658,6 +708,7 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
             scoped_user,
             BuiltinRole::Technician.id(),
             Scope::Group(group),
+            Actor::SYSTEM,
         )
         .await
         .unwrap();
@@ -677,6 +728,7 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
             scoped_user,
             BuiltinRole::Technician.id(),
             Scope::Device(server),
+            Actor::SYSTEM,
         )
         .await
         .unwrap();
@@ -686,12 +738,12 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
         .unwrap();
     assert!(
         !policy
-            .remove_assignment(foreign_tenant, device_assignment)
+            .remove_assignment(foreign_tenant, device_assignment, Actor::SYSTEM)
             .await
             .unwrap()
     );
     policy
-        .remove_assignment(tenant, device_assignment)
+        .remove_assignment(tenant, device_assignment, Actor::SYSTEM)
         .await
         .unwrap();
     check(
@@ -700,7 +752,7 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
             .await,
     );
     policy
-        .remove_assignment(tenant, scoped_assignment)
+        .remove_assignment(tenant, scoped_assignment, Actor::SYSTEM)
         .await
         .unwrap();
     check(
@@ -709,7 +761,7 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
             .await,
     );
     policy
-        .remove_assignment(tenant, group_assignment)
+        .remove_assignment(tenant, group_assignment, Actor::SYSTEM)
         .await
         .unwrap();
     check(
@@ -723,7 +775,8 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
                 tenant,
                 scoped_user,
                 BuiltinRole::Observer.id(),
-                Scope::Site(foreign_site)
+                Scope::Site(foreign_site),
+                Actor::SYSTEM
             )
             .await,
         Err(AccessError::InvalidInput)
@@ -734,7 +787,8 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
                 tenant,
                 scoped_user,
                 Scope::Site(foreign_site),
-                allow(Permission::DeviceRead)
+                allow(Permission::DeviceRead),
+                Actor::SYSTEM
             )
             .await,
         Err(AccessError::InvalidInput)
@@ -748,17 +802,17 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
     ] {
         assert_eq!(
             policy
-                .create_role(name, &[allow(Permission::DeviceRead)])
+                .create_role(name, &[allow(Permission::DeviceRead)], Actor::SYSTEM)
                 .await,
             Err(expected)
         );
     }
     let custom = policy
-        .create_role("Read files", &[allow(Permission::FilesRead)])
+        .create_role("Read files", &[allow(Permission::FilesRead)], Actor::SYSTEM)
         .await
         .unwrap();
     policy
-        .assign_role(tenant, scoped_user, custom, Scope::Tenant)
+        .assign_role(tenant, scoped_user, custom, Scope::Tenant, Actor::SYSTEM)
         .await
         .unwrap();
     policy
@@ -825,7 +879,10 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
             )
             .await,
     );
-    policy.set_membership(tenant, user, false).await.unwrap();
+    policy
+        .set_membership(tenant, user, false, Actor::SYSTEM)
+        .await
+        .unwrap();
     check(
         policy
             .authorize(
@@ -836,7 +893,10 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
             )
             .await,
     );
-    policy.set_membership(tenant, user, true).await.unwrap();
+    policy
+        .set_membership(tenant, user, true, Actor::SYSTEM)
+        .await
+        .unwrap();
     policy
         .authorize(
             &sessions,
@@ -878,7 +938,10 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
             .await,
         Err(AccessError::Unauthenticated)
     ));
-    policy.remove_assignment(tenant, admin_role).await.unwrap();
+    policy
+        .remove_assignment(tenant, admin_role, Actor::SYSTEM)
+        .await
+        .unwrap();
     check(
         policy
             .authorize(
