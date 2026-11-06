@@ -1,0 +1,548 @@
+[
+ {
+  "phase": 0,
+  "profile": "unlimited",
+  "seconds": 15.0,
+  "decisions": [
+   {
+    "after_ms": 257,
+    "reason": "recover",
+    "kbps": 471,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 2301,
+    "reason": "recover",
+    "kbps": 589,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 4345,
+    "reason": "recover",
+    "kbps": 736,
+    "scale": 0.5,
+    "fps": 24
+   },
+   {
+    "after_ms": 6367,
+    "reason": "recover",
+    "kbps": 920,
+    "scale": 0.5,
+    "fps": 24
+   },
+   {
+    "after_ms": 8396,
+    "reason": "recover",
+    "kbps": 1150,
+    "scale": 0.5,
+    "fps": 24
+   },
+   {
+    "after_ms": 10426,
+    "reason": "recover",
+    "kbps": 1438,
+    "scale": 0.75,
+    "fps": 30
+   },
+   {
+    "after_ms": 12473,
+    "reason": "recover",
+    "kbps": 1797,
+    "scale": 0.75,
+    "fps": 30
+   },
+   {
+    "after_ms": 14504,
+    "reason": "recover",
+    "kbps": 2114,
+    "scale": 0.75,
+    "fps": 30
+   }
+  ],
+  "first_decision_ms": 257,
+  "target_kbps_start_end_min": [
+   471.24,
+   2114.885,
+   471.24
+  ],
+  "estimate_kbps_mean": 2166.7,
+  "sent_kbps_mean": 228.8,
+  "queue_ms_mean_max": [
+   0.0,
+   0
+  ],
+  "encode_ms_mean": 38.5,
+  "encoded_sizes": [
+   "1440x810",
+   "960x540"
+  ],
+  "emulator_drops_loss_queue": [
+   0,
+   0
+  ],
+  "client_fps_mean": 17.3,
+  "client_kbps_mean": 329.9,
+  "client_sizes": [
+   "1440x810",
+   "960x540"
+  ],
+  "client_jitter_ms_mean": 12.3,
+  "client_jitter_buffer_ms_mean": 114.8,
+  "client_rtt_ms_mean": 1.0,
+  "client_freezes_delta": 1.0,
+  "client_packets_lost_delta": 0,
+  "source": "dxgi-desktop-duplication"
+ },
+ {
+  "phase": 1,
+  "profile": "degraded",
+  "seconds": 20.2,
+  "decisions": [
+   {
+    "after_ms": 513,
+    "reason": "estimate_down",
+    "kbps": 1436,
+    "scale": 0.75,
+    "fps": 30
+   },
+   {
+    "after_ms": 1014,
+    "reason": "estimate_down",
+    "kbps": 550,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 1529,
+    "reason": "estimate_down",
+    "kbps": 150,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 3544,
+    "reason": "recover",
+    "kbps": 185,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 5562,
+    "reason": "recover",
+    "kbps": 232,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 7598,
+    "reason": "recover",
+    "kbps": 290,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 9123,
+    "reason": "estimate_down",
+    "kbps": 183,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 11124,
+    "reason": "recover",
+    "kbps": 212,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 13156,
+    "reason": "recover",
+    "kbps": 265,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 15185,
+    "reason": "recover",
+    "kbps": 332,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 17202,
+    "reason": "recover",
+    "kbps": 415,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 18217,
+    "reason": "estimate_down",
+    "kbps": 150,
+    "scale": 0.5,
+    "fps": 15
+   }
+  ],
+  "first_decision_ms": 513,
+  "target_kbps_start_end_min": [
+   2114.885,
+   150.0,
+   150.0
+  ],
+  "estimate_kbps_mean": 465.3,
+  "sent_kbps_mean": 271.9,
+  "queue_ms_mean_max": [
+   1.2,
+   6
+  ],
+  "encode_ms_mean": 39.4,
+  "encoded_sizes": [
+   "1440x810",
+   "960x540"
+  ],
+  "emulator_drops_loss_queue": [
+   15,
+   0
+  ],
+  "client_fps_mean": 7.3,
+  "client_kbps_mean": 281.9,
+  "client_sizes": [
+   "1440x810",
+   "960x540"
+  ],
+  "client_jitter_ms_mean": 53.2,
+  "client_jitter_buffer_ms_mean": 115.4,
+  "client_rtt_ms_mean": 61.6,
+  "client_freezes_delta": 6.0,
+  "client_packets_lost_delta": 11.0,
+  "source": "dxgi-desktop-duplication"
+ },
+ {
+  "phase": 2,
+  "profile": "bad",
+  "seconds": 19.8,
+  "decisions": [
+   {
+    "after_ms": 0,
+    "reason": "recover",
+    "kbps": 173,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 2017,
+    "reason": "recover",
+    "kbps": 217,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 4049,
+    "reason": "recover",
+    "kbps": 258,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 7109,
+    "reason": "estimate_down",
+    "kbps": 230,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 7610,
+    "reason": "estimate_down",
+    "kbps": 171,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 8110,
+    "reason": "estimate_down",
+    "kbps": 150,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 10156,
+    "reason": "recover",
+    "kbps": 187,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 12188,
+    "reason": "recover",
+    "kbps": 234,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 14221,
+    "reason": "recover",
+    "kbps": 292,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 14736,
+    "reason": "estimate_down",
+    "kbps": 246,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 17282,
+    "reason": "recover",
+    "kbps": 308,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 19308,
+    "reason": "recover",
+    "kbps": 348,
+    "scale": 0.5,
+    "fps": 15
+   }
+  ],
+  "first_decision_ms": 0,
+  "target_kbps_start_end_min": [
+   173.82,
+   348.383,
+   150.0
+  ],
+  "estimate_kbps_mean": 296.1,
+  "sent_kbps_mean": 206.6,
+  "queue_ms_mean_max": [
+   11.4,
+   108
+  ],
+  "encode_ms_mean": 38.4,
+  "encoded_sizes": [
+   "960x540"
+  ],
+  "emulator_drops_loss_queue": [
+   49,
+   9
+  ],
+  "client_fps_mean": 8.3,
+  "client_kbps_mean": 241.5,
+  "client_sizes": [
+   "960x540"
+  ],
+  "client_jitter_ms_mean": 81.6,
+  "client_jitter_buffer_ms_mean": 129.0,
+  "client_rtt_ms_mean": 154.5,
+  "client_freezes_delta": 9.0,
+  "client_packets_lost_delta": 31.0,
+  "source": "dxgi-desktop-duplication"
+ },
+ {
+  "phase": 3,
+  "profile": "degraded",
+  "seconds": 15.1,
+  "decisions": [
+   {
+    "after_ms": 0,
+    "reason": "estimate_down",
+    "kbps": 311,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 4540,
+    "reason": "estimate_down",
+    "kbps": 225,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 7048,
+    "reason": "recover",
+    "kbps": 248,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 9064,
+    "reason": "recover",
+    "kbps": 310,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 12080,
+    "reason": "estimate_down",
+    "kbps": 272,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 14111,
+    "reason": "estimate_down",
+    "kbps": 207,
+    "scale": 0.5,
+    "fps": 15
+   }
+  ],
+  "first_decision_ms": 0,
+  "target_kbps_start_end_min": [
+   311.118,
+   207.531,
+   207.531
+  ],
+  "estimate_kbps_mean": 312.8,
+  "sent_kbps_mean": 169.7,
+  "queue_ms_mean_max": [
+   1.2,
+   6
+  ],
+  "encode_ms_mean": 22.6,
+  "encoded_sizes": [
+   "960x540"
+  ],
+  "emulator_drops_loss_queue": [
+   8,
+   0
+  ],
+  "client_fps_mean": 10.2,
+  "client_kbps_mean": 187.2,
+  "client_sizes": [
+   "960x540"
+  ],
+  "client_jitter_ms_mean": 34.7,
+  "client_jitter_buffer_ms_mean": 151.9,
+  "client_rtt_ms_mean": 80.9,
+  "client_freezes_delta": 5.0,
+  "client_packets_lost_delta": 2.0,
+  "source": "dxgi-desktop-duplication"
+ },
+ {
+  "phase": 4,
+  "profile": "unlimited",
+  "seconds": 25.3,
+  "decisions": [
+   {
+    "after_ms": 3549,
+    "reason": "recover",
+    "kbps": 259,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 5566,
+    "reason": "recover",
+    "kbps": 324,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 7579,
+    "reason": "recover",
+    "kbps": 405,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 9604,
+    "reason": "recover",
+    "kbps": 506,
+    "scale": 0.5,
+    "fps": 15
+   },
+   {
+    "after_ms": 11641,
+    "reason": "recover",
+    "kbps": 633,
+    "scale": 0.5,
+    "fps": 24
+   },
+   {
+    "after_ms": 13662,
+    "reason": "recover",
+    "kbps": 791,
+    "scale": 0.5,
+    "fps": 24
+   },
+   {
+    "after_ms": 15686,
+    "reason": "recover",
+    "kbps": 989,
+    "scale": 0.5,
+    "fps": 24
+   },
+   {
+    "after_ms": 17719,
+    "reason": "recover",
+    "kbps": 1236,
+    "scale": 0.75,
+    "fps": 30
+   },
+   {
+    "after_ms": 19735,
+    "reason": "recover",
+    "kbps": 1546,
+    "scale": 0.75,
+    "fps": 30
+   },
+   {
+    "after_ms": 21763,
+    "reason": "recover",
+    "kbps": 1932,
+    "scale": 0.75,
+    "fps": 30
+   },
+   {
+    "after_ms": 23787,
+    "reason": "recover",
+    "kbps": 2374,
+    "scale": 0.75,
+    "fps": 30
+   },
+   {
+    "after_ms": 24294,
+    "reason": "estimate_down",
+    "kbps": 848,
+    "scale": 0.5,
+    "fps": 24
+   }
+  ],
+  "first_decision_ms": 3549,
+  "target_kbps_start_end_min": [
+   207.531,
+   848.015,
+   207.531
+  ],
+  "estimate_kbps_mean": 5114.6,
+  "sent_kbps_mean": 230.1,
+  "queue_ms_mean_max": [
+   0.1,
+   6
+  ],
+  "encode_ms_mean": 27.6,
+  "encoded_sizes": [
+   "1440x810",
+   "960x540"
+  ],
+  "emulator_drops_loss_queue": [
+   0,
+   0
+  ],
+  "client_fps_mean": 16.0,
+  "client_kbps_mean": 282.6,
+  "client_sizes": [
+   "1440x810",
+   "960x540"
+  ],
+  "client_jitter_ms_mean": 14.8,
+  "client_jitter_buffer_ms_mean": 179.8,
+  "client_rtt_ms_mean": 2.9,
+  "client_freezes_delta": 4.0,
+  "client_packets_lost_delta": 0.0,
+  "source": "dxgi-desktop-duplication"
+ }
+]

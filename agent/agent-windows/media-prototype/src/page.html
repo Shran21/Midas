@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MIDAS WebRTC-prototípus / prototype</title>
+<style>
+  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+  body { margin: 0; padding: 16px; background: Canvas; color: CanvasText; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p { margin: 0 0 12px; font-size: 13px; opacity: .8; }
+  .layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(260px, 1fr); gap: 16px; }
+  video { width: 100%; background: #000; border-radius: 6px; }
+  fieldset { border: 1px solid #8884; border-radius: 6px; margin: 0 0 12px; padding: 8px 10px; font-size: 13px; }
+  label { display: block; margin: 4px 0; }
+  button { margin: 3px 4px 3px 0; padding: 6px 10px; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; font: 12px ui-monospace, monospace; margin: 0; }
+  dt { opacity: .7; }
+  #status { font-weight: 600; }
+  @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<h1>MIDAS WebRTC-prototípus / prototype (MIDAS-017)</h1>
+<p>Csak helyi fejlesztői próba. A kép a gép valódi asztala; a hálózatromlást a küldő oldali emulátor állítja elő. / Local development trial only. The picture is the real desktop; network impairment comes from the sender-side emulator.</p>
+<div class="layout">
+  <div>
+    <video id="video" autoplay playsinline muted></video>
+    <p id="status">Nincs kapcsolat / Not connected</p>
+  </div>
+  <div>
+    <fieldset>
+      <legend>Kapcsolat / Connection</legend>
+      <button id="connect">Kapcsolódás / Connect</button>
+      <button id="stop" disabled>Bontás / Stop</button>
+    </fieldset>
+    <fieldset>
+      <legend>Minőség / Quality</legend>
+      <label><input type="checkbox" id="auto" checked> Automatikus / Automatic</label>
+      <label>Bitráta / Bitrate (kbps) <input type="number" id="bitrate" value="2500" min="150" max="8000" step="50"></label>
+      <label>Méret / Scale <select id="scale"><option>1</option><option>0.75</option><option>0.5</option><option>0.25</option></select></label>
+      <label>FPS <input type="number" id="fps" value="30" min="5" max="60"></label>
+      <button id="apply">Alkalmaz / Apply</button>
+    </fieldset>
+    <fieldset>
+      <legend>Hálózat / Network</legend>
+      <select id="profile"></select>
+      <button id="setProfile">Beállít / Set</button>
+      <button id="trial">Mérési próba / Run trial (95 s)</button>
+      <button id="download">Napló / Download log</button>
+    </fieldset>
+    <fieldset>
+      <legend>Mérés / Measurements</legend>
+      <dl id="stats"></dl>
+    </fieldset>
+  </div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+let pc, dc, timer, lastBytes = 0, lastTime = 0;
+const log = [];
+const show = (values) => {
+  $("stats").replaceChildren(...Object.entries(values).flatMap(([k, v]) => {
+    const dt = document.createElement("dt"); dt.textContent = k;
+    const dd = document.createElement("dd"); dd.textContent = v ?? "–";
+    return [dt, dd];
+  }));
+};
+let server = {}, client = {};
+const render = () => show({ ...server, ...client });
+const send = (message) => dc?.readyState === "open" && dc.send(JSON.stringify(message));
+
+async function sample() {
+  const report = await pc.getStats();
+  let video, pair;
+  report.forEach((s) => {
+    if (s.type === "inbound-rtp" && s.kind === "video") video = s;
+    if (s.type === "candidate-pair" && s.nominated && s.state === "succeeded") pair = s;
+  });
+  if (!video) return;
+  const now = video.timestamp;
+  const kbps = lastTime ? Math.round(((video.bytesReceived - lastBytes) * 8) / (now - lastTime)) : null;
+  lastBytes = video.bytesReceived; lastTime = now;
+  client = {
+    "client fps": video.framesPerSecond ?? 0,
+    "client size": video.frameWidth ? `${video.frameWidth}x${video.frameHeight}` : null,
+    "client kbps": kbps,
+    "jitter ms": video.jitter != null ? Math.round(video.jitter * 1000) : null,
+    "jitter buffer ms": video.jitterBufferEmittedCount ? Math.round((video.jitterBufferDelay / video.jitterBufferEmittedCount) * 1000) : null,
+    "packets lost": video.packetsLost,
+    "freezes": video.freezeCount,
+    "freeze s": video.totalFreezesDuration != null ? video.totalFreezesDuration.toFixed(1) : null,
+    "rtt ms": pair?.currentRoundTripTime != null ? Math.round(pair.currentRoundTripTime * 1000) : null,
+  };
+  send({ type: "client", ...client });
+  log.push({ type: "client", at: Date.now(), ...client });
+  render();
+}
+
+$("connect").onclick = async () => {
+  pc = new RTCPeerConnection();
+  pc.addTransceiver("video", { direction: "recvonly" });
+  dc = pc.createDataChannel("control");
+  dc.onmessage = (event) => {
+    const m = JSON.parse(event.data);
+    log.push({ at: Date.now(), ...m });
+    if (m.type === "stats") {
+      server = {
+        profile: m.profile, auto: m.auto,
+        "estimate kbps": m.estimate_bps ? Math.round(m.estimate_bps / 1000) : null,
+        "target kbps": m.target ? Math.round(m.target.bitrate_bps / 1000) : null,
+        "target scale/fps": m.target ? `${m.target.scale} / ${m.target.fps}` : null,
+        "sent kbps": Math.round(m.sent_bps / 1000), "sent fps": m.sent_fps,
+        "encoded size": `${m.width}x${m.height}`, "encode ms": m.encode_ms,
+        "queue ms": m.queue_ms, "loss (rr)": m.loss != null ? m.loss.toFixed(3) : null,
+        "emulator drops": `${m.dropped_loss} / ${m.dropped_queue}`, source: m.source,
+      };
+      render();
+    }
+  };
+  pc.ontrack = (event) => { $("video").srcObject = event.streams[0] ?? new MediaStream([event.track]); };
+  pc.onconnectionstatechange = () => { $("status").textContent = pc.connectionState; };
+  await pc.setLocalDescription(await pc.createOffer());
+  await new Promise((resolve) => {
+    if (pc.iceGatheringState === "complete") resolve();
+    pc.onicegatheringstatechange = () => pc.iceGatheringState === "complete" && resolve();
+    setTimeout(resolve, 2000);
+  });
+  const response = await fetch("/offer", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(pc.localDescription) });
+  const { answer, profiles } = await response.json();
+  $("profile").replaceChildren(...profiles.map((p) => new Option(p.name, p.name)));
+  await pc.setRemoteDescription(answer);
+  timer = setInterval(sample, 1000);
+  $("connect").disabled = true; $("stop").disabled = false;
+};
+$("stop").onclick = async () => {
+  send({ type: "stop" });
+  clearInterval(timer);
+  for (let i = 0; i < 20 && dc?.bufferedAmount; i++) await new Promise((r) => setTimeout(r, 25));
+  await new Promise((r) => setTimeout(r, 200));
+  pc?.close();
+  $("status").textContent = "closed"; $("stop").disabled = true; $("connect").disabled = false;
+};
+$("auto").onchange = () => send({ type: "mode", auto: $("auto").checked });
+$("apply").onclick = () => { $("auto").checked = false; send({ type: "params", bitrate_bps: Number($("bitrate").value) * 1000, scale: Number($("scale").value), fps: Number($("fps").value) }); };
+$("setProfile").onclick = () => send({ type: "profile", name: $("profile").value });
+$("trial").onclick = () => { $("auto").checked = true; send({ type: "trial" }); };
+$("download").onclick = () => {
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([JSON.stringify(log, null, 1)], { type: "application/json" }));
+  link.download = `midas-webrtc-${Date.now()}.json`;
+  link.click();
+};
+</script>
+</body>
+</html>
