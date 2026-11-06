@@ -7,6 +7,7 @@ import { usePreferences } from "./preferences";
 import { Setup } from "./Setup";
 import { Shell, type SignOutReason } from "./Shell";
 import { SignIn } from "./SignIn";
+import { Usability } from "./usability/Usability";
 
 type Mode =
   | { kind: "checking" }
@@ -22,6 +23,9 @@ const setupToken = (() => {
   if (match) history.replaceState(null, "", location.pathname);
   return match?.[1] ?? null;
 })();
+
+// The usability prototype uses sample data only and never contacts the server.
+const usabilityRoute = location.hash.startsWith("#usability");
 
 export function App() {
   const preferences = usePreferences();
@@ -45,7 +49,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!setupToken) void check();
+    if (!setupToken && !usabilityRoute) void check();
   }, [check]);
 
   const signedOut = useCallback(
@@ -53,6 +57,7 @@ export function App() {
     [],
   );
 
+  if (usabilityRoute) return <Usability preferences={preferences} />;
   switch (mode.kind) {
     case "setup":
       return (

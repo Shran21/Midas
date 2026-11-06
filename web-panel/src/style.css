@@ -2098,3 +2098,96 @@ h1[tabindex="-1"]:focus {
     min-width: 44px;
   }
 }
+.usability-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 20px 16px 40px;
+}
+.usability-roles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  font-size: 13px;
+}
+.usability-roles a {
+  color: var(--accent-text);
+}
+.usability-roles a[aria-current="page"] {
+  font-weight: 650;
+  text-decoration: none;
+}
+.usability-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+}
+.usability-panel ul {
+  margin: 0;
+  padding-left: 20px;
+  line-height: 1.7;
+}
+.usability-target {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 13px;
+}
+.usability-target dt {
+  color: var(--muted);
+}
+.usability-target dd {
+  margin: 0;
+}
+.usability-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.usability-status {
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--surface-subtle);
+  font-size: 14px;
+}
+.usability-dialog {
+  width: 480px;
+}
+.usability-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 22px;
+}
+.usability-sessions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+}
+.consent-window {
+  max-width: 460px;
+}
+.usability-end {
+  align-self: flex-start;
+  min-width: 160px;
+}
+.usability-log {
+  padding: 12px 16px;
+  font-size: 12px;
+}
+.usability-log ol {
+  padding-left: 18px;
+  word-break: break-all;
+}
