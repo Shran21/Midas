@@ -9,6 +9,10 @@ pub trait Source {
     fn name(&self) -> &'static str;
     /// Returns the newest frame, repeating the previous one when the screen did not change.
     fn capture(&mut self) -> Option<&Frame>;
+    /// Generation and name of the desktop the next capture reads; the generation changes on every desktop switch.
+    fn surface(&self) -> (u64, &'static str) {
+        (0, "default")
+    }
 }
 
 /// Moving test pattern for builds without desktop duplication.
@@ -216,7 +220,7 @@ pub mod graphics {
     }
 }
 
-pub fn open() -> Box<dyn Source + Send> {
+pub fn open() -> Box<dyn Source> {
     #[cfg(windows)]
     {
         match desktop::Desktop::open() {

@@ -24,10 +24,26 @@ use str0m::{
 
 use crate::{
     adapt::{Controller, MAX_BITRATE, MIN_BITRATE, Observation, Params, ladder},
-    capture,
+    capture::Source,
     encode::H264,
     network::{Impairment, Profile, profile},
 };
+
+/// Called on the capture thread, so a source can attach that thread to a desktop.
+pub type SourceFactory = Arc<dyn Fn() -> Box<dyn Source> + Send + Sync>;
+pub type InputFactory = Arc<dyn Fn() -> Box<dyn InputSink> + Send + Sync>;
+
+/// Receives remote pointer and keyboard events; dropping it releases anything still held.
+pub trait InputSink: Send {
+    /// `surface` is the desktop generation the viewer saw when it produced the event.
+    fn input(&mut self, surface: u64, event: &Value);
+}
+
+#[derive(Clone)]
+pub struct Hooks {
+    pub source: SourceFactory,
+    pub input: Option<InputFactory>,
+}
 
 pub struct Control {
     pub params: Params,
@@ -42,12 +58,18 @@ pub struct Encoded {
     pub height: usize,
     pub encode_ms: f64,
     pub source: &'static str,
+    pub surface: (u64, &'static str),
 }
 
 /// Capture and encode on their own thread; the bounded channel drops frames instead of building latency.
-pub fn spawn_encoder(control: Arc<Mutex<Control>>, frames: SyncSender<Encoded>) {
+pub fn spawn_encoder(
+    control: Arc<Mutex<Control>>,
+    frames: SyncSender<Encoded>,
+    factory: SourceFactory,
+) {
     thread::spawn(move || {
-        let mut source = capture::open();
+        let mut source = factory();
+        let mut surface = None;
         let start = control.lock().map(|c| c.params).unwrap_or(Params {
             bitrate_bps: 2_500_000,
             scale: 1.0,
@@ -71,6 +93,11 @@ pub fn spawn_encoder(control: Arc<Mutex<Control>>, frames: SyncSender<Encoded>) 
             if keyframe {
                 encoder.keyframe();
             }
+            let current = source.surface();
+            if surface != Some(current) {
+                surface = Some(current);
+                encoder.keyframe();
+            }
             if let Some(frame) = source.capture()
                 && let Ok((data, (width, height))) = encoder.encode(frame)
                 && !data.is_empty()
@@ -82,6 +109,7 @@ pub fn spawn_encoder(control: Arc<Mutex<Control>>, frames: SyncSender<Encoded>) 
                     height,
                     encode_ms: begun.elapsed().as_secs_f64() * 1000.0,
                     source: source.name(),
+                    surface: current,
                 };
                 match frames.try_send(encoded) {
                     Ok(()) | Err(TrySendError::Full(_)) => {}
@@ -112,6 +140,10 @@ enum Command {
     },
     Trial,
     Client(Value),
+    Input {
+        surface: u64,
+        event: Value,
+    },
     Stop,
 }
 
@@ -152,10 +184,17 @@ pub struct Session {
     frames_sent: u64,
     last: Option<(usize, usize, f64, &'static str)>,
     trial: Option<Trial>,
+    input: Option<Box<dyn InputSink>>,
+    surface: Option<(u64, &'static str)>,
 }
 
 impl Session {
-    pub fn new(rtc: Rtc, socket: UdpSocket, directory: PathBuf) -> std::io::Result<Self> {
+    pub fn new(
+        rtc: Rtc,
+        socket: UdpSocket,
+        directory: PathBuf,
+        hooks: Hooks,
+    ) -> std::io::Result<Self> {
         std::fs::create_dir_all(&directory)?;
         let path = directory.join(format!("webrtc-{}.jsonl", unix_ms()));
         tracing::info!(path = %path.display(), "measurement log");
@@ -170,7 +209,7 @@ impl Session {
             stop: false,
         }));
         let (sender, frames) = sync_channel(2);
-        spawn_encoder(control.clone(), sender);
+        spawn_encoder(control.clone(), sender, hooks.source);
         let now = Instant::now();
         Ok(Self {
             rtc,
@@ -192,6 +231,8 @@ impl Session {
             frames_sent: 0,
             last: None,
             trial: None,
+            input: hooks.input.map(|factory| factory()),
+            surface: None,
         })
     }
 
@@ -258,6 +299,12 @@ impl Session {
                 self.record(json!({ "type": "trial", "phase": 0, "profile": TRIAL[0].0 }));
             }
             Command::Client(stats) => self.record(json!({ "type": "client", "stats": stats })),
+            // Input is never recorded: key events may carry typed credentials.
+            Command::Input { surface, event } => {
+                if let Some(sink) = &mut self.input {
+                    sink.input(surface, &event);
+                }
+            }
             Command::Stop => {
                 if let Ok(mut c) = self.control.lock() {
                     c.stop = true;
@@ -392,6 +439,13 @@ impl Session {
                     }
                 }
                 self.last = Some((frame.width, frame.height, frame.encode_ms, frame.source));
+                if self.surface != Some(frame.surface) {
+                    self.surface = Some(frame.surface);
+                    let (generation, desktop) = frame.surface;
+                    self.record(
+                        json!({ "type": "surface", "generation": generation, "desktop": desktop }),
+                    );
+                }
             }
             while let Some((destination, contents)) = self.link.pop_ready(now) {
                 let _ = self.socket.send_to(&contents, destination);
@@ -470,6 +524,7 @@ impl Session {
     }
 
     fn finish(mut self) {
+        self.input = None;
         if let Ok(mut c) = self.control.lock() {
             c.stop = true;
         }

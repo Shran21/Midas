@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MIDAS UAC-próba / UAC proof</title>
+<style>
+  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+  body { margin: 0; padding: 16px; background: Canvas; color: CanvasText; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p { margin: 0 0 10px; font-size: 13px; }
+  form { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin: 0 0 10px; }
+  label { font-size: 13px; display: grid; gap: 2px; }
+  input { font: 16px ui-monospace, monospace; padding: 5px 8px; width: 11ch; }
+  button { padding: 6px 12px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; margin: 0 0 8px; }
+  #desktop[data-kind="secure"] { color: #fff; background: #b45309; padding: 2px 8px; border-radius: 4px; }
+  video { display: block; width: 100%; max-height: calc(100vh - 170px); object-fit: contain; background: #000; border-radius: 6px; cursor: crosshair; outline-offset: 3px; }
+  video:focus-visible, video:focus { outline: 3px solid Highlight; }
+</style>
+</head>
+<body>
+<h1>MIDAS UAC-próba / UAC proof (MIDAS-018)</h1>
+<p>Csak elkülönített tesztgépen és tesztszámítógép-hálózaton. A kódot a célgép helyi ablaka mutatja. / Isolated test machine and network only. The code is shown in the local window on the target.</p>
+<form id="pair">
+  <label>Kód / Code <input id="code" required autocomplete="off" inputmode="numeric" pattern="\d{4}-?\d{4}" placeholder="0000-0000"></label>
+  <button id="connect">Kapcsolódás / Connect</button>
+  <button type="button" id="stop" disabled>Bontás / Disconnect</button>
+</form>
+<div class="bar">
+  <span id="status" role="status">Nincs kapcsolat / Not connected</span>
+  <span>Asztal / Desktop: <strong id="desktop">–</strong></span>
+  <span id="stats"></span>
+</div>
+<video id="video" tabindex="0" autoplay playsinline muted aria-label="Távoli képernyő; kattints a vezérléshez / Remote screen; click to control"></video>
+<p>Kattints a képre: az egér és a billentyűzet ilyenkor a célgépre megy. A vezérlés a képen kívüli kattintással áll le. / Click the picture to send mouse and keyboard to the target; click outside it to stop sending keys.</p>
+<script>
+const $ = (id) => document.getElementById(id);
+const video = $("video");
+const DESKTOPS = {
+  default: "normál asztal / normal desktop",
+  secure: "biztonságos asztal (UAC) / secure desktop (UAC)",
+  inaccessible: "nem elérhető / not accessible",
+  other: "egyéb / other",
+};
+let pc, dc, surface = null, pending = null;
+const held = new Set();
+const send = (message) => dc?.readyState === "open" && dc.send(JSON.stringify(message));
+const input = (event) => surface !== null && send({ type: "input", surface, event });
+const status = (text) => { $("status").textContent = text; };
+
+function point(e) {
+  const r = video.getBoundingClientRect();
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return null;
+  const scale = Math.min(r.width / vw, r.height / vh);
+  const w = vw * scale, h = vh * scale;
+  return { x: (e.clientX - r.left - (r.width - w) / 2) / w, y: (e.clientY - r.top - (r.height - h) / 2) / h };
+}
+function flushMove() {
+  if (pending) input({ kind: "move", ...pending });
+  pending = null;
+}
+const BUTTONS = ["left", "middle", "right"];
+video.addEventListener("pointermove", (e) => {
+  const p = point(e);
+  if (!p) return;
+  if (!pending) requestAnimationFrame(flushMove);
+  pending = p;
+});
+video.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  video.focus();
+  video.setPointerCapture(e.pointerId);
+  const p = point(e);
+  if (p) { pending = p; flushMove(); }
+  if (BUTTONS[e.button]) input({ kind: "button", button: BUTTONS[e.button], down: true });
+});
+video.addEventListener("pointerup", (e) => {
+  const p = point(e);
+  if (p) { pending = p; flushMove(); }
+  if (BUTTONS[e.button]) input({ kind: "button", button: BUTTONS[e.button], down: false });
+});
+video.addEventListener("contextmenu", (e) => e.preventDefault());
+video.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  if (e.deltaY) input({ kind: "wheel", delta: e.deltaY < 0 ? 120 : -120 });
+}, { passive: false });
+video.addEventListener("keydown", (e) => {
+  e.preventDefault();
+  held.add(e.code);
+  input({ kind: "key", code: e.code, down: true });
+});
+video.addEventListener("keyup", (e) => {
+  e.preventDefault();
+  held.delete(e.code);
+  input({ kind: "key", code: e.code, down: false });
+});
+video.addEventListener("blur", () => {
+  for (const code of held) input({ kind: "key", code, down: false });
+  held.clear();
+});
+
+$("pair").onsubmit = async (e) => {
+  e.preventDefault();
+  const digits = $("code").value.replace(/\D/g, "");
+  if (digits.length !== 8) { status("A kód 8 számjegy / The code has 8 digits"); return; }
+  $("connect").disabled = true;
+  pc = new RTCPeerConnection();
+  pc.addTransceiver("video", { direction: "recvonly" });
+  dc = pc.createDataChannel("control");
+  dc.onmessage = (event) => {
+    const m = JSON.parse(event.data);
+    if (m.type === "surface") {
+      surface = m.generation;
+      $("desktop").textContent = DESKTOPS[m.desktop] ?? m.desktop;
+      $("desktop").dataset.kind = m.desktop;
+    } else if (m.type === "stats") {
+      $("stats").textContent = `${m.width}×${m.height} · ${m.sent_fps} fps · ${Math.round(m.sent_bps / 1000)} kbps`;
+    }
+  };
+  pc.ontrack = (event) => { video.srcObject = event.streams[0] ?? new MediaStream([event.track]); };
+  pc.onconnectionstatechange = () => {
+    const state = pc.connectionState;
+    if (state === "connected") status("Kapcsolódva / Connected");
+    if (state === "disconnected" || state === "failed" || state === "closed") {
+      status("A kapcsolat véget ért / The session ended");
+      surface = null;
+      $("stop").disabled = true; $("connect").disabled = false;
+    }
+  };
+  await pc.setLocalDescription(await pc.createOffer());
+  await new Promise((resolve) => {
+    if (pc.iceGatheringState === "complete") resolve();
+    pc.onicegatheringstatechange = () => pc.iceGatheringState === "complete" && resolve();
+    setTimeout(resolve, 2000);
+  });
+  const response = await fetch("/offer", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-midas-pairing": `${digits.slice(0, 4)}-${digits.slice(4)}` },
+    body: JSON.stringify(pc.localDescription),
+  });
+  if (!response.ok) {
+    status(response.status === 403 ? "Hibás kód vagy túl sok próbálkozás / Wrong code or too many attempts"
+      : response.status === 409 ? "Már van aktív kapcsolat / A session is already active"
+      : `Hiba / Error ${response.status}`);
+    pc.close();
+    $("connect").disabled = false;
+    return;
+  }
+  const { answer } = await response.json();
+  await pc.setRemoteDescription(answer);
+  $("stop").disabled = false;
+  status("Kapcsolódás… / Connecting…");
+};
+$("stop").onclick = async () => {
+  send({ type: "stop" });
+  for (let i = 0; i < 20 && dc?.bufferedAmount; i++) await new Promise((r) => setTimeout(r, 25));
+  await new Promise((r) => setTimeout(r, 200));
+  pc?.close();
+  surface = null;
+  status("Bontva / Disconnected");
+  $("stop").disabled = true; $("connect").disabled = false;
+};
+</script>
+</body>
+</html>
