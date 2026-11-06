@@ -58,6 +58,19 @@ test("expiry closes the request and blocks a late allow", () => {
   );
 });
 
+test("the moderator reset returns both views to the starting state", () => {
+  const request = newRequest("normal", "console", 0, "g");
+  let state = reduce(idle, { type: "request", request });
+  state = reduce(state, { type: "decline", id: "g", at: 1_000 });
+  assert.equal(reduce(state, { type: "reset" }).kind, "idle");
+  state = reduce(reduce(idle, { type: "request", request }), {
+    type: "allow",
+    id: "g",
+    at: 1_000,
+  });
+  assert.equal(reduce(state, { type: "reset" }).kind, "idle");
+});
+
 test("only one request is pending and the operator can end an active session", () => {
   const request = newRequest("normal", "console", 0, "d");
   let state = reduce(idle, { type: "request", request });

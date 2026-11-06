@@ -13,7 +13,9 @@ A webpanel `#usability` címe alatt kattintható prototípus fut, mintaadatokkal
 - `…/#usability/operator`: a kezelő adminpanele (Norda Kft., WS-BUD-014, két bejelentkezett Windows-felhasználó).
 - `…/#usability/consent`: a felhasználó gépén megjelenő helyi jóváhagyó ablak.
 
-Indítás fejlesztői gépen: `just dev`, majd a http://127.0.0.1:5173/#usability/operator cím. A „Másik nézet megnyitása új ablakban” gomb megnyitja a párját. A megfigyelői napló időbélyeggel rögzíti az eseményeket, és letölthető.
+Indítás fejlesztői gépen: `just dev`, majd a http://127.0.0.1:5173/#usability/operator cím. A „Másik nézet megnyitása új ablakban” gomb megnyitja a párját. A megfigyelői napló időbélyeggel rögzíti az eseményeket, és letölthető. Minden résztvevő előtt nyomd meg a megfigyelői panel **Alaphelyzet (mindkét nézet)** gombját.
+
+A két nézet csak ugyanazon böngészőn belül kommunikál. A mobilos körben ezért mindkét nézetet a telefonon, két lapon nyisd meg: a résztvevő a kezelői lapot használja, a moderátor a válaszokat a másik lapon adja. Ehhez a fejlesztői szervert a helyi hálózaton is elérhetővé kell tenni (`pnpm --filter @midas/web-panel exec vite --host 0.0.0.0`); ezt csak megbízható hálózaton, a próba idejére tedd meg.
 
 A prototípus a követelmények szerint működik:
 
@@ -74,7 +76,9 @@ The web panel's `#usability` route runs a clickable prototype with sample data a
 - `…/#usability/operator`: the operator's admin panel (Norda Kft., WS-BUD-014, two signed-in Windows users).
 - `…/#usability/consent`: the local consent window shown on the user's computer.
 
-To start on a development machine: `just dev`, then open http://127.0.0.1:5173/#usability/operator. The "Open the other view in a new window" button opens its counterpart. The facilitator log records timestamped events and can be downloaded.
+To start on a development machine: `just dev`, then open http://127.0.0.1:5173/#usability/operator. The "Open the other view in a new window" button opens its counterpart. The facilitator log records timestamped events and can be downloaded. Press **Reset (both views)** in the facilitator panel before every participant.
+
+The two views only communicate within the same browser. For the mobile round, open both views on the phone in two tabs: the participant uses the operator tab and the moderator answers in the other tab. This needs the development server reachable on the local network (`pnpm --filter @midas/web-panel exec vite --host 0.0.0.0`); do this only on a trusted network and only for the trial.
 
 The prototype follows the requirements:
 

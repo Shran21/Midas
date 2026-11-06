@@ -21,7 +21,8 @@ export type Event =
   | { type: "allow"; id: string; at: number }
   | { type: "decline"; id: string; at: number }
   | { type: "expire"; id: string; at: number }
-  | { type: "end"; id: string; by: "user" | "operator"; at: number };
+  | { type: "end"; id: string; by: "user" | "operator"; at: number }
+  | { type: "reset" };
 
 export const REQUEST_SECONDS = 60;
 
@@ -67,6 +68,8 @@ export function reduce(state: State, event: Event): State {
       return state.kind === "connected" && state.request.id === event.id
         ? { kind: "ended", request: state.request, by: event.by, at: event.at }
         : state;
+    case "reset":
+      return { kind: "idle" };
   }
 }
 

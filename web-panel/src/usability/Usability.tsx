@@ -74,6 +74,7 @@ const text = {
     youEnded: "A kapcsolat véget ért.",
     operatorEnded: "A technikus bontotta a kapcsolatot.",
     log: "Megfigyelői napló",
+    reset: "Alaphelyzet (mindkét nézet)",
     download: "Napló letöltése",
   },
   en: {
@@ -138,6 +139,7 @@ const text = {
     youEnded: "The connection has ended.",
     operatorEnded: "The technician ended the connection.",
     log: "Facilitator log",
+    reset: "Reset (both views)",
     download: "Download log",
   },
 };
@@ -601,6 +603,13 @@ export function Usability({ preferences }: { preferences: Preferences }) {
         )}
         <details className="panel usability-log">
           <summary>{t.log}</summary>
+          <button
+            type="button"
+            className="button secondary"
+            onClick={() => dispatch({ type: "reset" })}
+          >
+            {t.reset}
+          </button>
           <ol>
             {log.map((entry) => (
               <li key={`${entry.at}-${entry.event}`}>
