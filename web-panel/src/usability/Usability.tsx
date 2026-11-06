@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type { Language } from "../i18n";
 import type { Preferences } from "../preferences";
 import { PreferenceControls } from "../SignIn";
@@ -34,14 +40,15 @@ const text = {
     send: "Kérés küldése",
     cancel: "Mégse",
     idle: "Nincs aktív kérés.",
-    waiting: (who: string, s: number) =>
-      `Várakozás ${who} jóváhagyására. A kérés ${s} másodperc múlva lejár.`,
+    waiting: (who: string) => `Várakozás ${who} jóváhagyására.`,
+    remaining: (s: number) => `A kérés ${s} másodperc múlva lejár.`,
     declined: (who: string) =>
       `${who} elutasította a kérést. Nem jött létre kapcsolat.`,
     expired: (who: string) =>
       `${who} nem válaszolt, a kérés lejárt. Nem jött létre kapcsolat.`,
-    connected: (who: string, mode: string, t: string) =>
-      `Kapcsolódva: ${who} asztala · ${mode} · ${t}`,
+    connected: (who: string, mode: string) =>
+      `Kapcsolódva: ${who} asztala · ${mode}`,
+    duration: (t: string) => `Időtartam: ${t}`,
     endedUser: (who: string) => `${who} befejezte a kapcsolatot.`,
     endedOperator: "Bontottad a kapcsolatot.",
     newRequest: "Új kérés",
@@ -99,14 +106,15 @@ const text = {
     send: "Send request",
     cancel: "Cancel",
     idle: "No active request.",
-    waiting: (who: string, s: number) =>
-      `Waiting for ${who} to answer. The request expires in ${s} seconds.`,
+    waiting: (who: string) => `Waiting for ${who} to answer.`,
+    remaining: (s: number) => `The request expires in ${s} seconds.`,
     declined: (who: string) =>
       `${who} declined the request. No connection was made.`,
     expired: (who: string) =>
       `${who} did not answer and the request expired. No connection was made.`,
-    connected: (who: string, mode: string, t: string) =>
-      `Connected: ${who}'s desktop · ${mode} · ${t}`,
+    connected: (who: string, mode: string) =>
+      `Connected: ${who}'s desktop · ${mode}`,
+    duration: (t: string) => `Duration: ${t}`,
     endedUser: (who: string) => `${who} ended the connection.`,
     endedOperator: "You ended the connection.",
     newRequest: "New request",
@@ -214,6 +222,20 @@ function useShared(role: string) {
   return { state, dispatch, log };
 }
 
+function useFocusFallback(
+  target: RefObject<HTMLElement | null>,
+  kind: State["kind"],
+) {
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a state change can remove or disable the focused control
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (!active || active === document.body) target.current?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [kind, target]);
+}
+
 function useNow() {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -241,7 +263,9 @@ function Operator({
 }) {
   const t = text[language];
   const dialog = useRef<HTMLDialogElement>(null);
-  const opener = useRef<HTMLElement | null>(null);
+  const opener = useRef<HTMLButtonElement | null>(null);
+  const statusLine = useRef<HTMLParagraphElement>(null);
+  useFocusFallback(statusLine, state.kind);
   const [mode, setMode] = useState<Mode>("normal");
   const [session, setSession] = useState("");
   const who =
@@ -249,7 +273,7 @@ function Operator({
       (s) => s.id === (state.kind === "idle" ? session : state.request.session),
     )?.user ?? "";
   const modeName = (m: Mode) => (m === "admin" ? t.modeAdmin : t.modeNormal);
-  const open = (next: Mode, button: HTMLElement) => {
+  const open = (next: Mode, button: HTMLButtonElement) => {
     opener.current = button;
     setMode(next);
     setSession("");
@@ -260,12 +284,14 @@ function Operator({
   };
   const busy = state.kind === "waiting" || state.kind === "connected";
   let status: string;
+  let detail: string | null = null;
   switch (state.kind) {
     case "idle":
       status = t.idle;
       break;
     case "waiting":
-      status = t.waiting(who, secondsLeft(state, now));
+      status = t.waiting(who);
+      detail = t.remaining(secondsLeft(state, now));
       break;
     case "declined":
       status = t.declined(who);
@@ -274,11 +300,8 @@ function Operator({
       status = t.expired(who);
       break;
     case "connected":
-      status = t.connected(
-        who,
-        modeName(state.request.mode),
-        clock(now - state.since),
-      );
+      status = t.connected(who, modeName(state.request.mode));
+      detail = t.duration(clock(now - state.since));
       break;
     case "ended":
       status = state.by === "user" ? t.endedUser(who) : t.endedOperator;
@@ -312,9 +335,16 @@ function Operator({
           {t.requestAdmin}
         </button>
       </div>
-      <p className="usability-status" role="status" aria-live="polite">
+      <p
+        ref={statusLine}
+        className="usability-status"
+        role="status"
+        aria-live="polite"
+        tabIndex={-1}
+      >
         {status}
       </p>
+      {detail && <p className="field-hint">{detail}</p>}
       {state.kind === "connected" && (
         <div className="usability-actions">
           <span className="count-badge">
@@ -342,7 +372,10 @@ function Operator({
         aria-labelledby="request-title"
         onClose={() => {
           const target = opener.current;
-          if (target?.isConnected) requestAnimationFrame(() => target.focus());
+          requestAnimationFrame(() => {
+            if (target?.isConnected && !target.disabled) target.focus();
+            else statusLine.current?.focus();
+          });
         }}
       >
         <form
@@ -416,6 +449,8 @@ function Consent({
   const t = text[language];
   const decline = useRef<HTMLButtonElement>(null);
   const end = useRef<HTMLButtonElement>(null);
+  const messageLine = useRef<HTMLParagraphElement>(null);
+  useFocusFallback(messageLine, state.kind);
   const [seen, setSeen] = useState<{ id: string; at: number } | null>(null);
   const modeName = (m: Mode) => (m === "admin" ? t.modeAdmin : t.modeNormal);
   const pending = state.kind === "waiting" ? state.request.id : null;
@@ -519,7 +554,9 @@ function Consent({
           </button>
         </>
       ) : (
-        <p role="status">{message}</p>
+        <p ref={messageLine} role="status" tabIndex={-1}>
+          {message}
+        </p>
       )}
     </section>
   );

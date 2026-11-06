@@ -21,9 +21,9 @@ A prototípus a követelmények szerint működik:
 
 - A kérés csak munkamenetválasztás után küldhető.
 - A két kérésmód külön gombról indul.
-- A várakozás, az elutasítás, a lejárat (60 s), a kapcsolódás és a bontás külön, élő régióban felolvasott állapot.
+- A várakozás, az elutasítás, a lejárat (60 s), a kapcsolódás és a bontás külön, élő régióban felolvasott állapot. A visszaszámlálás és a kapcsolat időtartama külön, nem élő sorban látszik, így a képernyőolvasó nem olvassa fel másodpercenként.
 - A helyi ablakban a kezdő fókusz az Elutasítás. Az Engedélyezés a kérés megjelenése után 1 másodpercig nem aktiválható, így egy véletlen billentyű nem hagyhat jóvá.
-- Késői vagy lejárt válasz nem hoz létre kapcsolatot. Kapcsolódás után a fókusz a Befejezés gombra kerül.
+- Késői vagy lejárt válasz nem hoz létre kapcsolatot. Kapcsolódás után a fókusz a Befejezés gombra kerül. Ha a fókuszált gomb eltűnik vagy inaktív lesz, a fókusz az állapotüzenetre kerül.
 
 ### Résztvevők és szerepek
 
@@ -63,7 +63,10 @@ Az alábbiak nem helyettesítik a résztvevős próbát.
 - **Állapotok:** a várakozás, az elutasítás, az engedélyezés, a felhasználói befejezés és a lejárat mindkét ablakban helyes állapotot mutat. A késői és idegen válaszokat a modell automatikus tesztje kizárja.
 - **Helyi ablak:** a kezdő fókusz az Elutasítás. Az Engedélyezés 150 ms-nál inaktív, 1,85 s-nál aktív. Rendszergazdai módban a két többletképesség (UAC, rendszergazdai műveletek) megjelenik. Engedélyezés után a fókusz a Befejezés gombon van.
 - **Nyelv és megjelenés:** a nézet magyarul és angolul, világos és sötét témában, keskeny szélességen is olvasható.
-- **Nincs még elvégezve:** valódi képernyőolvasós és mobilos kör, valamint új felhasználóval végzett próba.
+- **Billentyűzetes kör (7. feladat, magyarul és angolul):** az 1–5. feladat egér nélkül, valódi billentyűleütésekkel végigvihető mindkét ablakban. Az első körben két hiba derült ki: a kérés elküldése után és a helyi Befejezés után a fókusz a lap elejére esett. Javítás után a fókusz ilyenkor az állapotüzenetre kerül; Escape vagy Mégse után a kérés gombjára tér vissza. Az ismételt körben (küldés, Escape, elutasítás, engedélyezés, befejezés mindkét oldalról) a fókusz mindig látható volt, elakadás nem volt.
+- **Képernyőolvasós előellenőrzés (8–9. feladat, 375 px, magyarul és angolul):** a látható vezérlők szerepét, nevét és az élő régiókat szkripttel olvastam ki a böngészőből; ez nem valódi képernyőolvasó. Minden gomb, rádiógomb és hivatkozás megnevezett. A munkamenet-csoport, a párbeszédablak és a jóváhagyó ablak (`alertdialog`) címe helyes. A leírás tartalmazza a szervezetet, a módot, a képességeket és a lejárati időt. A `lang` attribútum a nyelvvel együtt vált, vízszintes görgetés nincs. Hiba: a kezelői élő régió másodpercenként változott (visszaszámlálás, időtartam), így a képernyőolvasó folyamatosan újraolvasta volna. Javítás után az idő külön sorban van, az élő régió 3 másodperc alatt nem változott.
+- **Lejárat angolul:** 60 másodperc után mindkét ablak a lejáratot mutatja, és nincs kapcsolat.
+- **Nincs még elvégezve:** valódi képernyőolvasós kör (TalkBack vagy VoiceOver, NVDA vagy Narrátor), mobileszközös kör, valamint a 2–5. feladat megértési része új felhasználóval.
 
 ## English
 
@@ -84,9 +87,9 @@ The prototype follows the requirements:
 
 - A request can only be sent after choosing a session.
 - The two request modes start from separate buttons.
-- Waiting, declined, expired (60 s), connected and ended are separate states, announced through a live region.
+- Waiting, declined, expired (60 s), connected and ended are separate states, announced through a live region. The countdown and the connection duration appear on a separate line outside the live region, so a screen reader does not announce them every second.
 - In the local window the initial focus is Decline. Allow cannot be activated for 1 second after the request appears, so a stray key press cannot approve.
-- A late or expired answer never creates a connection. After connecting, focus moves to the End button.
+- A late or expired answer never creates a connection. After connecting, focus moves to the End button. If the focused button disappears or becomes inactive, focus moves to the status message.
 
 ### Participants and roles
 
@@ -126,4 +129,7 @@ These checks do not replace the participant trial.
 - **States:** waiting, declined, allowed, user-ended and expired show the correct state in both windows. The model's automated tests rule out late and foreign answers.
 - **Local window:** initial focus is Decline. Allow is inactive at 150 ms and active at 1.85 s. In administrative mode the two extra capabilities (UAC, administrative actions) appear. After allowing, focus is on End.
 - **Language and appearance:** the view reads well in Hungarian and English, light and dark, at narrow width.
-- **Not yet done:** real screen-reader and mobile rounds, and a trial with a new user.
+- **Keyboard round (task 7, Hungarian and English):** tasks 1–5 can be completed in both windows with real key presses and no mouse. The first round found two defects: after sending a request and after the local End, focus fell to the top of the page. After the fix, focus moves to the status message in these cases; after Escape or Cancel it returns to the request button. In the repeated round (send, Escape, decline, allow, end from both sides) focus was always visible and nothing got stuck.
+- **Screen-reader pre-check (tasks 8–9, 375 px, Hungarian and English):** I read the roles, names and live regions of the visible controls from the browser with a script; this is not a real screen reader. Every button, radio button and link has a name. The session group, the dialog and the consent window (`alertdialog`) have correct titles. The description includes the organisation, the mode, the capabilities and the expiry time. The `lang` attribute follows the language, and there is no horizontal scrolling. Defect: the operator live region changed every second (countdown, duration), so a screen reader would have re-read it continuously. After the fix the time is on a separate line, and the live region did not change during 3 seconds.
+- **Expiry in English:** after 60 seconds both windows show the expiry, and there is no connection.
+- **Not yet done:** a real screen-reader round (TalkBack or VoiceOver, NVDA or Narrator), a round on a mobile device, and the comprehension part of tasks 2–5 with a new user.
