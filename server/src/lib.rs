@@ -4,6 +4,7 @@ use axum::{Json, Router, routing::get};
 use serde::Serialize;
 
 pub mod administration;
+pub mod agent;
 pub mod audit;
 pub mod auth;
 pub mod authorization;
@@ -37,9 +38,11 @@ pub fn web_router() -> Router {
 }
 
 pub fn agent_router() -> Router {
-    Router::new()
-        .route("/agent/connect", get(unavailable))
-        .layer(axum::middleware::from_fn(observe))
+    agent_router_with(agent::AgentProtocol::default())
+}
+
+pub fn agent_router_with(protocol: agent::AgentProtocol) -> Router {
+    agent::router(protocol).layer(axum::middleware::from_fn(observe))
 }
 
 async fn unavailable() -> axum::http::StatusCode {

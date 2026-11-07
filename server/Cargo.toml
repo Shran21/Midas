@@ -36,8 +36,10 @@ tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 ldap3.workspace = true
+midas-protocol = { path = "../shared/protocol", version = "0.1.0" }
 
 [dev-dependencies]
+midas-agent-core = { path = "../agent/agent-core", version = "0.1.0" }
 tokio-tungstenite.workspace = true
 webauthn-rs-proto.workspace = true
 webauthn-authenticator-rs.workspace = true

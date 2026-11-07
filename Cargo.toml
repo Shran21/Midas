@@ -1,6 +1,8 @@
 [workspace]
 members = [
   "server",
+  "shared/protocol",
+  "agent/agent-core",
   "agent/agent-windows/media-prototype",
   "agent/agent-windows/uac-prototype",
 ]
@@ -29,6 +31,7 @@ openssl = { version = "0.10", features = ["vendored"] }
 zeroize = { version = "1", features = ["derive"] }
 axum = { version = "0.8.9", features = ["ws"] }
 tokio-tungstenite = "0.29"
+prost = "0.14"
 axum-server = { version = "0.8.0", features = ["tls-rustls-no-provider"] }
 rustls = { version = "0.23.46", default-features = false, features = ["ring", "std"] }
 rustls-acme = { version = "0.15.4", default-features = false, features = ["ring", "webpki-roots", "axum"] }

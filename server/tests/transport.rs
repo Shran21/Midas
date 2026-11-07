@@ -116,7 +116,7 @@ async fn https_and_mtls_enforce_distinct_boundaries() {
                     request(address, &root, Some(&valid), "/agent/connect")
                         .await
                         .unwrap()
-                        .starts_with("HTTP/1.1 503")
+                        .starts_with("HTTP/1.1 426")
                 );
                 assert!(
                     request(address, &root, Some(&valid), "/agent/enroll")
@@ -304,7 +304,7 @@ async fn revoked_client_is_rejected() {
             request(address, &root, Some(&valid), "/agent/connect")
                 .await
                 .unwrap()
-                .starts_with("HTTP/1.1 503")
+                .starts_with("HTTP/1.1 426")
         );
         assert!(
             request(address, &root, Some(&revoked), "/agent/connect")

@@ -1,0 +1,247 @@
+//! Wire contract between MIDAS agents and the server.
+//!
+//! Compatible changes (new optional fields or new message types) keep the
+//! protocol version, because receivers skip unknown fields and ignore unknown
+//! message types. Changing or removing the meaning of an existing field needs a
+//! new version, negotiated through [`VersionRange::negotiate`].
+
+use prost::Message;
+
+/// Versions this build can speak.
+pub const SUPPORTED: VersionRange = VersionRange { min: 1, max: 1 };
+/// Upper bound for one encoded message, enforced on both ends of the socket.
+pub const MAX_MESSAGE_BYTES: usize = 64 * 1024;
+pub const CONNECT_PATH: &str = "/agent/connect";
+pub const MAX_AGENT_VERSION_BYTES: usize = 64;
+pub const MAX_PLATFORM_BYTES: usize = 32;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VersionRange {
+    pub min: u32,
+    pub max: u32,
+}
+
+impl VersionRange {
+    pub fn new(min: u32, max: u32) -> Option<Self> {
+        (min >= 1 && min <= max).then_some(Self { min, max })
+    }
+
+    /// Highest version both sides support.
+    pub fn negotiate(self, peer: Self) -> Option<u32> {
+        let low = self.min.max(peer.min);
+        let high = self.max.min(peer.max);
+        (low <= high).then_some(high)
+    }
+
+    pub fn contains(self, version: u32) -> bool {
+        (self.min..=self.max).contains(&version)
+    }
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct Envelope {
+    #[prost(oneof = "Body", tags = "1, 2, 3, 4, 5")]
+    pub body: Option<Body>,
+}
+
+#[derive(Clone, PartialEq, prost::Oneof)]
+pub enum Body {
+    #[prost(message, tag = "1")]
+    Hello(Hello),
+    #[prost(message, tag = "2")]
+    Welcome(Welcome),
+    #[prost(message, tag = "3")]
+    Reject(Reject),
+    #[prost(message, tag = "4")]
+    Ping(Ping),
+    #[prost(message, tag = "5")]
+    Pong(Pong),
+}
+
+/// First message from the agent.
+#[derive(Clone, PartialEq, Message)]
+pub struct Hello {
+    #[prost(uint32, tag = "1")]
+    pub min_version: u32,
+    #[prost(uint32, tag = "2")]
+    pub max_version: u32,
+    #[prost(string, tag = "3")]
+    pub agent_version: String,
+    #[prost(string, tag = "4")]
+    pub platform: String,
+}
+
+/// Accepted handshake; `version` applies for the rest of the session.
+#[derive(Clone, PartialEq, Message)]
+pub struct Welcome {
+    #[prost(uint32, tag = "1")]
+    pub version: u32,
+    #[prost(uint32, tag = "2")]
+    pub keepalive_seconds: u32,
+    #[prost(string, tag = "3")]
+    pub server_version: String,
+}
+
+/// Refused handshake; the server closes the connection after sending it.
+#[derive(Clone, PartialEq, Message)]
+pub struct Reject {
+    #[prost(enumeration = "RejectReason", tag = "1")]
+    pub reason: i32,
+    #[prost(uint32, tag = "2")]
+    pub min_version: u32,
+    #[prost(uint32, tag = "3")]
+    pub max_version: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
+#[repr(i32)]
+pub enum RejectReason {
+    Unspecified = 0,
+    UnsupportedVersion = 1,
+    InvalidHello = 2,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct Ping {
+    #[prost(uint64, tag = "1")]
+    pub nonce: u64,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct Pong {
+    #[prost(uint64, tag = "1")]
+    pub nonce: u64,
+}
+
+#[derive(Debug)]
+pub enum DecodeError {
+    TooLarge,
+    Malformed(prost::DecodeError),
+}
+
+impl std::fmt::Display for DecodeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TooLarge => f.write_str("protocol message exceeds the size limit"),
+            Self::Malformed(error) => write!(f, "malformed protocol message: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for DecodeError {}
+
+pub fn encode(body: Body) -> Vec<u8> {
+    Envelope { body: Some(body) }.encode_to_vec()
+}
+
+/// `Ok(None)` is a message type from a newer peer that this build does not know.
+pub fn decode(bytes: &[u8]) -> Result<Option<Body>, DecodeError> {
+    if bytes.len() > MAX_MESSAGE_BYTES {
+        return Err(DecodeError::TooLarge);
+    }
+    Envelope::decode(bytes)
+        .map(|envelope| envelope.body)
+        .map_err(DecodeError::Malformed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn range(min: u32, max: u32) -> VersionRange {
+        VersionRange::new(min, max).unwrap()
+    }
+
+    #[test]
+    fn negotiation_picks_the_highest_common_version() {
+        assert_eq!(range(1, 2).negotiate(range(1, 1)), Some(1));
+        assert_eq!(range(1, 2).negotiate(range(2, 3)), Some(2));
+        assert_eq!(range(2, 4).negotiate(range(1, 3)), Some(3));
+        assert_eq!(range(2, 2).negotiate(range(1, 1)), None);
+        assert_eq!(range(1, 1).negotiate(range(3, 5)), None);
+    }
+
+    #[test]
+    fn invalid_ranges_are_refused() {
+        assert_eq!(VersionRange::new(0, 1), None);
+        assert_eq!(VersionRange::new(3, 2), None);
+        assert!(range(1, 3).contains(2) && !range(1, 3).contains(4));
+    }
+
+    #[test]
+    fn messages_round_trip() {
+        let hello = Body::Hello(Hello {
+            min_version: 1,
+            max_version: 2,
+            agent_version: "0.1.0".into(),
+            platform: "windows".into(),
+        });
+        assert_eq!(decode(&encode(hello.clone())).unwrap(), Some(hello));
+        let reject = Body::Reject(Reject {
+            reason: RejectReason::UnsupportedVersion as i32,
+            min_version: 2,
+            max_version: 3,
+        });
+        assert_eq!(decode(&encode(reject.clone())).unwrap(), Some(reject));
+    }
+
+    #[derive(Clone, PartialEq, Message)]
+    struct NewerHello {
+        #[prost(uint32, tag = "1")]
+        min_version: u32,
+        #[prost(uint32, tag = "2")]
+        max_version: u32,
+        #[prost(string, tag = "3")]
+        agent_version: String,
+        #[prost(string, tag = "4")]
+        platform: String,
+        #[prost(string, repeated, tag = "9")]
+        capabilities: Vec<String>,
+    }
+
+    #[derive(Clone, PartialEq, Message)]
+    struct NewerEnvelope {
+        #[prost(message, optional, tag = "1")]
+        hello: Option<NewerHello>,
+        #[prost(message, optional, tag = "40")]
+        notice: Option<Ping>,
+    }
+
+    #[test]
+    fn newer_fields_and_message_types_are_tolerated() {
+        let hello = NewerEnvelope {
+            hello: Some(NewerHello {
+                min_version: 1,
+                max_version: 3,
+                agent_version: "0.2.0".into(),
+                platform: "linux".into(),
+                capabilities: vec!["inventory".into()],
+            }),
+            notice: None,
+        };
+        let Some(Body::Hello(decoded)) = decode(&hello.encode_to_vec()).unwrap() else {
+            panic!("hello was not decoded");
+        };
+        assert_eq!(
+            (decoded.max_version, decoded.platform.as_str()),
+            (3, "linux")
+        );
+        let unknown = NewerEnvelope {
+            hello: None,
+            notice: Some(Ping { nonce: 7 }),
+        };
+        assert_eq!(decode(&unknown.encode_to_vec()).unwrap(), None);
+    }
+
+    #[test]
+    fn oversized_and_malformed_input_is_rejected() {
+        assert!(matches!(
+            decode(&vec![0; MAX_MESSAGE_BYTES + 1]),
+            Err(DecodeError::TooLarge)
+        ));
+        assert!(matches!(
+            decode(&[0x0a, 0xff]),
+            Err(DecodeError::Malformed(_))
+        ));
+    }
+}
