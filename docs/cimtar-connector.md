@@ -21,6 +21,7 @@
 - Csak olvasási jogú szolgáltatásfiókkal jelentkezik be. A fiók a helyi agentkonfigurációban van, a szerverre nem kerül; üres jelszót nem használ, mert az hitelesítetlen belépést jelentene.
 - Csak bejelentkezést és keresést végez. A számítógép-objektumokat lapozva (oldalanként 500) olvassa a megadott OU-kban.
 - A határon kívüli bejegyzést akkor is eldobja, ha a címtár visszaadná.
+- Egyszerre legfeljebb egy ellenőrzés fut; a futás közben érkező kiosztások közül csak a legutóbbi kerül sorra, így a tartományvezérlő nem kap párhuzamos kapcsolatokat.
 - Az eredmény (`DirectoryReport`) csak darabszámot és stabil hibakódot tartalmaz, címtáradatot nem. A hibakódok: `insecure`, `boundary`, `tls`, `connect`, `bind`, `search`, illetve `unconfigured`, ha az agentnek nincs helyi címtárfiókja.
 
 ### Ellenőrzés
@@ -54,6 +55,7 @@ One designated, enrolled agent per customer reads that customer's Active Directo
 - It signs in with a read-only service account. The account lives in the local agent configuration and never reaches the server; an empty password is refused because it would mean an unauthenticated bind.
 - It only binds and searches. It reads computer objects inside the given OUs with paging (500 per page).
 - It discards any entry outside the boundary, even if the directory returns one.
+- At most one check runs at a time; of the assignments arriving meanwhile only the latest is queued, so the domain controller never receives parallel connections.
 - The result (`DirectoryReport`) carries only a count and a stable error code, never directory content. Error codes are `insecure`, `boundary`, `tls`, `connect`, `bind`, `search`, and `unconfigured` when the agent has no local directory account.
 
 ### Verification

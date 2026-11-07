@@ -170,9 +170,17 @@ async fn session(
     tick.tick().await;
     let mut pending: Option<u64> = None;
     let (reports, mut finished) = tokio::sync::mpsc::channel(1);
+    // One directory check at a time; a newer assignment waits for the running one.
+    let mut checking = false;
+    let mut queued: Option<midas_protocol::DirectoryAssignment> = None;
     loop {
         tokio::select! {
             Some(report) = finished.recv() => {
+                checking = false;
+                if let Some(next) = queued.take() {
+                    checking = true;
+                    directory_check(next, settings.directory.clone(), reports.clone());
+                }
                 if send(&mut socket, Body::DirectoryReport(report), keepalive).await.is_err() {
                     return Outcome::Ended { connected };
                 }
@@ -196,20 +204,12 @@ async fn session(
                     }
                 }
                 Ok(Body::DirectoryAssignment(assignment)) => {
-                    let reports = reports.clone();
-                    let credentials = settings.directory.clone();
-                    tokio::spawn(async move {
-                        let report = match credentials {
-                            Some(credentials) => crate::directory::check(&assignment, &credentials).await,
-                            None => midas_protocol::DirectoryReport {
-                                revision: assignment.revision,
-                                ok: false,
-                                objects: 0,
-                                error: "unconfigured".into(),
-                            },
-                        };
-                        let _ = reports.send(report).await;
-                    });
+                    if checking {
+                        queued = Some(assignment);
+                    } else {
+                        checking = true;
+                        directory_check(assignment, settings.directory.clone(), reports.clone());
+                    }
                 }
                 Ok(_) => {}
                 Err(()) => return Outcome::Ended { connected },
@@ -250,6 +250,25 @@ async fn open(settings: &Settings) -> Result<Socket, Reason> {
         Ok(Ok((socket, _))) => Ok(socket),
         _ => Err(Reason::Handshake),
     }
+}
+
+fn directory_check(
+    assignment: midas_protocol::DirectoryAssignment,
+    credentials: Option<crate::directory::Credentials>,
+    reports: tokio::sync::mpsc::Sender<midas_protocol::DirectoryReport>,
+) {
+    tokio::spawn(async move {
+        let report = match credentials {
+            Some(credentials) => crate::directory::check(&assignment, &credentials).await,
+            None => midas_protocol::DirectoryReport {
+                revision: assignment.revision,
+                ok: false,
+                objects: 0,
+                error: "unconfigured".into(),
+            },
+        };
+        let _ = reports.send(report).await;
+    });
 }
 
 /// Each resolved address gets its own time limit: Windows retries a refused
