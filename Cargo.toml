@@ -78,6 +78,14 @@ unsafe_code = "forbid"
 [workspace.lints.clippy]
 all = "warn"
 
+# Full debug info for every dependency made the debug build grow past 30 GB on Windows;
+# line tables keep file and line numbers in our own backtraces.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 lto = "thin"
 strip = "debuginfo"
