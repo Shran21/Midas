@@ -285,17 +285,28 @@ pub async fn verify(database: &Database, admin: &mut PgConnection) {
         Err(EnrollError::Rejected),
         "a used token must be refused"
     );
-    assert_eq!(
-        enroll(
-            &server,
-            &request(
-                &format!("midas-enroll-{}", "0".repeat(64)),
-                Platform::Windows,
-                Kind::Workstation
+    let audit_rows = "SELECT count(*) FROM midas.platform_audit";
+    let before: i64 = sqlx::query_scalar(audit_rows)
+        .fetch_one(&mut *admin)
+        .await
+        .unwrap();
+    for token in [format!("midas-enroll-{}", "0".repeat(64)), "guess".into()] {
+        assert_eq!(
+            enroll(
+                &server,
+                &request(&token, Platform::Windows, Kind::Workstation)
             )
-        )
-        .await,
-        Err(EnrollError::Rejected)
+            .await,
+            Err(EnrollError::Rejected)
+        );
+    }
+    let after: i64 = sqlx::query_scalar(audit_rows)
+        .fetch_one(&mut *admin)
+        .await
+        .unwrap();
+    assert_eq!(
+        after, before,
+        "unauthenticated refusals must not grow the audit trail"
     );
     assert_eq!(
         poll(&server, request_id, &"0".repeat(64)).await,
@@ -439,6 +450,34 @@ pub async fn verify(database: &Database, admin: &mut PgConnection) {
     )
     .await;
     let rejected_device: Uuid = pending[0]["id"].as_str().unwrap().parse().unwrap();
+    sqlx::query("UPDATE midas.enrollment_requests SET expires_at = clock_timestamp() - interval '1 second' WHERE id = $1")
+        .bind(rejected_id)
+        .execute(&mut *admin)
+        .await
+        .unwrap();
+    let (_, hidden, _) = call(
+        &app,
+        "GET",
+        &format!("/api/tenants/{tenant}/devices/pending"),
+        Some(&manager),
+        None,
+        &[],
+    )
+    .await;
+    assert_eq!(hidden, json!([]), "expired requests cannot be approved");
+    assert_eq!(
+        decide("approve", rejected_device).await,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        poll(&server, rejected_id, &rejected_secret).await,
+        Err(EnrollError::Rejected)
+    );
+    sqlx::query("UPDATE midas.enrollment_requests SET expires_at = clock_timestamp() + interval '1 day' WHERE id = $1")
+        .bind(rejected_id)
+        .execute(&mut *admin)
+        .await
+        .unwrap();
     assert_eq!(
         decide("reject", rejected_device).await,
         StatusCode::NO_CONTENT

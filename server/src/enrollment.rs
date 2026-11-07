@@ -310,33 +310,28 @@ impl Enrollment {
         })
     }
 
-    async fn refuse(&self, tenant: Option<Uuid>, token: Option<Uuid>, reason: &str) -> Refusal {
+    /// Refusals tied to a known token are audited for its tenant. Unknown or malformed
+    /// tokens are only logged, so unauthenticated callers cannot grow the audit trail.
+    async fn refuse(&self, known: Option<(Uuid, Uuid)>, reason: &str) -> Refusal {
+        tracing::warn!(reason, "agent enrollment refused");
+        let Some((tenant, token)) = known else {
+            return Refusal::Rejected;
+        };
         let mut event = Event::new(Action::EnrollmentRequest, Outcome::Denied, Actor::SYSTEM)
-            .detail("reason", reason);
-        if let Some(token) = token {
-            event = event.detail("token_id", token.to_string());
-        }
-        let written = match tenant {
-            Some(tenant) => {
-                event.tenant = Some(tenant);
-                match self.tenant_tx(tenant).await {
-                    Ok(mut tx) => match audit::append_tenant(&mut tx, &event).await {
-                        Ok(()) => tx.commit().await,
-                        Err(error) => Err(error),
-                    },
-                    Err(error) => Err(error),
-                }
-            }
-            None => match self.pool.acquire().await {
-                Ok(mut connection) => audit::append_platform(&mut connection, &event).await,
+            .detail("reason", reason)
+            .detail("token_id", token.to_string());
+        event.tenant = Some(tenant);
+        let written = match self.tenant_tx(tenant).await {
+            Ok(mut tx) => match audit::append_tenant(&mut tx, &event).await {
+                Ok(()) => tx.commit().await,
                 Err(error) => Err(error),
             },
+            Err(error) => Err(error),
         };
         if written.is_err() {
             tracing::error!("enrollment refusal could not be audited");
             return Refusal::Unavailable;
         }
-        tracing::warn!(reason, "agent enrollment refused");
         Refusal::Rejected
     }
 
@@ -353,10 +348,10 @@ impl Enrollment {
             .map_err(|_| Refusal::Invalid)?;
         verify_csr(csr.as_ref()).map_err(|_| Refusal::Invalid)?;
         let Some(secret_part) = request.token.strip_prefix(TOKEN_PREFIX) else {
-            return Err(self.refuse(None, None, "malformed_token").await);
+            return Err(self.refuse(None, "malformed_token").await);
         };
         if !well_formed(secret_part) {
-            return Err(self.refuse(None, None, "malformed_token").await);
+            return Err(self.refuse(None, "malformed_token").await);
         }
         let token_digest = digest(b"enrollment-token", &request.token);
         let mut tx = self.pool.begin().await?;
@@ -364,7 +359,7 @@ impl Enrollment {
             .bind(&token_digest).fetch_optional(&mut *tx).await?;
         let Some((token_id, tenant, site, platform, kind, preapproved, used, expired)) = row else {
             drop(tx);
-            return Err(self.refuse(None, None, "unknown_token").await);
+            return Err(self.refuse(None, "unknown_token").await);
         };
         let reason = if used {
             Some("token_used")
@@ -377,7 +372,7 @@ impl Enrollment {
         };
         if let Some(reason) = reason {
             drop(tx);
-            return Err(self.refuse(Some(tenant), Some(token_id), reason).await);
+            return Err(self.refuse(Some((tenant, token_id)), reason).await);
         }
         sqlx::query("SELECT set_config('midas.tenant_id', $1, true)")
             .bind(tenant.to_string())
@@ -480,7 +475,7 @@ impl Enrollment {
     ) -> Result<Vec<PendingDevice>, AccessError> {
         self.operator(sessions, token, tenant, false).await?;
         let mut tx = self.tenant_tx(tenant).await?;
-        let devices = sqlx::query_as("SELECT id, name, platform, kind, site_id, extract(epoch FROM requested_at)::bigint AS requested_at FROM midas.devices WHERE enrollment = 'pending' ORDER BY requested_at, id")
+        let devices = sqlx::query_as("SELECT d.id, d.name, d.platform, d.kind, d.site_id, extract(epoch FROM d.requested_at)::bigint AS requested_at FROM midas.devices d WHERE d.enrollment = 'pending' AND EXISTS (SELECT 1 FROM midas.enrollment_requests r WHERE r.tenant_id = d.tenant_id AND r.device_id = d.id AND r.expires_at > clock_timestamp()) ORDER BY 6, d.id")
             .fetch_all(&mut *tx).await?;
         tx.commit().await?;
         Ok(devices)
