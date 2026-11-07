@@ -56,6 +56,12 @@ Az elfogadási feltétel: a szolgáltatás újraindítás és hálózatkiesés u
 - Az egységtesztek a munkamenet- és programellenőrzést (kis- és nagybetű, `\\?\` előtag, más mappa), a konfiguráció ellenőrzését, az állapotfájlok atomi írását és a titokmentes állapotkimenetet vizsgálják.
 - A szolgáltatás telepítése, az újraindítás és a második munkamenet csak a fenti próbán igazolható.
 
+### Ismert korlátok
+
+- Az állapotcső csak az aktív konzolmunkamenetnek válaszol. Csak RDP-n használt gépen így a bejelentkezett felhasználó sem látja az állapotot; a felhasználói állapotnézet és tálcaikon (MIDAS-034) ezt a szabályt pontosíthatja.
+- A `logs\agent.log` még nem forog; a méretkorlát és a megőrzés a későbbi üzemeltetési feladatok része.
+- A szolgáltatás LocalSystem fiókkal fut, mert a későbbi távsegítési és karbantartási funkciók ezt igénylik; a hálózati és a helyi műveletek jogosultságát a szerver és a kapcsolódó feladatok szabályozzák.
+
 ## English
 
 November 7, 2026 · MIDAS-023 · Trial description and record
@@ -109,3 +115,9 @@ Acceptance: the service recovers on its own after a restart and a network loss, 
 - Windows integration tests (`agent/agent-windows/service/tests/ipc.rs`) show the following. The allowed program in its own session reads the status. A foreign program (PowerShell) in the same session receives nothing. Under another session rule even the allowed program gets no answer. A second server cannot take over the pipe name.
 - Unit tests cover the session and program checks (case, `\\?\` prefix, other folder), configuration validation, atomic state writes and secret-free status output.
 - Service installation, restart and a second session are verified only by the trial above.
+
+### Known limits
+
+- The status pipe answers only the active console session. On a machine used only over RDP even the signed-in user does not see the status; the user status view and tray icon (MIDAS-034) may refine this rule.
+- `logs\agent.log` is not rotated yet; size limits and retention belong to later operations work.
+- The service runs as LocalSystem because later remote-support and maintenance features need it; the server and the related tasks govern which network and local operations are allowed.
