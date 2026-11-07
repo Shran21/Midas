@@ -12,6 +12,8 @@ A [backlog.json](backlog.json) tartalmazza ugyanazokat az azonosítókat, kétny
 
 A MIDAS-103 az első fejlesztési kör után hozzáadott M0-feladat: komponensenkénti mappaszerkezet és két témát használó üzemeltetői előnézet. Az alábbi induló státuszösszesítés az eredeti 102 tétel importját rögzíti.
 
+2026. november 7-én a MIDAS-018 és a MIDAS-019 M0-ból M1-be került; az okát és a hatását a [terjedelemváltozások](#terjedelemváltozások) rögzítik.
+
 ### Induló sapkák
 
 Minden új tétel **Backlogban** jön létre. Az alábbi „induláskor” érték az import és az előkészítési ellenőrzés utáni tervezett állapot. A Ready-jelölteket külön, visszaellenőrzött váltással kell előléptetni; az import nem készít mesterséges előzményt.
@@ -32,8 +34,8 @@ Az M0–M5 helyi kulcs, nem GitHub-mérföldkőszám. A célrepót, Projectet é
 
 | Kulcs | Mérföldkő | Tételek kapuval együtt | Zárófeladat | Előző kapu |
 | --- | --- | --- | --- | --- |
-| M0 | 0. Alapok | 21 | MIDAS-020 | — |
-| M1 | 1. Agent és monitorozás | 20 | MIDAS-040 | MIDAS-020 |
+| M0 | 0. Alapok | 19 | MIDAS-020 | — |
+| M1 | 1. Agent és monitorozás | 22 | MIDAS-040 | MIDAS-020 |
 | M2 | 2. Távsegítés | 20 | MIDAS-060 | MIDAS-040 |
 | M3 | 3. Automatizált karbantartás | 14 | MIDAS-074 | MIDAS-060 |
 | M4 | 4. Megerősítés és pilot | 13 | MIDAS-087 | MIDAS-074 |
@@ -64,8 +66,6 @@ P0: elsőbbséget igénylő alapműködés, biztonság vagy kapu; P1: a fázison
 | MIDAS-015 | Ügyfél-, telephely- és felhasználókezelés | Backlog | P0 | MIDAS-013, MIDAS-011, MIDAS-012 |
 | MIDAS-016 | Egyszeri beállító folyamat a végleges HTTPS-originen | Backlog | P0 | MIDAS-006, MIDAS-008, MIDAS-013 |
 | MIDAS-017 | Korai WebRTC- és kódoló-prototípus | Backlog | P0 | MIDAS-001, MIDAS-006 |
-| MIDAS-018 | Normál kapcsolatú UAC és védett beviteli út próbája | Backlog | P0 | MIDAS-017 |
-| MIDAS-019 | Adminpanel és helyi jóváhagyás használhatósági prototípusa | Backlog | P0 | MIDAS-013, MIDAS-014 |
 | MIDAS-103 | Üzemeltetői előnézet és komponensenkénti mappaszerkezet | Backlog | P0 | MIDAS-001, MIDAS-002 |
 | MIDAS-020 | 0. fázis ellenőrzése és mérföldkőzárás | Backlog | P0 | A fázis összes többi tétele |
 
@@ -88,15 +88,15 @@ P0: elsőbbséget igénylő alapműködés, biztonság vagy kapu; P1: a fázison
 - **MIDAS-015:** Az admin ügyfelet és korlátozott technikust hoz létre, az új jogok és megvonások a célhatókörben érvényesülnek. Követelmény: UI-01, SEC-01. Korábbi azonosító: F0-13.
 - **MIDAS-016:** Az első admin a végleges originen regisztrál passkeyt, a felhasznált setupfelhatalmazás lejár és lezárul. Követelmény: SEC-01, SEC-06. Korábbi azonosító: F0-14.
 - **MIDAS-017:** Valódi Windows-asztal böngészőből látható, a mérési jegyzőkönyv dönt a WebRTC-integrációról. A prototípus igazolja a hálózati mérések elérhetőségét és a bitráta, felbontás, képkockaszám futás közbeni állíthatóságát; romló és javuló hálózaton rögzíti az adaptáció reakcióját. Követelmény: PERF-04, PERF-07. Korábbi azonosító: F2-01.
-- **MIDAS-018:** Standard felhasználónál a böngésző kezeli a valódi secure-desktop UAC-t, helyi leállítással és védelmek kikapcsolása nélkül. Követelmény: REMOTE-03, REMOTE-05, REMOTE-06, REMOTE-07. Korábbi azonosító: —.
-- **MIDAS-019:** A kezelő indít kérést, az új felhasználó érti és elutasítja, majd új kérésből enged és bont. Billentyűzetes próba is sikerül. A mobil adminpanel és a helyi jóváhagyó ablak képernyőolvasós próbája is dokumentált, mindkét nyelven. Követelmény: UI-04, UI-06, UI-07, UI-08. Korábbi azonosító: —.
 - **MIDAS-103:** A szerver a server/, a webpanel a web-panel/, a platformok az agent/agent-windows/ és agent/agent-linux/ mappába kerülnek ugyanabban a repóban. A dokumentáció és a közös parancsok követik az útvonalakat; a Windows- és Linux-build sikeres. Az üzemeltetői előnézet világos és sötét témát, magyar és angol nyelvet, navigációt, kereshető és szűrhető eszközlistát, valamint eszközrészleteket ad. A választott téma és nyelv megmarad újratöltéskor. A mintaadatok egyértelműen jelöltek; az előnézet nem hajt végre távoli műveletet. A tényleges szerverkapcsolat állapota ettől elkülönül. A szűk nézet és a billentyűzetes használat ellenőrzött. Követelmény: UI-08. Korábbi azonosító: —.
-- **MIDAS-020:** A fázis összes vállalt feladata ellenőrzött Done; a fázis próbáinak bizonyítéka, a státuszelőzmények és a következő fázis feltételei áttekintve. Az UAC/WebRTC- és használhatósági prototípus döntése dokumentált. Követelmény: —. Korábbi azonosító: F0-15.
+- **MIDAS-020:** A fázis összes vállalt feladata ellenőrzött Done; a fázis próbáinak bizonyítéka, a státuszelőzmények és a következő fázis feltételei áttekintve. A WebRTC-döntés dokumentált, az M1-be áthelyezett UAC- és használhatósági próba állapota rögzített. Követelmény: —. Korábbi azonosító: F0-15.
 
 ### 1. Agent és monitorozás
 
 | ID | Feladat | Induláskor | Prioritás | Közvetlen függőségek az előző kapun felül |
 | --- | --- | --- | --- | --- |
+| MIDAS-018 | Normál kapcsolatú UAC és védett beviteli út próbája | Backlog | P0 | MIDAS-017 (M0-ból áthelyezve, kapufüggés nélkül) |
+| MIDAS-019 | Adminpanel és helyi jóváhagyás használhatósági prototípusa | Backlog | P0 | MIDAS-013, MIDAS-014 (M0-ból áthelyezve, kapufüggés nélkül) |
 | MIDAS-021 | Verziózott agentprotokoll és újracsatlakozás | Backlog | P0 | MIDAS-006 |
 | MIDAS-022 | Agentbeiratkozás, jóváhagyás, mTLS és visszavonás | Backlog | P0 | MIDAS-021, MIDAS-011, MIDAS-012 |
 | MIDAS-023 | Windows-szolgáltatás és biztonságos helyi IPC | Backlog | P0 | MIDAS-022 |
@@ -120,6 +120,8 @@ P0: elsőbbséget igénylő alapműködés, biztonság vagy kapu; P1: a fázison
 
 **Elfogadási feltételek és visszakereshetőség**
 
+- **MIDAS-018:** Standard felhasználónál a böngésző kezeli a valódi secure-desktop UAC-t, helyi leállítással és védelmek kikapcsolása nélkül. Követelmény: REMOTE-03, REMOTE-05, REMOTE-06, REMOTE-07. Korábbi azonosító: —.
+- **MIDAS-019:** A kezelő indít kérést, az új felhasználó érti és elutasítja, majd új kérésből enged és bont. Billentyűzetes próba is sikerül. A mobil adminpanel és a helyi jóváhagyó ablak képernyőolvasós próbája is dokumentált, mindkét nyelven. Követelmény: UI-04, UI-06, UI-07, UI-08. Korábbi azonosító: —.
 - **MIDAS-021:** Eltérő támogatott verziók üzenetet váltanak, kapcsolatkimaradás után az agent önállóan visszatér. Követelmény: PERF-01. Korábbi azonosító: F1-01.
 - **MIDAS-022:** Első beiratkozás TLS-en működik, művelethez mTLS kell. Újrahasznált token, rossz cél és visszavont cert elutasított. Követelmény: SEC-02. Korábbi azonosító: F1-02.
 - **MIDAS-023:** Újraindítás és hálózatkiesés után visszatér, idegen folyamat és más Windows-munkamenet nem éri el az IPC-műveleteket. Követelmény: PERF-05, SERVER-01, REMOTE-06. Korábbi azonosító: F1-03.
@@ -139,7 +141,7 @@ P0: elsőbbséget igénylő alapműködés, biztonság vagy kapu; P1: a fázison
 - **MIDAS-037:** A jelölt különbözik az online agenttől, az objectGUID-alapú egyeztetés nem kapcsol össze más ügyfeleket. Követelmény: AD-03, AD-04. Korábbi azonosító: —.
 - **MIDAS-038:** Az admin látja a jelölteket, kezelt gépeket és regisztrációs döntéseket, a felderítés nem telepít automatikusan. Követelmény: UI-01, AD-03, AD-04. Korábbi azonosító: —.
 - **MIDAS-039:** Külön mérés készül a háttéragentről és megnyitott helyi felületről, a szerverprofil megkülönbözteti a grafikus és háttérképességeket. Legalább 24 órás agentmérés készül, Windows 11-en a kapcsolódó WebView2-folyamatokkal együtt. Az eredmény optimalizálási alap, nincs előírt CPU-, GPU-, memória- vagy adatforgalmi plafon. Követelmény: PERF-01, PERF-02, PERF-03, PERF-04, SERVER-03. Korábbi azonosító: —.
-- **MIDAS-040:** A monitorozás, felderítés, regisztráció és terhelésmérés elfogadva; az összes vállalt feladat ellenőrzött Done, a támogatási mátrix és a következő fázis feltételei rögzítve. Tíz vegyes tesztgép egy hétig jelent; a 24 órás agent- és az egyórás, 1000 szimulált agentes mérés bizonyítéka csatolt. Követelmény: —. Korábbi azonosító: F1-16.
+- **MIDAS-040:** A monitorozás, felderítés, regisztráció és terhelésmérés elfogadva; az összes vállalt feladat ellenőrzött Done, a támogatási mátrix és a következő fázis feltételei rögzítve. Tíz vegyes tesztgép egy hétig jelent; a 24 órás agent- és az egyórás, 1000 szimulált agentes mérés bizonyítéka csatolt. Az UAC-próba (MIDAS-018) és a használhatósági prototípus (MIDAS-019) döntése dokumentált. Követelmény: —. Korábbi azonosító: F1-16.
 
 ### 2. Távsegítés
 
@@ -307,9 +309,18 @@ Ezek még nem vállalt funkciók, mind Backlogban maradnak. Külön döntés né
 - **MIDAS-101:** Külön döntés után: egyértelmű helyi tájékoztatás, bevitel tiltása és külön jóváhagyás a vezérlésre váltás előtt. Követelmény: —. Korábbi azonosító: —.
 - **MIDAS-102:** Külön döntés után: agentfrissítési gyűrűk, BitLocker, Defender, javítások és függő újraindítások ügyfélszigetelt áttekintése; az adat frissessége és a hiányzó adat látszik. Követelmény: —. Korábbi azonosító: —.
 
+### Terjedelemváltozások
+
+**2026. november 7. · A MIDAS-018 és a MIDAS-019 M0-ból M1-be került**
+
+- **Döntés és ok:** a projektgazda döntése. A két hiányzó próba külső erőforrást igényel: Windows 11-es tesztgépet standard fiókkal, illetve új résztvevőket és képernyőolvasót futtató eszközöket. Ezek most nem érhetők el, a 0. fázis többi eredménye viszont kész és ellenőrzött.
+- **Elkészült rész:** mindkét feladat megvalósítása és fejlesztői ellenőrzése kész (0f3fb16, 982f1ee). Az elfogadási feltétel nem változott; a feladatok felülvizsgálat alatt maradnak, amíg a próba eredménye rögzítésre nem kerül.
+- **Függőségek:** a két feladat megtartja eredeti függőségeit, és nem függ a MIDAS-020-tól, mert a munkájuk még M0-ban indult. A MIDAS-020 nem vár rájuk, a MIDAS-040 igen. A MIDAS-034 a MIDAS-019-től, a MIDAS-042 és a MIDAS-047 a MIDAS-018-tól közvetlenül függ, így ezek csak a próbák elfogadása után indulhatnak.
+- **Hatás:** a 0. fázis lezárható, és az 1. fázis többi feladata a szokásos feltételekkel indulhat. A 2. fázis a MIDAS-040 kapun keresztül csak a két próba elfogadása után kezdődhet.
+
 ### Lényeges változások a régi vázlathoz képest
 
-- F2-01: a korai WebRTC/UAC-megvalósíthatóság M0 (MIDAS-017, MIDAS-018); a kész vezérlés M2.
+- F2-01: a korai WebRTC-megvalósíthatóság M0 (MIDAS-017), az UAC-próba 2026. november 7. óta M1 (MIDAS-018); a kész vezérlés M2.
 - F1-14: kapcsolatállapot és tálcaikon M1 (MIDAS-034); a segítségkérés csak a MIDAS-097 javaslat része.
 - F2-02: külön ügyfél- és gépszabályzatos unattended szerverelérés M2 (MIDAS-041).
 - F2-04: NVIDIA, AMD és Intel külön megvalósítási és mérési tétel (MIDAS-043, MIDAS-044, MIDAS-045).
@@ -327,6 +338,8 @@ October 31, 2026 · Published initial allocation. Track current state in the [Gi
 [backlog.json](backlog.json) contains the same IDs, bilingual titles and acceptance criteria, dependencies, priority, initial status and milestone. Applicable [requirements](kovetelmenyek.md#english) and [phase acceptance trials](rendszerterv.md#roadmap) remain mandatory in addition to the criteria below.
 
 MIDAS-103 was added to M0 after the first implementation round: component directories and an operator preview with two themes. The initial status totals below describe the original 102-item import.
+
+On November 7, 2026 MIDAS-018 and MIDAS-019 moved from M0 to M1; see [scope changes](#scope-changes) for the reason and effect.
 
 ### Initial statuses
 
@@ -348,8 +361,8 @@ M0–M5 are local keys, not GitHub milestone numbers. The publication fields in 
 
 | Key | Milestone | Items including gate | Closure task | Previous gate |
 | --- | --- | --- | --- | --- |
-| M0 | 0. Foundations | 21 | MIDAS-020 | — |
-| M1 | 1. Agent and monitoring | 20 | MIDAS-040 | MIDAS-020 |
+| M0 | 0. Foundations | 19 | MIDAS-020 | — |
+| M1 | 1. Agent and monitoring | 22 | MIDAS-040 | MIDAS-020 |
 | M2 | 2. Remote support | 20 | MIDAS-060 | MIDAS-040 |
 | M3 | 3. Automated maintenance | 14 | MIDAS-074 | MIDAS-060 |
 | M4 | 4. Hardening and pilot | 13 | MIDAS-087 | MIDAS-074 |
@@ -380,8 +393,6 @@ P0: core behavior, security or gates needing precedence; P1: work ordered afterw
 | MIDAS-015 | Customer, site and user management | Backlog | P0 | MIDAS-013, MIDAS-011, MIDAS-012 |
 | MIDAS-016 | Single-use setup on the final HTTPS origin | Backlog | P0 | MIDAS-006, MIDAS-008, MIDAS-013 |
 | MIDAS-017 | Early WebRTC and encoder proof | Backlog | P0 | MIDAS-001, MIDAS-006 |
-| MIDAS-018 | Normal-session UAC and protected input proof | Backlog | P0 | MIDAS-017 |
-| MIDAS-019 | Admin-panel and local-consent usability prototype | Backlog | P0 | MIDAS-013, MIDAS-014 |
 | MIDAS-103 | Operator console preview and component directory layout | Backlog | P0 | MIDAS-001, MIDAS-002 |
 | MIDAS-020 | Review phase 0 and close its milestone | Backlog | P0 | All other phase items |
 
@@ -404,15 +415,15 @@ P0: core behavior, security or gates needing precedence; P1: work ordered afterw
 - **MIDAS-015:** An admin creates a tenant and scoped technician, and grants/denials apply within target scope. Requirements: UI-01, SEC-01. Legacy ID: F0-13.
 - **MIDAS-016:** The first admin enrolls a passkey at the final origin and consumed setup authorization becomes invalid. Requirements: SEC-01, SEC-06. Legacy ID: F0-14.
 - **MIDAS-017:** A browser displays a real Windows desktop and measurements determine the WebRTC integration. The prototype verifies network measurement access and runtime bitrate, resolution and frame-rate controls, recording adaptation under degrading and recovering network conditions. Requirements: PERF-04, PERF-07. Legacy ID: F2-01.
-- **MIDAS-018:** A browser controls real secure-desktop UAC for a standard user with local termination and security policies enabled. Requirements: REMOTE-03, REMOTE-05, REMOTE-06, REMOTE-07. Legacy ID: —.
-- **MIDAS-019:** The operator initiates, a new user understands/declines, then accepts a new request and ends it, including keyboard testing. Document mobile admin-panel and screen-reader trials on the local consent dialog, in both languages. Requirements: UI-04, UI-06, UI-07, UI-08. Legacy ID: —.
 - **MIDAS-103:** Server code lives in server/, the web panel in web-panel/, and platform agents in agent/agent-windows/ and agent/agent-linux/ in one repository. Documentation and shared commands use the new paths; Windows and Linux builds pass. The operator preview provides light/dark themes, Hungarian/English text, navigation, searchable and filterable devices and device details. Theme and language choices persist after reload. Sample data is clearly labeled and the preview performs no remote operations. Actual server connection status is separate. Narrow layouts and keyboard interaction are verified. Requirements: UI-08. Legacy IDs: —.
-- **MIDAS-020:** All committed phase work is reviewed Done; inspect phase evidence, status histories and next-phase prerequisites. Record the UAC/WebRTC and usability prototype decisions. Requirements: —. Legacy ID: F0-15.
+- **MIDAS-020:** All committed phase work is reviewed Done; inspect phase evidence, status histories and next-phase prerequisites. Record the WebRTC decision and the state of the UAC and usability trials moved to M1. Requirements: —. Legacy ID: F0-15.
 
 ### 1. Agent and monitoring
 
 | ID | Task | At kickoff | Priority | Direct dependencies in addition to the previous gate |
 | --- | --- | --- | --- | --- |
+| MIDAS-018 | Normal-session UAC and protected input proof | Backlog | P0 | MIDAS-017 (moved from M0, no gate dependency) |
+| MIDAS-019 | Admin-panel and local-consent usability prototype | Backlog | P0 | MIDAS-013, MIDAS-014 (moved from M0, no gate dependency) |
 | MIDAS-021 | Versioned agent protocol and reconnection | Backlog | P0 | MIDAS-006 |
 | MIDAS-022 | Agent enrollment, approval, mTLS and revocation | Backlog | P0 | MIDAS-021, MIDAS-011, MIDAS-012 |
 | MIDAS-023 | Windows service and protected local IPC | Backlog | P0 | MIDAS-022 |
@@ -436,6 +447,8 @@ P0: core behavior, security or gates needing precedence; P1: work ordered afterw
 
 **Acceptance criteria and traceability**
 
+- **MIDAS-018:** A browser controls real secure-desktop UAC for a standard user with local termination and security policies enabled. Requirements: REMOTE-03, REMOTE-05, REMOTE-06, REMOTE-07. Legacy ID: —.
+- **MIDAS-019:** The operator initiates, a new user understands/declines, then accepts a new request and ends it, including keyboard testing. Document mobile admin-panel and screen-reader trials on the local consent dialog, in both languages. Requirements: UI-04, UI-06, UI-07, UI-08. Legacy ID: —.
 - **MIDAS-021:** Supported protocol versions interoperate and an agent reconnects after connection loss. Requirements: PERF-01. Legacy ID: F1-01.
 - **MIDAS-022:** First enrollment uses server-authenticated TLS and operations require mTLS. Reused tokens, wrong targets and revoked certificates are rejected. Requirements: SEC-02. Legacy ID: F1-02.
 - **MIDAS-023:** The service recovers from reboot/network loss and rejects unauthorized processes and other sessions on IPC. Requirements: PERF-05, SERVER-01, REMOTE-06. Legacy ID: F1-03.
@@ -455,7 +468,7 @@ P0: core behavior, security or gates needing precedence; P1: work ordered afterw
 - **MIDAS-037:** Candidates remain distinct from live agents and objectGUID matching does not cross tenants. Requirements: AD-03, AD-04. Legacy ID: —.
 - **MIDAS-038:** The admin sees candidates, managed devices and enrollment decisions, while discovery triggers no automatic installation. Requirements: UI-01, AD-03, AD-04. Legacy ID: —.
 - **MIDAS-039:** Separate measurements cover background and open UI, and server profiles distinguish graphical and background capabilities. Run at least a 24-hour agent measurement, including related WebView2 processes on Windows 11. Results guide optimization without preset CPU, GPU, memory or traffic ceilings. Requirements: PERF-01, PERF-02, PERF-03, PERF-04, SERVER-03. Legacy ID: —.
-- **MIDAS-040:** Accept monitoring, discovery, enrollment and load evidence; all committed work is reviewed Done, with a support matrix and next-phase prerequisites recorded. Ten mixed test devices report for one week; attach evidence for the 24-hour agent and one-hour 1000-simulated-agent measurements. Requirements: —. Legacy ID: F1-16.
+- **MIDAS-040:** Accept monitoring, discovery, enrollment and load evidence; all committed work is reviewed Done, with a support matrix and next-phase prerequisites recorded. Ten mixed test devices report for one week; attach evidence for the 24-hour agent and one-hour 1000-simulated-agent measurements. Record the UAC proof (MIDAS-018) and usability prototype (MIDAS-019) decisions. Requirements: —. Legacy ID: F1-16.
 
 ### 2. Remote support
 
@@ -623,9 +636,18 @@ These are uncommitted proposals and remain Backlog. They need a separate decisio
 - **MIDAS-101:** After a separate decision: clear local disclosure, disabled input and separate consent before switching to control. Requirements: —. Legacy ID: —.
 - **MIDAS-102:** After a separate decision: a tenant-isolated overview of agent update rings, BitLocker, Defender, patches and pending reboots; show freshness and missing data. Requirements: —. Legacy ID: —.
 
+### Scope changes
+
+**November 7, 2026 · MIDAS-018 and MIDAS-019 moved from M0 to M1**
+
+- **Decision and reason:** decided by the project owner. Both missing trials need external resources: a Windows 11 test machine with a standard account, and new participants with screen-reader devices. These are not available now, while the rest of phase 0 is complete and verified.
+- **Completed part:** both tasks are implemented and checked by the developer (0f3fb16, 982f1ee). Acceptance is unchanged; both stay in review until the trial result is recorded.
+- **Dependencies:** both tasks keep their original dependencies and do not depend on MIDAS-020, because their work started in M0. MIDAS-020 no longer waits for them; MIDAS-040 does. MIDAS-034 depends directly on MIDAS-019, and MIDAS-042 and MIDAS-047 on MIDAS-018, so those start only after the trials are accepted.
+- **Effect:** phase 0 can close, and the rest of phase 1 starts under the usual conditions. Through the MIDAS-040 gate, phase 2 starts only after both trials are accepted.
+
 ### Material changes from the earlier drafts
 
-- F2-01: early WebRTC/UAC feasibility is M0 (MIDAS-017, MIDAS-018); complete control is M2.
+- F2-01: early WebRTC feasibility is M0 (MIDAS-017), the UAC proof is M1 since November 7, 2026 (MIDAS-018); complete control is M2.
 - F1-14: tray/status is M1 (MIDAS-034); help requests are only in proposal MIDAS-097.
 - F2-02: governed customer-and-device unattended access is M2 (MIDAS-041).
 - F2-04: separate NVIDIA, AMD and Intel implementation/measurement items (MIDAS-043, MIDAS-044, MIDAS-045).

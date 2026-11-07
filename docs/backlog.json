@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "2026-10-31",
+  "revision": "2026-11-07",
   "purpose": {
     "hu": "Közzétett kezdő feladatfelosztás; az aktuális státusz a GitHub Projectben követendő.",
     "en": "Published initial task allocation; track current status in GitHub Projects."
@@ -746,8 +746,8 @@
     {
       "id": "MIDAS-018",
       "kind": "task",
-      "phase": 0,
-      "milestone": "M0",
+      "phase": 1,
+      "milestone": "M1",
       "title": {
         "hu": "Normál kapcsolatú UAC és védett beviteli út próbája",
         "en": "Normal-session UAC and protected input proof"
@@ -783,8 +783,8 @@
     {
       "id": "MIDAS-019",
       "kind": "task",
-      "phase": 0,
-      "milestone": "M0",
+      "phase": 1,
+      "milestone": "M1",
       "title": {
         "hu": "Adminpanel és helyi jóváhagyás használhatósági prototípusa",
         "en": "Admin-panel and local-consent usability prototype"
@@ -850,8 +850,6 @@
         "MIDAS-015",
         "MIDAS-016",
         "MIDAS-017",
-        "MIDAS-018",
-        "MIDAS-019",
         "MIDAS-103"
       ],
       "requirements": [],
@@ -860,10 +858,10 @@
       ],
       "acceptance": {
         "hu": [
-          "A fázis összes vállalt feladata ellenőrzött Done; a fázis próbáinak bizonyítéka, a státuszelőzmények és a következő fázis feltételei áttekintve. Az UAC/WebRTC- és használhatósági prototípus döntése dokumentált."
+          "A fázis összes vállalt feladata ellenőrzött Done; a fázis próbáinak bizonyítéka, a státuszelőzmények és a következő fázis feltételei áttekintve. A WebRTC-döntés dokumentált, az M1-be áthelyezett UAC- és használhatósági próba állapota rögzített."
         ],
         "en": [
-          "All committed phase work is reviewed Done; inspect phase evidence, status histories and next-phase prerequisites. Record the UAC/WebRTC and usability prototype decisions."
+          "All committed phase work is reviewed Done; inspect phase evidence, status histories and next-phase prerequisites. Record the WebRTC decision and the state of the UAC and usability trials moved to M1."
         ]
       },
       "label_names": [
@@ -1611,6 +1609,8 @@
       "kickoff_status": "Backlog",
       "priority": "P0",
       "depends_on": [
+        "MIDAS-018",
+        "MIDAS-019",
         "MIDAS-021",
         "MIDAS-022",
         "MIDAS-023",
@@ -1639,11 +1639,13 @@
       "acceptance": {
         "hu": [
           "A monitorozás, felderítés, regisztráció és terhelésmérés elfogadva; az összes vállalt feladat ellenőrzött Done, a támogatási mátrix és a következő fázis feltételei rögzítve.",
-          "Tíz vegyes tesztgép egy hétig jelent; a 24 órás agent- és az egyórás, 1000 szimulált agentes mérés bizonyítéka csatolt."
+          "Tíz vegyes tesztgép egy hétig jelent; a 24 órás agent- és az egyórás, 1000 szimulált agentes mérés bizonyítéka csatolt.",
+          "Az UAC-próba (MIDAS-018) és a használhatósági prototípus (MIDAS-019) döntése dokumentált."
         ],
         "en": [
           "Accept monitoring, discovery, enrollment and load evidence; all committed work is reviewed Done, with a support matrix and next-phase prerequisites recorded.",
-          "Ten mixed test devices report for one week; attach evidence for the 24-hour agent and one-hour 1000-simulated-agent measurements."
+          "Ten mixed test devices report for one week; attach evidence for the 24-hour agent and one-hour 1000-simulated-agent measurements.",
+          "Record the UAC proof (MIDAS-018) and usability prototype (MIDAS-019) decisions."
         ]
       },
       "label_names": [
@@ -4070,5 +4072,25 @@
     "remote-support",
     "automation",
     "documentation"
+  ],
+  "scope_changes": [
+    {
+      "date": "2026-11-07",
+      "items": [
+        "MIDAS-018",
+        "MIDAS-019"
+      ],
+      "from_milestone": "M0",
+      "to_milestone": "M1",
+      "decided_by": "project owner",
+      "reason": {
+        "hu": "A hiányzó próbák külső erőforrást igényelnek (Windows 11-es tesztgép standard fiókkal; új résztvevők és képernyőolvasót futtató eszközök), amely most nem érhető el. A megvalósítás és a fejlesztői ellenőrzés kész, az elfogadási feltétel változatlan.",
+        "en": "The missing trials need external resources (a Windows 11 test machine with a standard account; new participants and screen-reader devices) that are not available now. Implementation and developer checks are complete; acceptance is unchanged."
+      },
+      "dependency_notes": {
+        "hu": "A két feladat megtartja eredeti függőségeit, és nem függ a MIDAS-020-tól, mert a munkájuk M0-ban indult. A MIDAS-040 függ tőlük; a MIDAS-034, a MIDAS-042 és a MIDAS-047 közvetlen függősége változatlan.",
+        "en": "Both tasks keep their original dependencies and do not depend on MIDAS-020, because their work started in M0. MIDAS-040 depends on them; the direct dependencies of MIDAS-034, MIDAS-042 and MIDAS-047 are unchanged."
+      }
+    }
   ]
 }
