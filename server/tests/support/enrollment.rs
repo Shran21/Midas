@@ -76,7 +76,16 @@ struct Agent {
 
 impl Agent {
     fn start(port: u16, tls: Arc<ClientConfig>) -> Self {
+        Self::metered(port, tls, None)
+    }
+
+    fn metered(
+        port: u16,
+        tls: Arc<ClientConfig>,
+        metrics: Option<midas_agent_core::metrics::Shared>,
+    ) -> Self {
         let settings = Settings {
+            metrics,
             handshake_timeout: Duration::from_secs(3),
             backoff: BackoffPolicy {
                 base: Duration::from_millis(50),
@@ -113,6 +122,76 @@ impl Agent {
         .is_ok();
         assert!(!connected, "agent connected unexpectedly");
     }
+}
+
+fn sample(at: i64) -> midas_protocol::Sample {
+    midas_protocol::Sample {
+        at,
+        cpu_permille: 250,
+        memory_used: 4 << 30,
+        memory_total: 8 << 30,
+        disk_used: 100 << 30,
+        disk_total: 200 << 30,
+        net_rx: 1000,
+        net_tx: 2000,
+    }
+}
+
+async fn stored(admin: &mut PgConnection, device: Uuid, expected: i64) {
+    let mut count = 0;
+    for _ in 0..100 {
+        count =
+            sqlx::query_scalar("SELECT count(*) FROM midas.device_metrics WHERE device_id = $1")
+                .bind(device)
+                .fetch_one(&mut *admin)
+                .await
+                .unwrap();
+        if count == expected {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    panic!("stored {count} samples, expected {expected}");
+}
+
+async fn online(admin: &mut PgConnection, device: Uuid) -> bool {
+    sqlx::query_scalar("SELECT online FROM midas.devices WHERE id = $1")
+        .bind(device)
+        .fetch_one(&mut *admin)
+        .await
+        .unwrap()
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Link {
+    Forward,
+    Silent,
+}
+
+/// Forwards to `upstream`; switching to `Silent` keeps sockets open but stops all traffic.
+async fn proxy(upstream: std::net::SocketAddr) -> (u16, Arc<watch::Sender<Link>>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let link = Arc::new(watch::channel(Link::Forward).0);
+    let modes = link.clone();
+    tokio::spawn(async move {
+        while let Ok((mut inbound, _)) = listener.accept().await {
+            let mut mode = modes.subscribe();
+            tokio::spawn(async move {
+                let Ok(mut outbound) = tokio::net::TcpStream::connect(upstream).await else {
+                    return;
+                };
+                if *mode.borrow_and_update() == Link::Forward {
+                    tokio::select! {
+                        _ = tokio::io::copy_bidirectional(&mut inbound, &mut outbound) => return,
+                        _ = mode.changed() => {}
+                    }
+                }
+                let _ = mode.changed().await;
+            });
+        }
+    });
+    (port, link)
 }
 
 async fn admin_of(web: &Arc<WebAuth>, policy: &Authorizer, tenant: Uuid, login: &str) -> Client {
@@ -607,6 +686,87 @@ pub async fn verify(database: &Database, admin: &mut PgConnection) {
         "the other tenant has no connector"
     );
     server_agent.stop.send_replace(true);
+
+    // Presence and metrics over a link the test can cut.
+    let (proxy_port, link) = proxy(([127, 0, 0, 1], agent_port).into()).await;
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    let minute = now - now.rem_euclid(60);
+    let buffer = midas_agent_core::metrics::Buffer::shared(midas_agent_core::metrics::CAPACITY);
+    for n in (1..=130).rev() {
+        midas_agent_core::metrics::lock(&buffer).push(sample(minute - n * 60));
+    }
+    let mut metered = Agent::metered(
+        proxy_port,
+        deployment
+            .client_config(roots(&server_ca), &preapproved.certificate)
+            .unwrap(),
+        Some(buffer.clone()),
+    );
+    metered
+        .reach("metered connection", |s| {
+            matches!(s, Status::Connected { .. })
+        })
+        .await;
+    stored(admin, server_device, 130).await;
+    assert!(online(admin, server_device).await);
+    assert!(midas_agent_core::metrics::lock(&buffer).is_empty());
+
+    link.send_replace(Link::Silent);
+    metered
+        .reach("loss of the metered link", |s| {
+            matches!(s, Status::Waiting { .. })
+        })
+        .await;
+    tokio::time::sleep(Duration::from_millis(3500)).await;
+    let offline = enrollment.sweep(Duration::from_secs(3)).await.unwrap();
+    assert!(
+        offline
+            .iter()
+            .any(|identity| identity.device == server_device)
+    );
+    assert!(
+        !online(admin, server_device).await,
+        "offline after three missed keepalives"
+    );
+    for n in 0..5 {
+        midas_agent_core::metrics::lock(&buffer).push(sample(minute + n * 60));
+    }
+    link.send_replace(Link::Forward);
+    metered
+        .reach("reconnection", |s| matches!(s, Status::Connected { .. }))
+        .await;
+    stored(admin, server_device, 135).await;
+    assert!(online(admin, server_device).await);
+    let changes: Vec<bool> = sqlx::query_scalar(
+        "SELECT online FROM midas.device_connectivity WHERE device_id = $1 ORDER BY at",
+    )
+    .bind(server_device)
+    .fetch_all(&mut *admin)
+    .await
+    .unwrap();
+    assert!(changes.ends_with(&[false, true]), "{changes:?}");
+    metered.stop.send_replace(true);
+
+    // Rollup and expiry: minute samples go only after their hour is rolled up.
+    let old = now - 40 * 86_400;
+    let old_hour = old - old.rem_euclid(3600);
+    sqlx::query("INSERT INTO midas.device_metrics (tenant_id, device_id, at, cpu_permille, memory_used, memory_total, disk_used, disk_total, net_rx, net_tx) VALUES ($1, $2, to_timestamp($3), 100, 1, 2, 1, 2, 10, 20), ($1, $2, to_timestamp($3 + 60), 300, 1, 2, 1, 2, 30, 40)")
+        .bind(tenant).bind(server_device).bind(old_hour as f64).execute(&mut *admin).await.unwrap();
+    sqlx::query("INSERT INTO midas.device_metrics_hourly (tenant_id, device_id, hour, samples, cpu_avg_permille, cpu_max_permille, memory_used_avg, memory_used_max, memory_total, disk_used_max, disk_total, net_rx, net_tx) VALUES ($1, $2, date_trunc('hour', clock_timestamp() - interval '14 months'), 1, 0, 0, 0, 0, 0, 0, 0, 0, 0)")
+        .bind(tenant).bind(server_device).execute(&mut *admin).await.unwrap();
+    let (minutes, hours) = enrollment.expire(30, 13).await.unwrap();
+    assert_eq!(
+        (minutes, hours),
+        (0, 1),
+        "unrolled minute samples must stay"
+    );
+    assert!(enrollment.rollup().await.unwrap() > 0);
+    let rolled: (i32, i16, i16, i64, i64) = sqlx::query_as("SELECT samples, cpu_avg_permille, cpu_max_permille, net_rx, net_tx FROM midas.device_metrics_hourly WHERE device_id = $1 AND hour = to_timestamp($2)")
+        .bind(server_device).bind(old_hour as f64).fetch_one(&mut *admin).await.unwrap();
+    assert_eq!(rolled, (2, 200, 300, 40, 60));
+    let (minutes, _) = enrollment.expire(30, 13).await.unwrap();
+    assert_eq!(minutes, 2);
+    stored(admin, server_device, 135).await;
     let connector_sets: i64 = sqlx::query_scalar("SELECT count(*) FROM midas.tenant_audit WHERE tenant_id = $1 AND action = 'directory.connector_set' AND outcome = 'success'")
         .bind(tenant).fetch_one(&mut *admin).await.unwrap();
     assert_eq!(connector_sets, 2);

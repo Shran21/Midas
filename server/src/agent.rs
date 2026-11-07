@@ -143,6 +143,7 @@ async fn serve(
         "agent session started"
     );
     let mut assigned = None;
+    seen(&protocol, identity).await;
     if !assign(&mut socket, &protocol, identity, &mut assigned).await {
         return;
     }
@@ -164,6 +165,7 @@ async fn serve(
             Err(_) => break "idle",
             Ok(Err(())) => break "closed",
             Ok(Ok(Body::Ping(ping))) => {
+                seen(&protocol, identity).await;
                 if send(
                     &mut socket,
                     Body::Pong(Pong { nonce: ping.nonce }),
@@ -172,6 +174,22 @@ async fn serve(
                 .await
                 .is_err()
                 {
+                    break "closed";
+                }
+            }
+            Ok(Ok(Body::MetricsBatch(batch))) => {
+                let (Some(identities), Some(identity)) = (&protocol.identities, identity) else {
+                    continue;
+                };
+                // Without an acknowledgement the agent keeps the samples and resends them.
+                if identities.ingest(identity, &batch).await.is_err() {
+                    tracing::error!("metrics could not be stored; closing the session");
+                    break "store";
+                }
+                let ack = Body::MetricsAck(midas_protocol::MetricsAck {
+                    sequence: batch.sequence,
+                });
+                if send(&mut socket, ack, protocol.keepalive).await.is_err() {
                     break "closed";
                 }
             }
@@ -188,6 +206,14 @@ async fn serve(
         duration_s = started.elapsed().as_secs(),
         "agent session ended"
     );
+}
+
+async fn seen(protocol: &AgentProtocol, identity: Option<AgentIdentity>) {
+    if let (Some(identities), Some(identity)) = (&protocol.identities, identity)
+        && identities.seen(identity).await.is_err()
+    {
+        tracing::error!("device presence could not be recorded");
+    }
 }
 
 async fn changed(admission: &mut Option<Admission>) -> Signal {

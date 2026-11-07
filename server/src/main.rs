@@ -41,6 +41,23 @@ async fn main() -> Result<(), TransportError> {
     if args.agent_bind.is_some() && enrollment.is_none() {
         return Err("the agent listener requires a database and --agent-ca-key".into());
     }
+    if let Some(enrollment) = enrollment.clone() {
+        tokio::spawn(async move {
+            let keepalive = AgentProtocol::default().keepalive;
+            let mut tick = tokio::time::interval(keepalive);
+            let mut maintained: Option<std::time::Instant> = None;
+            loop {
+                tick.tick().await;
+                if let Err(error) = enrollment.sweep(keepalive.saturating_mul(3)).await {
+                    tracing::error!(%error, "offline sweep failed");
+                }
+                if maintained.is_none_or(|at| at.elapsed() >= Duration::from_secs(3600)) {
+                    enrollment.maintain().await;
+                    maintained = Some(std::time::Instant::now());
+                }
+            }
+        });
+    }
     let mut web = web_router_with(enrollment.clone());
     if let Some(origin) = &args.auth_origin {
         use midas_server::auth::{AuthConfig, http::WebAuth, sessions::SessionConfig};

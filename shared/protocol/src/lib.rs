@@ -43,7 +43,7 @@ impl VersionRange {
 
 #[derive(Clone, PartialEq, Message)]
 pub struct Envelope {
-    #[prost(oneof = "Body", tags = "1, 2, 3, 4, 5, 6, 7")]
+    #[prost(oneof = "Body", tags = "1, 2, 3, 4, 5, 6, 7, 8, 9")]
     pub body: Option<Body>,
 }
 
@@ -63,6 +63,10 @@ pub enum Body {
     DirectoryAssignment(DirectoryAssignment),
     #[prost(message, tag = "7")]
     DirectoryReport(DirectoryReport),
+    #[prost(message, tag = "8")]
+    MetricsBatch(MetricsBatch),
+    #[prost(message, tag = "9")]
+    MetricsAck(MetricsAck),
 }
 
 /// First message from the agent.
@@ -149,6 +153,49 @@ pub struct DirectoryReport {
     /// Stable error code such as `tls`, `bind` or `boundary`; never directory content.
     #[prost(string, tag = "4")]
     pub error: String,
+}
+
+/// Most samples in one batch; the next batch waits for the acknowledgement.
+pub const MAX_BATCH_SAMPLES: usize = 60;
+
+/// One minute of device metrics; counters are deltas since the previous sample.
+#[derive(Clone, PartialEq, Message)]
+pub struct Sample {
+    /// Unix time in seconds, aligned to the minute.
+    #[prost(int64, tag = "1")]
+    pub at: i64,
+    #[prost(uint32, tag = "2")]
+    pub cpu_permille: u32,
+    #[prost(uint64, tag = "3")]
+    pub memory_used: u64,
+    #[prost(uint64, tag = "4")]
+    pub memory_total: u64,
+    #[prost(uint64, tag = "5")]
+    pub disk_used: u64,
+    #[prost(uint64, tag = "6")]
+    pub disk_total: u64,
+    #[prost(uint64, tag = "7")]
+    pub net_rx: u64,
+    #[prost(uint64, tag = "8")]
+    pub net_tx: u64,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct MetricsBatch {
+    #[prost(uint64, tag = "1")]
+    pub sequence: u64,
+    #[prost(message, repeated, tag = "2")]
+    pub samples: Vec<Sample>,
+    /// Samples the agent discarded because its buffer was full.
+    #[prost(uint64, tag = "3")]
+    pub dropped: u64,
+}
+
+/// Sent after the batch is stored; only then may the agent forget it.
+#[derive(Clone, PartialEq, Message)]
+pub struct MetricsAck {
+    #[prost(uint64, tag = "1")]
+    pub sequence: u64,
 }
 
 #[derive(Debug)]

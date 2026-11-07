@@ -36,6 +36,9 @@ impl Paths {
     pub fn pending(&self) -> PathBuf {
         self.root.join("pending.json")
     }
+    pub fn metrics(&self) -> PathBuf {
+        self.root.join("metrics.pb")
+    }
     pub fn directory(&self) -> PathBuf {
         self.root.join("directory.json")
     }

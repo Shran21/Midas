@@ -12,6 +12,7 @@ pub mod config;
 pub mod connector;
 pub mod database;
 pub mod enrollment;
+pub mod metrics;
 pub mod transport;
 
 #[derive(Serialize)]

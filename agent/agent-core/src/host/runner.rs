@@ -244,8 +244,15 @@ pub async fn serve(
             user: account.user,
             password: Zeroizing::new(account.password),
         });
+    let buffer = crate::metrics::Buffer::shared(crate::metrics::CAPACITY);
+    let collector = tokio::spawn(crate::metrics::collect(
+        buffer.clone(),
+        Some(paths.metrics()),
+        shutdown.clone(),
+    ));
     let settings = Settings {
         directory,
+        metrics: Some(buffer),
         ..Settings::new(config.server.clone(), config.port, tls, platform.as_str())
     };
     let (status_tx, mut status) = watch::channel(Status::Connecting { attempt: 0 });
@@ -254,6 +261,7 @@ pub async fn serve(
         state.send_replace(State::from(&*status.borrow_and_update()));
     }
     let _ = connection.await;
+    let _ = collector.await;
     state.send_replace(State::Stopped);
 }
 

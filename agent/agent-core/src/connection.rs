@@ -32,6 +32,8 @@ pub struct Settings {
     pub stable_after: Duration,
     /// Present only on the agent the tenant designated as its directory connector.
     pub directory: Option<crate::directory::Credentials>,
+    /// Samples waiting for upload; they stay until the server acknowledges them.
+    pub metrics: Option<crate::metrics::Shared>,
 }
 
 impl Settings {
@@ -47,6 +49,7 @@ impl Settings {
             backoff: BackoffPolicy::default(),
             stable_after: Duration::from_secs(60),
             directory: None,
+            metrics: None,
         }
     }
 }
@@ -173,6 +176,14 @@ async fn session(
     // One directory check at a time; a newer assignment waits for the running one.
     let mut checking = false;
     let mut queued: Option<midas_protocol::DirectoryAssignment> = None;
+    let mut upload = Upload::default();
+    if upload
+        .offer(&mut socket, settings, keepalive)
+        .await
+        .is_err()
+    {
+        return Outcome::Ended { connected };
+    }
     loop {
         tokio::select! {
             Some(report) = finished.recv() => {
@@ -195,11 +206,20 @@ async fn session(
                     return Outcome::Ended { connected };
                 }
                 pending = Some(nonce);
+                if upload.offer(&mut socket, settings, keepalive).await.is_err() {
+                    return Outcome::Ended { connected };
+                }
             }
             frame = receive(&mut socket) => match frame {
                 Ok(Body::Pong(pong)) if Some(pong.nonce) == pending => pending = None,
                 Ok(Body::Ping(ping)) => {
                     if send(&mut socket, Body::Pong(Pong { nonce: ping.nonce }), keepalive).await.is_err() {
+                        return Outcome::Ended { connected };
+                    }
+                }
+                Ok(Body::MetricsAck(ack)) => {
+                    upload.acknowledged(&ack, settings);
+                    if upload.offer(&mut socket, settings, keepalive).await.is_err() {
                         return Outcome::Ended { connected };
                     }
                 }
@@ -249,6 +269,51 @@ async fn open(settings: &Settings) -> Result<Socket, Reason> {
     match timeout(limit, client_async_with_config(request, tls, Some(config))).await {
         Ok(Ok((socket, _))) => Ok(socket),
         _ => Err(Reason::Handshake),
+    }
+}
+
+/// At most one metrics batch in flight; the next waits for its acknowledgement.
+#[derive(Default)]
+struct Upload {
+    sequence: u64,
+    in_flight: Option<(u64, usize, u64)>,
+}
+
+impl Upload {
+    async fn offer(
+        &mut self,
+        socket: &mut Socket,
+        settings: &Settings,
+        limit: Duration,
+    ) -> Result<(), ()> {
+        let Some(buffer) = &settings.metrics else {
+            return Ok(());
+        };
+        if self.in_flight.is_some() {
+            return Ok(());
+        }
+        let (samples, dropped) = crate::metrics::lock(buffer).peek();
+        if samples.is_empty() && dropped == 0 {
+            return Ok(());
+        }
+        self.sequence = self.sequence.wrapping_add(1);
+        self.in_flight = Some((self.sequence, samples.len(), dropped));
+        let batch = midas_protocol::MetricsBatch {
+            sequence: self.sequence,
+            samples,
+            dropped,
+        };
+        send(socket, Body::MetricsBatch(batch), limit).await
+    }
+
+    fn acknowledged(&mut self, ack: &midas_protocol::MetricsAck, settings: &Settings) {
+        if let (Some((sequence, count, dropped)), Some(buffer)) =
+            (self.in_flight, &settings.metrics)
+            && sequence == ack.sequence
+        {
+            crate::metrics::lock(buffer).acknowledge(count, dropped);
+            self.in_flight = None;
+        }
     }
 }
 

@@ -5,3 +5,4 @@ pub mod connection;
 pub mod directory;
 pub mod enrollment;
 pub mod host;
+pub mod metrics;

@@ -21,6 +21,7 @@ Az agent egy tartós, kimenő, hitelesített kapcsolattal csatlakozik a szerverh
 | `Reject` | szerver → agent | ok (`UNSUPPORTED_VERSION`, `INVALID_HELLO`) és a szerver által támogatott tartomány; utána a szerver bont |
 | `Ping` / `Pong` | mindkét irány | élőség-ellenőrzés véletlen azonosítóval |
 | `DirectoryAssignment` / `DirectoryReport` | szerver → kijelölt connector, illetve vissza | címtár-olvasási feladat és eredménye ([címtár-connector](cimtar-connector.md)) |
+| `MetricsBatch` / `MetricsAck` | agent → szerver, illetve vissza | legfeljebb 60 perces minta és a tárolás utáni nyugta ([metrikák](metrikak.md)) |
 
 ### Verziók és kompatibilitás
 
@@ -53,7 +54,6 @@ A `shared/protocol` egységtesztjei az egyeztetést, az újabb mezők és üzene
 
 ### Ismert korlátok
 
-- Nincs heartbeat-tartalom, metrika vagy kiesés alatti helyi puffer (MIDAS-025).
 - A Windows-szolgáltatás és a Linux-csomag, amelyek az agent-core kapcsolatát futtatják, a MIDAS-023 és a MIDAS-024 része.
 - A kliens HTTP/1.1-es WebSocket-frissítést használ; a HTTP/2-n keresztüli WebSocket nem cél.
 
@@ -76,6 +76,7 @@ The agent connects to the server over one persistent, outbound, authenticated co
 | `Reject` | server → agent | reason (`UNSUPPORTED_VERSION`, `INVALID_HELLO`) and the server's supported range; the server then closes |
 | `Ping` / `Pong` | both directions | liveness check with a random identifier |
 | `DirectoryAssignment` / `DirectoryReport` | server → designated connector and back | directory read task and its result ([directory connector](cimtar-connector.md#english)) |
+| `MetricsBatch` / `MetricsAck` | agent → server and back | up to 60 minute samples and the acknowledgement after storage ([metrics](metrikak.md#english)) |
 
 ### Versions and compatibility
 
@@ -108,6 +109,5 @@ Unit tests in `shared/protocol` cover negotiation, tolerance of newer fields and
 
 ### Known limits
 
-- The session carries no heartbeat content, metrics or offline buffering yet (MIDAS-025).
 - The Windows service and Linux package that run the agent-core connection belong to MIDAS-023 and MIDAS-024.
 - The client uses an HTTP/1.1 WebSocket upgrade; WebSocket over HTTP/2 is not a goal.
