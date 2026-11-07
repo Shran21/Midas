@@ -991,7 +991,11 @@
         "security"
       ],
       "github_issue_number": 24,
-      "github_issue_url": "https://github.com/Shran21/Midas/issues/24"
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/24",
+      "pending_owner_verification": {
+        "hu": "Windows-szolgáltatás telepítése, újraindítás, hálózatkiesés és más munkamenet próbája a projektgazda saját gépén.",
+        "en": "Windows service install, restart, network loss and other-session trial on the project owner's own machine."
+      }
     },
     {
       "id": "MIDAS-024",
@@ -1026,7 +1030,11 @@
         "agent"
       ],
       "github_issue_number": 25,
-      "github_issue_url": "https://github.com/Shran21/Midas/issues/25"
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/25",
+      "pending_owner_verification": {
+        "hu": "Csomagtelepítés és indítás Debianon, Ubuntun és Rocky Linuxon a projektgazda saját gépein.",
+        "en": "Package install and start on Debian, Ubuntu and Rocky Linux on the project owner's own machines."
+      }
     },
     {
       "id": "MIDAS-025",
@@ -1040,10 +1048,7 @@
       "initial_status": "Backlog",
       "kickoff_status": "Backlog",
       "priority": "P0",
-      "depends_on": [
-        "MIDAS-023",
-        "MIDAS-024"
-      ],
+      "depends_on": [],
       "requirements": [
         "PERF-02",
         "PERF-05"
@@ -1112,10 +1117,7 @@
       "initial_status": "Backlog",
       "kickoff_status": "Backlog",
       "priority": "P1",
-      "depends_on": [
-        "MIDAS-023",
-        "MIDAS-024"
-      ],
+      "depends_on": [],
       "requirements": [
         "SERVER-01",
         "UI-05"
@@ -1339,9 +1341,7 @@
       "initial_status": "Backlog",
       "kickoff_status": "Backlog",
       "priority": "P0",
-      "depends_on": [
-        "MIDAS-023"
-      ],
+      "depends_on": [],
       "requirements": [
         "AD-04",
         "SEC-02"
@@ -1376,9 +1376,7 @@
       "initial_status": "Backlog",
       "kickoff_status": "Backlog",
       "priority": "P1",
-      "depends_on": [
-        "MIDAS-023"
-      ],
+      "depends_on": [],
       "requirements": [
         "UI-06",
         "UI-08",
@@ -1561,7 +1559,6 @@
       "priority": "P0",
       "depends_on": [
         "MIDAS-034",
-        "MIDAS-024",
         "MIDAS-027"
       ],
       "requirements": [
@@ -1603,8 +1600,6 @@
       "depends_on": [
         "MIDAS-021",
         "MIDAS-022",
-        "MIDAS-023",
-        "MIDAS-024",
         "MIDAS-025",
         "MIDAS-026",
         "MIDAS-027",
@@ -1629,12 +1624,12 @@
         "hu": [
           "A monitorozás, felderítés, regisztráció és terhelésmérés elfogadva; az összes vállalt feladat ellenőrzött Done, a támogatási mátrix és a következő fázis feltételei rögzítve.",
           "Tíz vegyes tesztgép egy hétig jelent; a 24 órás agent- és az egyórás, 1000 szimulált agentes mérés bizonyítéka csatolt.",
-          "A MIDAS-018 és a MIDAS-019 ellenőrzésének állapota rögzített; Done állapotuk nem feltétele a zárásnak."
+          "A MIDAS-018, MIDAS-019, MIDAS-023 és MIDAS-024 ellenőrzésének állapota rögzített; Done állapotuk nem feltétele a zárásnak."
         ],
         "en": [
           "Accept monitoring, discovery, enrollment and load evidence; all committed work is reviewed Done, with a support matrix and next-phase prerequisites recorded.",
           "Ten mixed test devices report for one week; attach evidence for the 24-hour agent and one-hour 1000-simulated-agent measurements.",
-          "Record the verification state of MIDAS-018 and MIDAS-019; their Done status is not a closure condition."
+          "Record the verification state of MIDAS-018, MIDAS-019, MIDAS-023 and MIDAS-024; their Done status is not a closure condition."
         ]
       },
       "label_names": [
@@ -1657,7 +1652,6 @@
       "priority": "P0",
       "depends_on": [
         "MIDAS-011",
-        "MIDAS-023",
         "MIDAS-031",
         "MIDAS-040"
       ],
@@ -1695,7 +1689,6 @@
       "kickoff_status": "Backlog",
       "priority": "P0",
       "depends_on": [
-        "MIDAS-023",
         "MIDAS-040"
       ],
       "requirements": [
@@ -1881,7 +1874,6 @@
       "kickoff_status": "Backlog",
       "priority": "P0",
       "depends_on": [
-        "MIDAS-023",
         "MIDAS-040"
       ],
       "requirements": [
@@ -3100,8 +3092,6 @@
       "priority": "P0",
       "depends_on": [
         "MIDAS-077",
-        "MIDAS-023",
-        "MIDAS-024",
         "MIDAS-074"
       ],
       "requirements": [
@@ -4204,6 +4194,85 @@
       "follow_up": {
         "hu": "Sikertelen ellenőrzésnél a MIDAS-034, MIDAS-042, MIDAS-047, MIDAS-059 és az ezekre épülő munka újravizsgálandó, szükség esetén újranyitandó.",
         "en": "If a verification fails, re-check MIDAS-034, MIDAS-042, MIDAS-047, MIDAS-059 and work built on them, reopening where needed."
+      }
+    },
+    {
+      "date": "2026-11-07",
+      "kind": "done_requirement_waiver",
+      "items": [
+        "MIDAS-023",
+        "MIDAS-024"
+      ],
+      "decided_by": "project owner",
+      "reason": {
+        "hu": "A két feladat rendszerszintű próbáját a projektgazda saját gépen végzi, ami most nem történik meg; a fejlesztést az ütemterv miatt folytatni kell.",
+        "en": "The project owner runs the system-level trials of both tasks on their own machines, which is not happening now; development must continue to keep the schedule."
+      },
+      "rule": {
+        "hu": "Ugyanaz a szabály, mint a MIDAS-018–020-nál: In review marad, csak a projektgazdai próba után lehet Done, de Done állapota nem feltétele későbbi feladat vagy fázis indításának, sem fáziskapu zárásának. A kivétel összesen erre az öt feladatra vonatkozik.",
+        "en": "Same rule as for MIDAS-018–020: stays In review, may become Done only after the owner's trial, but its Done status is not a prerequisite for starting later tasks or phases or for closing phase gates. The exception now covers these five tasks only."
+      },
+      "removed_dependencies": [
+        [
+          "MIDAS-025",
+          "MIDAS-023"
+        ],
+        [
+          "MIDAS-025",
+          "MIDAS-024"
+        ],
+        [
+          "MIDAS-027",
+          "MIDAS-023"
+        ],
+        [
+          "MIDAS-027",
+          "MIDAS-024"
+        ],
+        [
+          "MIDAS-033",
+          "MIDAS-023"
+        ],
+        [
+          "MIDAS-034",
+          "MIDAS-023"
+        ],
+        [
+          "MIDAS-039",
+          "MIDAS-024"
+        ],
+        [
+          "MIDAS-040",
+          "MIDAS-023"
+        ],
+        [
+          "MIDAS-040",
+          "MIDAS-024"
+        ],
+        [
+          "MIDAS-041",
+          "MIDAS-023"
+        ],
+        [
+          "MIDAS-042",
+          "MIDAS-023"
+        ],
+        [
+          "MIDAS-047",
+          "MIDAS-023"
+        ],
+        [
+          "MIDAS-078",
+          "MIDAS-023"
+        ],
+        [
+          "MIDAS-078",
+          "MIDAS-024"
+        ]
+      ],
+      "follow_up": {
+        "hu": "Sikertelen próbánál a MIDAS-025, MIDAS-027, MIDAS-033, MIDAS-034, MIDAS-039, MIDAS-041, MIDAS-042, MIDAS-047, MIDAS-078 és az ezekre épülő munka újravizsgálandó.",
+        "en": "If a trial fails, re-check MIDAS-025, MIDAS-027, MIDAS-033, MIDAS-034, MIDAS-039, MIDAS-041, MIDAS-042, MIDAS-047, MIDAS-078 and work built on them."
       }
     }
   ]

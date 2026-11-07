@@ -101,22 +101,22 @@ P0: elsőbbséget igénylő alapműködés, biztonság vagy kapu; P1: a fázison
 | MIDAS-022 | Agentbeiratkozás, jóváhagyás, mTLS és visszavonás | Backlog | P0 | MIDAS-021, MIDAS-011, MIDAS-012 |
 | MIDAS-023 | Windows-szolgáltatás és biztonságos helyi IPC | Backlog | P0 | MIDAS-022 |
 | MIDAS-024 | Linux-agent, systemd és csomagok | Backlog | P0 | MIDAS-022 |
-| MIDAS-025 | Heartbeat, metrikák, összesítés és megőrzés | Backlog | P0 | MIDAS-023, MIDAS-024 |
+| MIDAS-025 | Heartbeat, metrikák, összesítés és megőrzés | Backlog | P0 | — |
 | MIDAS-026 | Változásalapú hardver- és szoftverleltár | Backlog | P1 | MIDAS-025 |
-| MIDAS-027 | Állapotellenőrzések és platformképességek | Backlog | P1 | MIDAS-023, MIDAS-024 |
+| MIDAS-027 | Állapotellenőrzések és platformképességek | Backlog | P1 | — |
 | MIDAS-028 | Öröklődő ügyfél-, telephely- és csoportszabályzatok | Backlog | P1 | MIDAS-026, MIDAS-011 |
 | MIDAS-029 | Riasztás, összevonás és e-mail | Backlog | P0 | MIDAS-025, MIDAS-027, MIDAS-028 |
 | MIDAS-030 | Teams- és Slack-értesítési végpontok | Backlog | P2 | MIDAS-029 |
 | MIDAS-031 | Eszközoldal, kártyák, helyi menük és élő állapot | Backlog | P0 | MIDAS-013, MIDAS-025, MIDAS-026, MIDAS-029 |
 | MIDAS-032 | Jogosultságot követő kereső és parancspaletta | Backlog | P2 | MIDAS-031 |
-| MIDAS-033 | Windows MSI és védett regisztrációs átadás | Backlog | P0 | MIDAS-023 |
-| MIDAS-034 | Agent állapotnézet és tálcaikon | Backlog | P1 | MIDAS-023 |
+| MIDAS-033 | Windows MSI és védett regisztrációs átadás | Backlog | P0 | — |
+| MIDAS-034 | Agent állapotnézet és tálcaikon | Backlog | P1 | — |
 | MIDAS-035 | Flottaterhelés és újracsatlakozási hullám | Backlog | P0 | MIDAS-031, MIDAS-025 |
 | MIDAS-036 | Ügyfelenkénti, csak olvasó AD-connector | Backlog | P0 | MIDAS-010, MIDAS-022 |
 | MIDAS-037 | AD-felderítés és agenthez egyeztetett jelöltek | Backlog | P0 | MIDAS-036, MIDAS-026 |
 | MIDAS-038 | Felderítési és regisztrációs nézet | Backlog | P0 | MIDAS-037, MIDAS-031 |
-| MIDAS-039 | 24 órás háttérmérés és szerverprofil | Backlog | P0 | MIDAS-034, MIDAS-024, MIDAS-027 |
-| MIDAS-040 | 1. fázis ellenőrzése és mérföldkőzárás | Backlog | P0 | A fázis összes többi tétele, a MIDAS-018 és a MIDAS-019 kivételével |
+| MIDAS-039 | 24 órás háttérmérés és szerverprofil | Backlog | P0 | MIDAS-034, MIDAS-027 |
+| MIDAS-040 | 1. fázis ellenőrzése és mérföldkőzárás | Backlog | P0 | A fázis összes többi tétele, a MIDAS-018, MIDAS-019, MIDAS-023 és MIDAS-024 kivételével |
 
 **Elfogadási feltételek és visszakereshetőség**
 
@@ -141,19 +141,19 @@ P0: elsőbbséget igénylő alapműködés, biztonság vagy kapu; P1: a fázison
 - **MIDAS-037:** A jelölt különbözik az online agenttől, az objectGUID-alapú egyeztetés nem kapcsol össze más ügyfeleket. Követelmény: AD-03, AD-04. Korábbi azonosító: —.
 - **MIDAS-038:** Az admin látja a jelölteket, kezelt gépeket és regisztrációs döntéseket, a felderítés nem telepít automatikusan. Követelmény: UI-01, AD-03, AD-04. Korábbi azonosító: —.
 - **MIDAS-039:** Külön mérés készül a háttéragentről és megnyitott helyi felületről, a szerverprofil megkülönbözteti a grafikus és háttérképességeket. Legalább 24 órás agentmérés készül, Windows 11-en a kapcsolódó WebView2-folyamatokkal együtt. Az eredmény optimalizálási alap, nincs előírt CPU-, GPU-, memória- vagy adatforgalmi plafon. Követelmény: PERF-01, PERF-02, PERF-03, PERF-04, SERVER-03. Korábbi azonosító: —.
-- **MIDAS-040:** A monitorozás, felderítés, regisztráció és terhelésmérés elfogadva; az összes vállalt feladat ellenőrzött Done, a támogatási mátrix és a következő fázis feltételei rögzítve. Tíz vegyes tesztgép egy hétig jelent; a 24 órás agent- és az egyórás, 1000 szimulált agentes mérés bizonyítéka csatolt. A MIDAS-018 és a MIDAS-019 ellenőrzésének állapota rögzített; Done állapotuk nem feltétele a zárásnak. Követelmény: —. Korábbi azonosító: F1-16.
+- **MIDAS-040:** A monitorozás, felderítés, regisztráció és terhelésmérés elfogadva; az összes vállalt feladat ellenőrzött Done, a támogatási mátrix és a következő fázis feltételei rögzítve. Tíz vegyes tesztgép egy hétig jelent; a 24 órás agent- és az egyórás, 1000 szimulált agentes mérés bizonyítéka csatolt. A MIDAS-018, MIDAS-019, MIDAS-023 és MIDAS-024 ellenőrzésének állapota rögzített; Done állapotuk nem feltétele a zárásnak. Követelmény: —. Korábbi azonosító: F1-16.
 
 ### 2. Távsegítés
 
 | ID | Feladat | Induláskor | Prioritás | Közvetlen függőségek az előző kapun felül |
 | --- | --- | --- | --- | --- |
-| MIDAS-041 | Felhasználó nélküli szerveres hozzáférés szabályzata | Backlog | P0 | MIDAS-011, MIDAS-023, MIDAS-031 |
-| MIDAS-042 | DXGI-rögzítés és több monitor | Backlog | P0 | MIDAS-023 |
+| MIDAS-041 | Felhasználó nélküli szerveres hozzáférés szabályzata | Backlog | P0 | MIDAS-011, MIDAS-031 |
+| MIDAS-042 | DXGI-rögzítés és több monitor | Backlog | P0 | — |
 | MIDAS-043 | NVIDIA hardveres kódoló integráció | Backlog | P0 | MIDAS-042 |
 | MIDAS-044 | AMD hardveres kódoló integráció | Backlog | P0 | MIDAS-042 |
 | MIDAS-045 | Intel hardveres kódoló integráció | Backlog | P0 | MIDAS-042 |
 | MIDAS-046 | Kodekegyeztetés, szoftveres H.264 és adaptív képátvitel | Backlog | P0 | MIDAS-042 |
-| MIDAS-047 | Védett transzport és külön UAC-komponens | Backlog | P0 | MIDAS-023 |
+| MIDAS-047 | Védett transzport és külön UAC-komponens | Backlog | P0 | — |
 | MIDAS-048 | Adminpanelről indított helyi jóváhagyás | Backlog | P0 | MIDAS-047, MIDAS-034, MIDAS-011, MIDAS-012 |
 | MIDAS-049 | Normál távvezérlés működő UAC-val | Backlog | P0 | MIDAS-048, MIDAS-042, MIDAS-046 |
 | MIDAS-050 | Rendszergazdai távvezérlés és külön engedélyek | Backlog | P0 | MIDAS-049 |
@@ -234,7 +234,7 @@ P0: elsőbbséget igénylő alapműködés, biztonság vagy kapu; P1: a fázison
 | MIDAS-075 | Linux-szervertelepítő és ellenőrzött csomagtárolók | Backlog | P0 | MIDAS-016 |
 | MIDAS-076 | Windows-szervertelepítő és szolgáltatásfiókok | Backlog | P0 | MIDAS-016 |
 | MIDAS-077 | Védett kódaláírás és telepítési reputációs próba | Backlog | P0 | MIDAS-075, MIDAS-076, MIDAS-033 |
-| MIDAS-078 | Aláírt agentönfrissítés, gyűrűk és visszaállás | Backlog | P0 | MIDAS-077, MIDAS-023, MIDAS-024 |
+| MIDAS-078 | Aláírt agentönfrissítés, gyűrűk és visszaállás | Backlog | P0 | MIDAS-077 |
 | MIDAS-079 | Külső ellenőrzőpont és auditlánc | Backlog | P1 | MIDAS-012 |
 | MIDAS-080 | Mentés és teljes visszaállítás másik gépen | Backlog | P0 | MIDAS-075, MIDAS-076, MIDAS-022 |
 | MIDAS-081 | SBOM, kiadási aláírás és buildigazolás | Backlog | P1 | MIDAS-004, MIDAS-077 |
@@ -324,6 +324,13 @@ Ezek még nem vállalt funkciók, mind Backlogban maradnak. Külön döntés né
 - **Szabály:** a három feladat In review állapotban marad, és csak a projektgazdai ellenőrzés után léphet Done állapotba. Az ellenőrzés kötelező marad, de a Done állapotuk nem feltétele későbbi feladat vagy fázis indításának, sem fáziskapu zárásának. A kivétel csak erre a három feladatra vonatkozik; minden más feladatra és kapura a teljes státuszmenet és a fázisszabály változatlan.
 - **Kivett függőségek:** az M1 tételeinek (MIDAS-021–040) függése a MIDAS-020-tól; a MIDAS-034, MIDAS-040 és MIDAS-059 függése a MIDAS-019-től; a MIDAS-040, MIDAS-042 és MIDAS-047 függése a MIDAS-018-tól.
 - **Kockázat és teendő:** a későbbi munka még nem igazolt UAC-, használhatósági és WebRTC-feltevésekre épülhet. Sikertelen ellenőrzésnél a MIDAS-034, MIDAS-042, MIDAS-047, MIDAS-059 és az ezekre épülő munka újravizsgálandó, szükség esetén újranyitandó.
+
+**2026. november 7. · A kivétel kiterjesztése a MIDAS-023-ra és a MIDAS-024-re**
+
+- **Döntés és ok:** a projektgazda döntése. A Windows-szolgáltatás (MIDAS-023) és a Linux-csomag (MIDAS-024) rendszerszintű próbáját a projektgazda saját gépen végzi: telepítés, újraindítás, más munkamenet, illetve a három disztribúció. Ez most nem történik meg, a fejlesztést viszont folytatni kell.
+- **Szabály:** ugyanaz, mint a MIDAS-018–020-nál. A két feladat In review marad, és csak a próba után léphet Done állapotba; Done állapotuk nem feltétele későbbi feladat vagy fázis indításának, sem fáziskapu zárásának. A kivétel összesen erre az öt feladatra vonatkozik.
+- **Kivett függőségek:** a MIDAS-025, -027, -033, -034, -040, -041, -042, -047 és -078 függése a MIDAS-023-tól; a MIDAS-025, -027, -039, -040 és -078 függése a MIDAS-024-től.
+- **Kockázat és teendő:** sikertelen próbánál az érintett feladatokat és az ezekre épülő munkát újra kell vizsgálni, szükség esetén újra kell nyitni.
 
 ### Lényeges változások a régi vázlathoz képest
 
@@ -435,22 +442,22 @@ P0: core behavior, security or gates needing precedence; P1: work ordered afterw
 | MIDAS-022 | Agent enrollment, approval, mTLS and revocation | Backlog | P0 | MIDAS-021, MIDAS-011, MIDAS-012 |
 | MIDAS-023 | Windows service and protected local IPC | Backlog | P0 | MIDAS-022 |
 | MIDAS-024 | Linux agent, systemd and packages | Backlog | P0 | MIDAS-022 |
-| MIDAS-025 | Heartbeat, metrics, rollups and retention | Backlog | P0 | MIDAS-023, MIDAS-024 |
+| MIDAS-025 | Heartbeat, metrics, rollups and retention | Backlog | P0 | — |
 | MIDAS-026 | Incremental hardware and software inventory | Backlog | P1 | MIDAS-025 |
-| MIDAS-027 | Health checks and platform capabilities | Backlog | P1 | MIDAS-023, MIDAS-024 |
+| MIDAS-027 | Health checks and platform capabilities | Backlog | P1 | — |
 | MIDAS-028 | Inherited customer, site and group policies | Backlog | P1 | MIDAS-026, MIDAS-011 |
 | MIDAS-029 | Alerts, deduplication and email | Backlog | P0 | MIDAS-025, MIDAS-027, MIDAS-028 |
 | MIDAS-030 | Teams and Slack notification endpoints | Backlog | P2 | MIDAS-029 |
 | MIDAS-031 | Device pages, cards, context menus and live state | Backlog | P0 | MIDAS-013, MIDAS-025, MIDAS-026, MIDAS-029 |
 | MIDAS-032 | Permission-aware search and command palette | Backlog | P2 | MIDAS-031 |
-| MIDAS-033 | Windows MSI and protected enrollment delivery | Backlog | P0 | MIDAS-023 |
-| MIDAS-034 | Agent status view and tray icon | Backlog | P1 | MIDAS-023 |
+| MIDAS-033 | Windows MSI and protected enrollment delivery | Backlog | P0 | — |
+| MIDAS-034 | Agent status view and tray icon | Backlog | P1 | — |
 | MIDAS-035 | Fleet load and reconnection testing | Backlog | P0 | MIDAS-031, MIDAS-025 |
 | MIDAS-036 | Per-customer read-only AD connector | Backlog | P0 | MIDAS-010, MIDAS-022 |
 | MIDAS-037 | AD discovery and verified agent matching | Backlog | P0 | MIDAS-036, MIDAS-026 |
 | MIDAS-038 | Discovery and enrollment view | Backlog | P0 | MIDAS-037, MIDAS-031 |
-| MIDAS-039 | 24-hour background profiling and server profiles | Backlog | P0 | MIDAS-034, MIDAS-024, MIDAS-027 |
-| MIDAS-040 | Review phase 1 and close its milestone | Backlog | P0 | All other phase items except MIDAS-018 and MIDAS-019 |
+| MIDAS-039 | 24-hour background profiling and server profiles | Backlog | P0 | MIDAS-034, MIDAS-027 |
+| MIDAS-040 | Review phase 1 and close its milestone | Backlog | P0 | All other phase items except MIDAS-018, MIDAS-019, MIDAS-023 and MIDAS-024 |
 
 **Acceptance criteria and traceability**
 
@@ -475,19 +482,19 @@ P0: core behavior, security or gates needing precedence; P1: work ordered afterw
 - **MIDAS-037:** Candidates remain distinct from live agents and objectGUID matching does not cross tenants. Requirements: AD-03, AD-04. Legacy ID: —.
 - **MIDAS-038:** The admin sees candidates, managed devices and enrollment decisions, while discovery triggers no automatic installation. Requirements: UI-01, AD-03, AD-04. Legacy ID: —.
 - **MIDAS-039:** Separate measurements cover background and open UI, and server profiles distinguish graphical and background capabilities. Run at least a 24-hour agent measurement, including related WebView2 processes on Windows 11. Results guide optimization without preset CPU, GPU, memory or traffic ceilings. Requirements: PERF-01, PERF-02, PERF-03, PERF-04, SERVER-03. Legacy ID: —.
-- **MIDAS-040:** Accept monitoring, discovery, enrollment and load evidence; all committed work is reviewed Done, with a support matrix and next-phase prerequisites recorded. Ten mixed test devices report for one week; attach evidence for the 24-hour agent and one-hour 1000-simulated-agent measurements. Record the verification state of MIDAS-018 and MIDAS-019; their Done status is not a closure condition. Requirements: —. Legacy ID: F1-16.
+- **MIDAS-040:** Accept monitoring, discovery, enrollment and load evidence; all committed work is reviewed Done, with a support matrix and next-phase prerequisites recorded. Ten mixed test devices report for one week; attach evidence for the 24-hour agent and one-hour 1000-simulated-agent measurements. Record the verification state of MIDAS-018, MIDAS-019, MIDAS-023 and MIDAS-024; their Done status is not a closure condition. Requirements: —. Legacy ID: F1-16.
 
 ### 2. Remote support
 
 | ID | Task | At kickoff | Priority | Direct dependencies in addition to the previous gate |
 | --- | --- | --- | --- | --- |
-| MIDAS-041 | Unattended server-access policy | Backlog | P0 | MIDAS-011, MIDAS-023, MIDAS-031 |
-| MIDAS-042 | DXGI capture and multiple monitors | Backlog | P0 | MIDAS-023 |
+| MIDAS-041 | Unattended server-access policy | Backlog | P0 | MIDAS-011, MIDAS-031 |
+| MIDAS-042 | DXGI capture and multiple monitors | Backlog | P0 | — |
 | MIDAS-043 | NVIDIA hardware encoder integration | Backlog | P0 | MIDAS-042 |
 | MIDAS-044 | AMD hardware encoder integration | Backlog | P0 | MIDAS-042 |
 | MIDAS-045 | Intel hardware encoder integration | Backlog | P0 | MIDAS-042 |
 | MIDAS-046 | Codec negotiation, software H.264 and adaptive video | Backlog | P0 | MIDAS-042 |
-| MIDAS-047 | Protected transport and separate UAC component | Backlog | P0 | MIDAS-023 |
+| MIDAS-047 | Protected transport and separate UAC component | Backlog | P0 | — |
 | MIDAS-048 | Admin-initiated local consent | Backlog | P0 | MIDAS-047, MIDAS-034, MIDAS-011, MIDAS-012 |
 | MIDAS-049 | Normal remote control with working UAC | Backlog | P0 | MIDAS-048, MIDAS-042, MIDAS-046 |
 | MIDAS-050 | Administrative control and distinct permissions | Backlog | P0 | MIDAS-049 |
@@ -568,7 +575,7 @@ P0: core behavior, security or gates needing precedence; P1: work ordered afterw
 | MIDAS-075 | Linux server installer and verified package repositories | Backlog | P0 | MIDAS-016 |
 | MIDAS-076 | Windows server installer and service accounts | Backlog | P0 | MIDAS-016 |
 | MIDAS-077 | Protected code signing and distribution reputation tests | Backlog | P0 | MIDAS-075, MIDAS-076, MIDAS-033 |
-| MIDAS-078 | Signed agent updates, rings and rollback | Backlog | P0 | MIDAS-077, MIDAS-023, MIDAS-024 |
+| MIDAS-078 | Signed agent updates, rings and rollback | Backlog | P0 | MIDAS-077 |
 | MIDAS-079 | External checkpoints and audit chain | Backlog | P1 | MIDAS-012 |
 | MIDAS-080 | Backup and full recovery on another host | Backlog | P0 | MIDAS-075, MIDAS-076, MIDAS-022 |
 | MIDAS-081 | SBOM, release signatures and build provenance | Backlog | P1 | MIDAS-004, MIDAS-077 |
@@ -658,6 +665,13 @@ These are uncommitted proposals and remain Backlog. They need a separate decisio
 - **Rule:** the three tasks stay In review and may become Done only after the owner's verification. Verification remains required, but their Done status is not a prerequisite for starting later tasks or phases or for closing phase gates. The exception covers only these three tasks; the full status flow and the phase rule apply unchanged to every other task and gate.
 - **Removed dependencies:** M1 items (MIDAS-021–040) on MIDAS-020; MIDAS-034, MIDAS-040 and MIDAS-059 on MIDAS-019; MIDAS-040, MIDAS-042 and MIDAS-047 on MIDAS-018.
 - **Risk and follow-up:** later work may build on UAC, usability and WebRTC assumptions that are not yet verified. If a verification fails, re-check MIDAS-034, MIDAS-042, MIDAS-047, MIDAS-059 and work built on them, reopening where needed.
+
+**November 7, 2026 · The exception extended to MIDAS-023 and MIDAS-024**
+
+- **Decision and reason:** decided by the project owner. The owner runs the system-level trials of the Windows service (MIDAS-023) and the Linux package (MIDAS-024) on their own machines: installation, restart, another session, and the three distributions. This is not happening now, while development must continue.
+- **Rule:** the same as for MIDAS-018–020. Both tasks stay In review and may become Done only after the trial; their Done status is not a prerequisite for starting later tasks or phases or for closing phase gates. The exception now covers these five tasks only.
+- **Removed dependencies:** MIDAS-025, -027, -033, -034, -040, -041, -042, -047 and -078 on MIDAS-023; MIDAS-025, -027, -039, -040 and -078 on MIDAS-024.
+- **Risk and follow-up:** if a trial fails, re-check the affected tasks and work built on them, reopening where needed.
 
 ### Material changes from the earlier drafts
 
