@@ -3,6 +3,7 @@ members = [
   "server",
   "shared/protocol",
   "agent/agent-core",
+  "agent/agent-linux",
   "agent/agent-windows/service",
   "agent/agent-windows/media-prototype",
   "agent/agent-windows/uac-prototype",

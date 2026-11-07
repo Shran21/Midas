@@ -1,0 +1,10 @@
+getent group midas-agent >/dev/null || groupadd -r midas-agent
+getent passwd midas-agent >/dev/null || useradd -r -g midas-agent -d /var/lib/midas-agent \
+    -s /sbin/nologin -c "MIDAS agent" midas-agent
+install -d -m 0750 -o root -g midas-agent /etc/midas-agent
+install -d -m 0700 -o midas-agent -g midas-agent /var/lib/midas-agent
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload
+    systemctl enable midas-agent.service >/dev/null
+    systemctl try-restart midas-agent.service
+fi

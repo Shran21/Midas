@@ -7,18 +7,25 @@ use midas_protocol::enrollment::Kind;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// Files in the protected data directory (SYSTEM and Administrators only).
+/// State files live in a directory only the agent (and administrators) can read.
 #[derive(Clone, Debug)]
 pub struct Paths {
     pub root: PathBuf,
+    config: PathBuf,
 }
 
 impl Paths {
+    /// Configuration next to the state, as on Windows.
     pub fn new(root: PathBuf) -> Self {
-        Self { root }
+        let config = root.join("config.json");
+        Self { root, config }
+    }
+    /// Separate configuration file, as with `/etc` on Linux.
+    pub fn with_config(root: PathBuf, config: PathBuf) -> Self {
+        Self { root, config }
     }
     pub fn config(&self) -> PathBuf {
-        self.root.join("config.json")
+        self.config.clone()
     }
     pub fn key(&self) -> PathBuf {
         self.root.join("agent.key")

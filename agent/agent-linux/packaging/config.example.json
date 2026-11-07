@@ -1,0 +1,8 @@
+{
+  "server": "midas.example.com",
+  "port": 8444,
+  "enrollment_port": 443,
+  "server_ca": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n",
+  "kind": "server",
+  "name": "srv-01"
+}

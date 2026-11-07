@@ -20,7 +20,7 @@ mod windows {
         run_agent, runner,
         win::service,
     };
-    use midas_protocol::enrollment::Kind;
+    use midas_protocol::enrollment::{Kind, Platform};
 
     #[derive(Parser)]
     #[command(version, about = "MIDAS Windows agent")]
@@ -139,7 +139,7 @@ mod windows {
                 let paths = data(path);
                 report(
                     runtime()
-                        .block_on(runner::enroll_with(&paths, &token))
+                        .block_on(runner::enroll_with(&paths, Platform::Windows, &token))
                         .map(str::to_owned),
                 )
             }

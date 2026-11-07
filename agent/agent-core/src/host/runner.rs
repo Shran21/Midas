@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
-use midas_agent_core::{
+use crate::{
     connection::{Reason, Settings, Status, run},
     directory::Credentials,
     enrollment::{EnrollError, Identity, Server, enroll, poll},
@@ -11,7 +11,7 @@ use serde::Serialize;
 use tokio::sync::watch;
 use zeroize::Zeroizing;
 
-use crate::config::{Config, DirectoryAccount, Paths, Pending, read_json, write_atomic};
+use super::config::{Config, DirectoryAccount, Paths, Pending, read_json, write_atomic};
 
 const RETRY: Duration = Duration::from_secs(60);
 
@@ -94,7 +94,11 @@ pub fn load_config(paths: &Paths) -> Result<Config, String> {
 }
 
 /// One-time enrollment; the token comes from stdin and is never stored.
-pub async fn enroll_with(paths: &Paths, token: &str) -> Result<&'static str, String> {
+pub async fn enroll_with(
+    paths: &Paths,
+    platform: Platform,
+    token: &str,
+) -> Result<&'static str, String> {
     let config = load_config(paths)?;
     if paths.certificate().exists() {
         return Err("this agent is already enrolled".into());
@@ -103,7 +107,7 @@ pub async fn enroll_with(paths: &Paths, token: &str) -> Result<&'static str, Str
     let request = EnrollRequest {
         token: token.trim().into(),
         csr: identity.signing_request().map_err(|e| e.to_string())?,
-        platform: Platform::Windows,
+        platform,
         kind: config.kind,
         name: config.name.clone(),
     };
@@ -214,7 +218,12 @@ async fn collect(paths: &Paths, config: &Config, state: &watch::Sender<State>) {
 }
 
 /// Keeps the agent enrolled and connected until `shutdown` becomes true.
-pub async fn serve(paths: Paths, state: watch::Sender<State>, mut shutdown: watch::Receiver<bool>) {
+pub async fn serve(
+    paths: Paths,
+    platform: Platform,
+    state: watch::Sender<State>,
+    mut shutdown: watch::Receiver<bool>,
+) {
     let Some((config, identity, certificate)) = credentials(&paths, &state, &mut shutdown).await
     else {
         state.send_replace(State::Stopped);
@@ -237,7 +246,7 @@ pub async fn serve(paths: Paths, state: watch::Sender<State>, mut shutdown: watc
         });
     let settings = Settings {
         directory,
-        ..Settings::new(config.server.clone(), config.port, tls, "windows")
+        ..Settings::new(config.server.clone(), config.port, tls, platform.as_str())
     };
     let (status_tx, mut status) = watch::channel(Status::Connecting { attempt: 0 });
     let connection = tokio::spawn(run(settings, status_tx, shutdown.clone()));

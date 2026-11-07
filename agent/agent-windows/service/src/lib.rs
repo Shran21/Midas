@@ -1,8 +1,8 @@
 //! Windows agent: service host, protected status pipe and enrollment state.
 
-pub mod config;
+pub use midas_agent_core::host::{config, runner};
+
 pub mod ipc;
-pub mod runner;
 #[cfg(windows)]
 pub mod win;
 
@@ -32,7 +32,13 @@ pub async fn run_agent(
             None
         }
     };
-    runner::serve(paths, state, shutdown).await;
+    runner::serve(
+        paths,
+        midas_protocol::enrollment::Platform::Windows,
+        state,
+        shutdown,
+    )
+    .await;
     if let Some(status) = status
         && let Ok(Err(error)) = status.await
     {

@@ -1,0 +1,16 @@
+#!/bin/sh
+set -e
+if [ "$1" = "configure" ]; then
+    if ! getent passwd midas-agent >/dev/null; then
+        adduser --system --group --no-create-home --home /var/lib/midas-agent \
+            --shell /usr/sbin/nologin --gecos "MIDAS agent" midas-agent
+    fi
+    install -d -m 0750 -o root -g midas-agent /etc/midas-agent
+    install -d -m 0700 -o midas-agent -g midas-agent /var/lib/midas-agent
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload
+        systemctl enable midas-agent.service >/dev/null
+        systemctl try-restart midas-agent.service
+    fi
+fi
+exit 0

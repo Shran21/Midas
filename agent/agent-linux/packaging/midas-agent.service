@@ -1,0 +1,48 @@
+[Unit]
+Description=MIDAS monitoring and remote support agent
+Documentation=https://github.com/Shran21/Midas/blob/main/docs/meresek/linux-agent.md
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/etc/midas-agent/config.json
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/midas-agent run --config /etc/midas-agent/config.json --state /var/lib/midas-agent
+User=midas-agent
+Group=midas-agent
+StateDirectory=midas-agent
+StateDirectoryMode=0700
+UMask=0077
+Restart=always
+RestartSec=5
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateUsers=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RemoveIPC=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+DevicePolicy=closed
+KeyringMode=private
+
+[Install]
+WantedBy=multi-user.target

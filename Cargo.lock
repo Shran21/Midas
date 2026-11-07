@@ -1992,6 +1992,7 @@ dependencies = [
  "midas-protocol",
  "rcgen 0.14.10",
  "rustls",
+ "serde",
  "serde_json",
  "tokio",
  "tokio-rustls",
@@ -2000,6 +2001,18 @@ dependencies = [
  "tracing",
  "uuid",
  "zeroize",
+]
+
+[[package]]
+name = "midas-agent-linux"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "midas-agent-core",
+ "midas-protocol",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

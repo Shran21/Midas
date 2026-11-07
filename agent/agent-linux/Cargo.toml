@@ -1,0 +1,43 @@
+[package]
+name = "midas-agent-linux"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "MIDAS monitoring and remote support agent for Linux"
+
+[lints]
+workspace = true
+
+[dependencies]
+clap.workspace = true
+midas-agent-core = { path = "../agent-core", version = "0.1.0" }
+midas-protocol = { path = "../../shared/protocol", version = "0.1.0" }
+tokio = { workspace = true, features = ["sync", "signal"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+# Packages install the binary as /usr/bin/midas-agent; see packaging/README.md.
+[package.metadata.deb]
+name = "midas-agent"
+maintainer = "MIDAS maintainers"
+section = "admin"
+priority = "optional"
+maintainer-scripts = "packaging/debian"
+assets = [
+  ["target/release/midas-agent-linux", "usr/bin/midas-agent", "755"],
+  ["packaging/midas-agent.service", "usr/lib/systemd/system/midas-agent.service", "644"],
+  ["packaging/config.example.json", "usr/share/doc/midas-agent/config.example.json", "644"],
+]
+
+[package.metadata.generate-rpm]
+name = "midas-agent"
+assets = [
+  { source = "target/release/midas-agent-linux", dest = "/usr/bin/midas-agent", mode = "755" },
+  { source = "packaging/midas-agent.service", dest = "/usr/lib/systemd/system/midas-agent.service", mode = "644" },
+  { source = "packaging/config.example.json", dest = "/usr/share/doc/midas-agent/config.example.json", mode = "644", doc = true },
+]
+post_install_script = "packaging/scripts/postinst"
+pre_uninstall_script = "packaging/scripts/prerm"
