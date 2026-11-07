@@ -37,14 +37,18 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 ldap3.workspace = true
 midas-protocol = { path = "../shared/protocol", version = "0.1.0" }
+rcgen = { workspace = true, features = ["x509-parser"] }
+time.workspace = true
+tower.workspace = true
+tokio-rustls.workspace = true
 
 [dev-dependencies]
 midas-agent-core = { path = "../agent/agent-core", version = "0.1.0" }
 tokio-tungstenite.workspace = true
 webauthn-rs-proto.workspace = true
 webauthn-authenticator-rs.workspace = true
-rcgen.workspace = true
 tokio-rustls.workspace = true
 tower.workspace = true
 ldap3_proto.workspace = true
 tokio-util.workspace = true
+x509-parser = "0.18"

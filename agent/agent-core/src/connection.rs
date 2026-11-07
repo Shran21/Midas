@@ -229,7 +229,7 @@ async fn open(settings: &Settings) -> Result<Socket, Reason> {
 
 /// Each resolved address gets its own time limit: Windows retries a refused
 /// connection for about two seconds, which would otherwise starve the next address.
-async fn reach(host: &str, port: u16, limit: Duration) -> Option<TcpStream> {
+pub(crate) async fn reach(host: &str, port: u16, limit: Duration) -> Option<TcpStream> {
     let addresses = timeout(limit, tokio::net::lookup_host((host, port)))
         .await
         .ok()?

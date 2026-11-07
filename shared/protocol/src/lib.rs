@@ -7,6 +7,8 @@
 
 use prost::Message;
 
+pub mod enrollment;
+
 /// Versions this build can speak.
 pub const SUPPORTED: VersionRange = VersionRange { min: 1, max: 1 };
 /// Upper bound for one encoded message, enforced on both ends of the socket.

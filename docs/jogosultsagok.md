@@ -47,6 +47,8 @@ Jogosultság nem bővíthető a kezelő saját köre fölé: szerep vagy engedé
 | `POST /api/tenants/{id}/assignments`, `DELETE …/assignments/{id}` | `access.manage`, friss passkey, eszkalációvédelem |
 | `POST /api/tenants/{id}/overrides`, `DELETE …/overrides/{id}` | `access.manage`, friss passkey, eszkalációvédelem |
 | `POST /api/tenants/{id}/sites` | `access.manage`, friss passkey |
+| `POST /api/tenants/{id}/enrollment-tokens`, `POST …/devices/{id}/approve`, `…/reject`, `…/revoke` | `device.enroll`, friss passkey ([beiratkozás](beiratkozas.md)) |
+| `GET /api/tenants/{id}/devices/pending` | Ügyfélszintű `device.enroll` |
 
 A webpanel Hozzáférés nézete a tagokat, szerepeket, szabályokat és telephelyeket kezeli; a platformadminisztrátor Ügyfelek nézete új ügyfelet és technikust hoz létre, a kódokat egyszer mutatja meg. A technikus saját passkeyjének regisztrációja az első beállítási folyamattal együtt készül.
 
@@ -55,6 +57,7 @@ A webpanel Hozzáférés nézete a tagokat, szerepeket, szabályokat és telephe
 | Azonosító | Művelet | Friss passkey |
 | --- | --- | --- |
 | `device.read` | Eszközadatok megtekintése | Nem |
+| `device.enroll` | Agentbeiratkozás: token, jóváhagyás, elutasítás, visszavonás | Igen |
 | `monitor.read` | Monitorozási adatok megtekintése | Nem |
 | `remote.view` | Képernyő megtekintése | Nem |
 | `remote.control` | Normál távoli bevitel | Nem |
@@ -130,6 +133,8 @@ Managers cannot exceed their own access: granting a role or allow, removing a de
 | `POST /api/tenants/{id}/assignments`, `DELETE …/assignments/{id}` | `access.manage`, fresh passkey, escalation guard |
 | `POST /api/tenants/{id}/overrides`, `DELETE …/overrides/{id}` | `access.manage`, fresh passkey, escalation guard |
 | `POST /api/tenants/{id}/sites` | `access.manage`, fresh passkey |
+| `POST /api/tenants/{id}/enrollment-tokens`, `POST …/devices/{id}/approve`, `…/reject`, `…/revoke` | `device.enroll`, fresh passkey ([enrollment](beiratkozas.md#english)) |
+| `GET /api/tenants/{id}/devices/pending` | Tenant-wide `device.enroll` |
 
 The web panel's Access view manages members, roles, rules and sites; the platform administrator's Customers view creates tenants and technicians and shows the codes once. Technicians register their own passkey with the first-run setup flow.
 
@@ -138,6 +143,7 @@ The web panel's Access view manages members, roles, rules and sites; the platfor
 | Identifier | Operation | Fresh passkey |
 | --- | --- | --- |
 | `device.read` | Inventory reads | No |
+| `device.enroll` | Agent enrollment: tokens, approval, rejection, revocation | Yes |
 | `monitor.read` | Monitoring reads | No |
 | `remote.view` | Screen viewing | No |
 | `remote.control` | Normal remote input | No |

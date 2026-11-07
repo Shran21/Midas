@@ -39,6 +39,11 @@ names!(Action {
     PasskeyRegister => "auth.passkey_register",
     DirectoryConfigure => "access.directory_configure",
     DirectoryGroupMap => "access.directory_group_map",
+    EnrollmentTokenCreate => "device.enroll_token_create",
+    EnrollmentRequest => "device.enroll_request",
+    EnrollmentApprove => "device.enroll_approve",
+    EnrollmentReject => "device.enroll_reject",
+    DeviceRevoke => "device.revoke",
 });
 names!(Outcome {
     Success => "success",

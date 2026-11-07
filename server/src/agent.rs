@@ -1,5 +1,5 @@
 use axum::{
-    Router,
+    Extension, Router,
     extract::{
         State,
         ws::{Message, WebSocket, WebSocketUpgrade, rejection::WebSocketUpgradeRejection},
@@ -18,11 +18,20 @@ use std::{
 };
 use tokio::time::timeout;
 
-#[derive(Clone, Debug)]
+use crate::{
+    enrollment::{Admission, Enrollment},
+    transport::PeerCertificate,
+};
+
+#[derive(Clone)]
 pub struct AgentProtocol {
     pub supported: VersionRange,
     pub keepalive: Duration,
     pub handshake_timeout: Duration,
+    /// Device identities for the operational channel. Without them any certificate the
+    /// TLS layer accepted may connect, which only protocol tests use; the server binary
+    /// always sets them.
+    pub identities: Option<Arc<Enrollment>>,
 }
 
 impl Default for AgentProtocol {
@@ -31,6 +40,7 @@ impl Default for AgentProtocol {
             supported: midas_protocol::SUPPORTED,
             keepalive: Duration::from_secs(30),
             handshake_timeout: Duration::from_secs(10),
+            identities: None,
         }
     }
 }
@@ -50,6 +60,7 @@ pub fn router(protocol: AgentProtocol) -> Router {
 
 async fn connect(
     State(protocol): State<Arc<AgentProtocol>>,
+    peer: Option<Extension<PeerCertificate>>,
     upgrade: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
 ) -> Response {
     let Ok(upgrade) = upgrade else {
@@ -59,13 +70,33 @@ async fn connect(
         )
             .into_response();
     };
+    let admission = match &protocol.identities {
+        None => None,
+        Some(identities) => {
+            let certificate = peer.map(|Extension(peer)| peer.0);
+            match identities
+                .admit(certificate.as_deref().unwrap_or_default())
+                .await
+            {
+                Some(admission) => Some(admission),
+                None => {
+                    tracing::warn!("agent certificate is not an active device credential");
+                    return StatusCode::FORBIDDEN.into_response();
+                }
+            }
+        }
+    };
     upgrade
         .max_message_size(MAX_MESSAGE_BYTES)
         .max_frame_size(MAX_MESSAGE_BYTES)
-        .on_upgrade(move |socket| serve(socket, protocol))
+        .on_upgrade(move |socket| serve(socket, protocol, admission))
 }
 
-async fn serve(mut socket: WebSocket, protocol: Arc<AgentProtocol>) {
+async fn serve(
+    mut socket: WebSocket,
+    protocol: Arc<AgentProtocol>,
+    mut admission: Option<Admission>,
+) {
     let hello = match timeout(protocol.handshake_timeout, receive(&mut socket)).await {
         Ok(Ok(Body::Hello(hello))) => hello,
         _ => {
@@ -102,14 +133,24 @@ async fn serve(mut socket: WebSocket, protocol: Arc<AgentProtocol>) {
         return;
     }
     let started = Instant::now();
+    let identity = admission.as_ref().map(|admitted| admitted.identity);
     tracing::info!(
         version,
         agent_version = %hello.agent_version,
         platform = %hello.platform,
+        tenant = ?identity.map(|i| i.tenant),
+        device = ?identity.map(|i| i.device),
         "agent session started"
     );
     let ending = loop {
-        match timeout(protocol.idle_limit(), receive(&mut socket)).await {
+        let next = tokio::select! {
+            next = timeout(protocol.idle_limit(), receive(&mut socket)) => next,
+            () = revoked(&mut admission) => {
+                let _ = timeout(protocol.handshake_timeout, socket.send(Message::Close(None))).await;
+                break "revoked";
+            }
+        };
+        match next {
             Err(_) => break "idle",
             Ok(Err(())) => break "closed",
             Ok(Ok(Body::Ping(ping))) => {
@@ -132,6 +173,15 @@ async fn serve(mut socket: WebSocket, protocol: Arc<AgentProtocol>) {
         duration_s = started.elapsed().as_secs(),
         "agent session ended"
     );
+}
+
+async fn revoked(admission: &mut Option<Admission>) {
+    match admission {
+        Some(admitted) => {
+            let _ = admitted.revoked.wait_for(|revoked| *revoked).await;
+        }
+        None => std::future::pending().await,
+    }
 }
 
 fn valid_range(hello: &Hello) -> Option<VersionRange> {

@@ -26,6 +26,9 @@ pub struct Arguments {
     pub agent_ca: Option<PathBuf>,
     #[arg(long, requires = "agent_ca")]
     pub agent_crl: Option<PathBuf>,
+    /// Private key of the agent CA; enables device enrollment and certificate issuance.
+    #[arg(long, requires = "agent_ca")]
+    pub agent_ca_key: Option<PathBuf>,
     #[arg(long, env = "MIDAS_AUTH_ORIGIN", requires = "auth_key_file")]
     pub auth_origin: Option<webauthn_rs::prelude::Url>,
     #[arg(long, env = "MIDAS_AUTH_KEY_FILE", requires = "auth_origin")]
@@ -76,6 +79,24 @@ impl Arguments {
         }
         Ok(())
     }
+}
+
+/// Reads a PEM private key that only the service account may read.
+pub fn private_pem(
+    path: &std::path::Path,
+) -> Result<zeroize::Zeroizing<String>, crate::transport::TransportError> {
+    let metadata = std::fs::symlink_metadata(path)?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 16_384 {
+        return Err("private key must be a small private regular file".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if metadata.permissions().mode() & 0o077 != 0 {
+            return Err("private key permissions must exclude group and other users".into());
+        }
+    }
+    Ok(zeroize::Zeroizing::new(std::fs::read_to_string(path)?))
 }
 
 pub fn authentication_key(

@@ -2,11 +2,13 @@ use axum_server::{Handle, tls_rustls::RustlsConfig};
 use clap::Parser;
 use futures_util::StreamExt;
 use midas_server::{
-    agent_router,
+    agent::AgentProtocol,
+    agent_router_with,
     config::Arguments,
+    enrollment::{Authority, Enrollment},
     router,
-    transport::{TransportError, pem_resolver, server_config},
-    web_router,
+    transport::{PeerCertificates, TransportError, pem_resolver, server_config},
+    web_router_with,
 };
 use std::{sync::Arc, time::Duration};
 use tracing_subscriber::EnvFilter;
@@ -23,7 +25,23 @@ async fn main() -> Result<(), TransportError> {
     if database.is_some() {
         tracing::info!("runtime database connected");
     }
-    let mut web = web_router();
+    let enrollment = match (&database, &args.agent_ca_key) {
+        (Some(database), Some(key)) => {
+            let certificate =
+                std::fs::read_to_string(args.agent_ca.as_ref().ok_or("missing agent CA")?)?;
+            let key = midas_server::config::private_pem(key)?;
+            Some(Arc::new(Enrollment::new(
+                database,
+                Authority::from_pem(&certificate, &key)?,
+            )))
+        }
+        (None, Some(_)) => return Err("device enrollment requires a database".into()),
+        _ => None,
+    };
+    if args.agent_bind.is_some() && enrollment.is_none() {
+        return Err("the agent listener requires a database and --agent-ca-key".into());
+    }
+    let mut web = web_router_with(enrollment.clone());
     if let Some(origin) = &args.auth_origin {
         use midas_server::auth::{AuthConfig, http::WebAuth, sessions::SessionConfig};
         let database = database
@@ -34,7 +52,7 @@ async fn main() -> Result<(), TransportError> {
                 .as_deref()
                 .ok_or("missing authentication key file")?,
         )?;
-        let auth = WebAuth::new(
+        let mut auth = WebAuth::new(
             database,
             AuthConfig::new(origin.clone(), key),
             SessionConfig {
@@ -44,6 +62,9 @@ async fn main() -> Result<(), TransportError> {
             args.session_socket_capacity,
         )
         .await?;
+        if let Some(enrollment) = &enrollment {
+            auth = auth.with_enrollment(enrollment.clone());
+        }
         web = web.merge(midas_server::auth::http::router(Arc::new(auth)));
         tracing::info!("browser authentication enabled");
     }
@@ -139,9 +160,14 @@ async fn main() -> Result<(), TransportError> {
     let operational = async move {
         if let (Some(listener), Some(config)) = (agent_listener, operational_config) {
             tracing::info!(address = %listener.local_addr()?, "mTLS listener started");
-            axum_server::from_tcp_rustls(listener, RustlsConfig::from_config(config))?
+            let protocol = AgentProtocol {
+                identities: enrollment,
+                ..AgentProtocol::default()
+            };
+            axum_server::from_tcp(listener)?
+                .acceptor(PeerCertificates::new(config))
                 .handle(agent_handle)
-                .serve(agent_router().into_make_service())
+                .serve(agent_router_with(protocol).into_make_service())
                 .await
         } else {
             std::future::pending::<std::io::Result<()>>().await

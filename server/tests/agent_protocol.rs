@@ -87,6 +87,7 @@ impl Pki {
             supported,
             keepalive: KEEPALIVE,
             handshake_timeout: Duration::from_secs(2),
+            identities: None,
         };
         tokio::spawn(
             axum_server::from_tcp_rustls(listener, RustlsConfig::from_config(config))

@@ -1,3 +1,7 @@
+use axum_server::{
+    accept::Accept,
+    tls_rustls::{RustlsAcceptor, RustlsConfig},
+};
 use rustls::pki_types::{
     CertificateDer, CertificateRevocationListDer, PrivateKeyDer, pem::PemObject,
 };
@@ -5,7 +9,10 @@ use rustls::{
     RootCertStore, ServerConfig,
     server::{ResolvesServerCert, WebPkiClientVerifier},
 };
-use std::{error::Error, sync::Arc};
+use std::{error::Error, future::Future, io, pin::Pin, sync::Arc};
+use tokio::io::{AsyncRead, AsyncWrite};
+use tokio_rustls::server::TlsStream;
+use tower::Layer;
 pub type TransportError = Box<dyn Error + Send + Sync>;
 
 pub fn pem_resolver(
@@ -55,4 +62,54 @@ pub fn server_config(
     };
     config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
     Ok(Arc::new(config))
+}
+
+/// End-entity certificate the client presented on the mTLS listener.
+#[derive(Clone)]
+pub struct PeerCertificate(pub Arc<[u8]>);
+
+/// TLS acceptor that exposes the verified client certificate to request handlers.
+#[derive(Clone)]
+pub struct PeerCertificates {
+    inner: RustlsAcceptor,
+}
+
+impl PeerCertificates {
+    pub fn new(config: Arc<ServerConfig>) -> Self {
+        Self {
+            inner: RustlsAcceptor::new(RustlsConfig::from_config(config)),
+        }
+    }
+}
+
+type Accepted<S, I> = io::Result<(
+    TlsStream<I>,
+    axum::middleware::AddExtension<S, PeerCertificate>,
+)>;
+
+impl<I, S> Accept<I, S> for PeerCertificates
+where
+    I: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    S: Send + 'static,
+{
+    type Stream = TlsStream<I>;
+    type Service = axum::middleware::AddExtension<S, PeerCertificate>;
+    type Future = Pin<Box<dyn Future<Output = Accepted<S, I>> + Send>>;
+
+    fn accept(&self, stream: I, service: S) -> Self::Future {
+        let accepted = self.inner.accept(stream, service);
+        Box::pin(async move {
+            let (stream, service) = accepted.await?;
+            let certificate: Arc<[u8]> = stream
+                .get_ref()
+                .1
+                .peer_certificates()
+                .and_then(|chain| chain.first())
+                .map_or_else(|| Arc::from(&[][..]), |leaf| Arc::from(leaf.as_ref()));
+            Ok((
+                stream,
+                axum::Extension(PeerCertificate(certificate)).layer(service),
+            ))
+        })
+    }
 }

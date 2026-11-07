@@ -27,6 +27,7 @@ macro_rules! permissions {
 }
 permissions! {
     DeviceRead => ("device.read", false),
+    DeviceEnroll => ("device.enroll", true),
     MonitorRead => ("monitor.read", false),
     RemoteView => ("remote.view", false),
     RemoteControl => ("remote.control", false),

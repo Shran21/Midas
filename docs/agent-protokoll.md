@@ -12,7 +12,7 @@ Az agent egy tartós, kimenő, hitelesített kapcsolattal csatlakozik a szerverh
 
 - **Transzport:** WebSocket az mTLS-figyelő `/agent/connect` útvonalán ([szerverindítás](szerver.md)). Érvényes, az agent-CA-ra visszavezethető kliens-tanúsítvány nélkül a TLS-kapcsolat sem jön létre. WebSocket-frissítés nélküli kérésre a válasz 426.
 - **Üzenetek:** bináris keretben egy-egy protobuf `Envelope` (prost). Egy üzenet legfeljebb 64 KiB; ezt mindkét oldal a WebSocket-rétegben is érvényesíti.
-- **Jogosultság:** a tanúsítvány elfogadása csak a protokollkapcsolatot engedi. Beiratkozás, eszközállapot és bármilyen művelet a MIDAS-022 és a későbbi feladatok része.
+- **Jogosultság:** csak a [beiratkozáskor](beiratkozas.md) kiadott, regisztrált és vissza nem vont tanúsítvány kapcsolódhat; visszavonáskor a szerver az élő kapcsolatot bontja. Műveletet a kapcsolat önmagában nem engedélyez.
 
 | Üzenet | Irány | Tartalom |
 | --- | --- | --- |
@@ -52,7 +52,7 @@ A `shared/protocol` egységtesztjei az egyeztetést, az újabb mezők és üzene
 
 ### Ismert korlátok
 
-- Nincs beiratkozás és eszközazonosítás a kapcsolaton (MIDAS-022), sem heartbeat-tartalom, metrika vagy kiesés alatti helyi puffer (MIDAS-025).
+- Nincs heartbeat-tartalom, metrika vagy kiesés alatti helyi puffer (MIDAS-025).
 - A Windows-szolgáltatás és a Linux-csomag, amelyek az agent-core kapcsolatát futtatják, a MIDAS-023 és a MIDAS-024 része.
 - A kliens HTTP/1.1-es WebSocket-frissítést használ; a HTTP/2-n keresztüli WebSocket nem cél.
 
@@ -66,7 +66,7 @@ The agent connects to the server over one persistent, outbound, authenticated co
 
 - **Transport:** WebSocket on the mTLS listener at `/agent/connect` ([server startup](szerver.md#english)). Without a valid client certificate chaining to the agent CA, not even the TLS session is established. A request without a WebSocket upgrade receives 426.
 - **Messages:** one protobuf `Envelope` (prost) per binary frame. A message is at most 64 KiB, also enforced by both sides at the WebSocket layer.
-- **Authorization:** accepting the certificate only allows the protocol session. Enrollment, device state and any operation belong to MIDAS-022 and later tasks.
+- **Authorization:** only a registered, unrevoked certificate issued at [enrollment](beiratkozas.md#english) may connect; revocation closes the live connection. The session alone authorizes no operation.
 
 | Message | Direction | Content |
 | --- | --- | --- |
@@ -106,6 +106,6 @@ Unit tests in `shared/protocol` cover negotiation, tolerance of newer fields and
 
 ### Known limits
 
-- The session carries no enrollment or device identity yet (MIDAS-022), and no heartbeat content, metrics or offline buffering (MIDAS-025).
+- The session carries no heartbeat content, metrics or offline buffering yet (MIDAS-025).
 - The Windows service and Linux package that run the agent-core connection belong to MIDAS-023 and MIDAS-024.
 - The client uses an HTTP/1.1 WebSocket upgrade; WebSocket over HTTP/2 is not a goal.

@@ -17,18 +17,18 @@ A PEM lánc a szervertanúsítvánnyal kezdődjön; a kulcsnak hozzá kell tarto
 Az agentcsatorna külön címet/portot kap:
 
 ```text
-cargo run --locked -p midas-server -- --bind 127.0.0.1:8443 --tls-cert cert-chain.pem --tls-key private-key.pem --agent-bind 127.0.0.1:8444 --agent-ca agent-ca.pem --agent-crl revoked-clients.pem
+cargo run --locked -p midas-server -- --bind 127.0.0.1:8443 --tls-cert cert-chain.pem --tls-key private-key.pem --agent-bind 127.0.0.1:8444 --agent-ca agent-ca.pem --agent-ca-key agent-ca-key.pem --agent-crl revoked-clients.pem
 ```
 
-A `--agent-ca` kötelező az agentfigyelőhöz. Csak a megadott CA-ra visszavezethető, érvényes kliens-tanúsítvánnyal lehet TLS-kapcsolatot létesíteni. A választható `--agent-crl` PEM visszavonási listát ad; üres, hibás vagy lejárt lista nem eredményez engedékenyebb ellenőrzést. A CA és a CRL induláskor töltődik be; változásukhoz újraindítás kell. A szervertanúsítvány mindkét eléréshez közös, ezért a használt hosztneveket tartalmaznia kell.
+A `--agent-ca` kötelező az agentfigyelőhöz. Csak a megadott CA-ra visszavezethető, érvényes kliens-tanúsítvánnyal lehet TLS-kapcsolatot létesíteni. A választható `--agent-crl` PEM visszavonási listát ad; üres, hibás vagy lejárt lista nem eredményez engedékenyebb ellenőrzést. A CA és a CRL induláskor töltődik be; változásukhoz újraindítás kell. A `--agent-ca-key` az agent-CA privát kulcsa, ez kapcsolja be a beiratkozást; agentfigyelő csak adatbázissal és CA-kulccsal indul. A szervertanúsítvány mindkét eléréshez közös, ezért a használt hosztneveket tartalmaznia kell.
 
 | Elérés | Útvonal | Jelenlegi működés |
 | --- | --- | --- |
 | HTTPS | GET `/health/live` | A kiszolgáló működését jelző 200 válasz |
-| HTTPS | POST `/agent/enroll` | 503; a későbbi beiratkozás helye |
-| mTLS | GET `/agent/connect` | WebSocket-alapú agentkapcsolat verzióegyeztetéssel és keepalive-val ([agentprotokoll](agent-protokoll.md)); frissítés nélküli kérésre 426 |
+| HTTPS | POST `/agent/enroll`, POST `/agent/enroll/{id}` | Agentbeiratkozás egyszer használható tokennel és tanúsítványkérelemmel ([beiratkozás](beiratkozas.md)); CA-kulcs nélkül 503 |
+| mTLS | GET `/agent/connect` | WebSocket-alapú agentkapcsolat verzióegyeztetéssel és keepalive-val ([agentprotokoll](agent-protokoll.md)), csak regisztrált, vissza nem vont eszköztanúsítvánnyal; frissítés nélküli kérésre 426 |
 
-A beiratkozási útvonal az mTLS-figyelőn, a műveleti útvonal a webes figyelőn nem létezik. A tanúsítvány elfogadása önmagában nem ad műveleti jogosultságot. Az eszközállapot, az ügyfélhez rendelés, a visszavonás utáni aktív kapcsolatbontás és a jogosultságkezelés további feladatok.
+A beiratkozási útvonal az mTLS-figyelőn, a műveleti útvonal a webes figyelőn nem létezik. A tanúsítvány elfogadása önmagában nem ad műveleti jogosultságot: a szerver a regisztrált eszközhöz, annak ügyfeléhez és állapotához köti a kapcsolatot, visszavonáskor pedig az élő kapcsolatot is bontja. A műveletek jogosultságkezelése további feladat.
 
 ### ACME
 
@@ -52,9 +52,9 @@ A tesztek valódi helyi TLS-kapcsolatot, HTTPS-állapotválaszt, helyes/idegen/h
 
 `just dev` remains loopback-only HTTP. HTTPS uses TLS 1.3 and is explicitly enabled with `--tls-cert` and `--tls-key`. The chain starts with the server certificate; its private key must match. Invalid configuration fails startup without falling back to HTTP. Clients must trust the chain and verify the hostname.
 
-Add `--agent-bind` and `--agent-ca` for a separate mandatory-client-certificate listener. Optional `--agent-crl` loads PEM revocation lists and rejects invalid or expired revocation data. CA/CRL changes require restart. Both listeners share the server certificate, which must cover their hostnames.
+Add `--agent-bind` and `--agent-ca` for a separate mandatory-client-certificate listener; `--agent-ca-key` is the agent CA private key that enables enrollment, and the agent listener requires a database and that key. Optional `--agent-crl` loads PEM revocation lists and rejects invalid or expired revocation data. CA/CRL changes require restart. Both listeners share the server certificate, which must cover their hostnames.
 
-HTTPS serves GET `/health/live` and reserves POST `/agent/enroll` with 503. The mTLS listener serves the agent WebSocket at GET `/agent/connect` with version negotiation and keepalive ([agent protocol](agent-protokoll.md#english)); a request without an upgrade receives 426. Neither listener exposes the other's agent route. Certificate authentication does not authorize operations. Enrollment, per-device state, tenant mapping, active-session revocation and application permissions remain subsequent work.
+HTTPS serves GET `/health/live` and agent enrollment at POST `/agent/enroll` ([enrollment](beiratkozas.md#english)), returning 503 without the CA key. The mTLS listener serves the agent WebSocket at GET `/agent/connect` with version negotiation and keepalive ([agent protocol](agent-protokoll.md#english)); a request without an upgrade receives 426, and only registered, unrevoked device certificates may connect. Neither listener exposes the other's agent route. Certificate authentication does not authorize operations. Enrollment, per-device state, tenant mapping, active-session revocation and application permissions remain subsequent work.
 
 ACME uses TLS-ALPN-01 with Let's Encrypt staging by default. DNS must point to this server and public port 443 must reach the HTTPS listener without a TLS-terminating proxy. Repeat `--acme-domain` for all required names. `--acme-contact`, `--acme-cache` and explicit `--acme-accept-terms` are required; review the issuer's terms before using that flag. `--acme-production` explicitly selects the production issuer. See the command examples above, replacing their placeholder names and paths.
 

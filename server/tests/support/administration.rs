@@ -28,15 +28,15 @@ use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey}
 use webauthn_rs::prelude::*;
 use zeroize::Zeroizing;
 
-const ORIGIN: &str = "https://midas.example";
+pub const ORIGIN: &str = "https://midas.example";
 
 #[derive(Clone)]
-struct Client {
+pub struct Client {
     cookie: String,
     csrf: String,
 }
 
-async fn call(
+pub async fn call(
     app: &Router,
     method: &str,
     path: &str,
@@ -106,7 +106,7 @@ async fn recovery(app: &Router, login: &str, code: &str) -> Client {
     }
 }
 
-async fn enroll(
+pub async fn enroll(
     web: &WebAuth,
     login: &str,
     name: &str,
@@ -133,7 +133,7 @@ async fn enroll(
     (user, key)
 }
 
-async fn passkey(
+pub async fn passkey(
     app: &Router,
     login: &str,
     key: &mut WebauthnAuthenticator<SoftPasskey>,

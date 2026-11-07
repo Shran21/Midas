@@ -47,6 +47,7 @@ pub struct WebAuth {
     pool: PgPool,
     authorizer: Authorizer,
     administration: Administration,
+    enrollment: Option<Arc<crate::enrollment::Enrollment>>,
 }
 
 impl WebAuth {
@@ -68,7 +69,14 @@ impl WebAuth {
             pool: database.pool().clone(),
             authorizer: Authorizer::new(database),
             administration: Administration::new(database),
+            enrollment: None,
         })
+    }
+
+    /// Serves the device enrollment administration routes.
+    pub fn with_enrollment(mut self, enrollment: Arc<crate::enrollment::Enrollment>) -> Self {
+        self.enrollment = Some(enrollment);
+        self
     }
 
     pub fn authentication(&self) -> &AuthService {
@@ -170,6 +178,15 @@ pub fn router(state: Arc<WebAuth>) -> Router {
             delete(remove_override),
         )
         .route("/api/tenants/{id}/sites", get(sites).post(create_site))
+        .route(
+            "/api/tenants/{id}/enrollment-tokens",
+            post(create_enrollment_token),
+        )
+        .route("/api/tenants/{id}/devices/pending", get(pending_devices))
+        .route(
+            "/api/tenants/{id}/devices/{device}/{decision}",
+            post(decide_device),
+        )
         .route("/api/account/passkeys/start", post(enroll_start))
         .route("/api/account/passkeys/finish", post(enroll_finish))
         .route_layer(middleware::from_fn_with_state(state.clone(), authenticate));
@@ -608,6 +625,53 @@ async fn create_site(
         .create_site(&state.sessions, &context.token, id, &body.name)
         .await?;
     Ok((StatusCode::CREATED, Json(site)))
+}
+
+fn enrollment(state: &WebAuth) -> Result<&crate::enrollment::Enrollment> {
+    state.enrollment.as_deref().ok_or(Failure(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "temporarily_unavailable",
+    ))
+}
+
+async fn create_enrollment_token(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<crate::enrollment::TokenSpec>,
+) -> Result<(StatusCode, Json<crate::enrollment::CreatedToken>)> {
+    let created = enrollment(&state)?
+        .create_token(&state.sessions, &context.token, id, &body)
+        .await?;
+    Ok((StatusCode::CREATED, Json(created)))
+}
+
+async fn pending_devices(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Vec<crate::enrollment::PendingDevice>>> {
+    Ok(Json(
+        enrollment(&state)?
+            .pending(&state.sessions, &context.token, id)
+            .await?,
+    ))
+}
+
+async fn decide_device(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((id, device, decision)): Path<(Uuid, Uuid, String)>,
+) -> Result<StatusCode> {
+    let enrollment = enrollment(&state)?;
+    let (sessions, token) = (&state.sessions, &context.token);
+    match decision.as_str() {
+        "approve" => enrollment.approve(sessions, token, id, device).await?,
+        "reject" => enrollment.reject(sessions, token, id, device).await?,
+        "revoke" => enrollment.revoke(sessions, token, id, device).await?,
+        _ => return Err(Failure(StatusCode::NOT_FOUND, "not_found")),
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize)]

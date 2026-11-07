@@ -10,6 +10,7 @@ pub mod auth;
 pub mod authorization;
 pub mod config;
 pub mod database;
+pub mod enrollment;
 pub mod transport;
 
 #[derive(Serialize)]
@@ -32,8 +33,19 @@ pub fn validate_development_address(address: SocketAddr) -> Result<SocketAddr, &
 }
 
 pub fn web_router() -> Router {
+    web_router_with(None)
+}
+
+pub fn web_router_with(enrollment: Option<std::sync::Arc<enrollment::Enrollment>>) -> Router {
+    let agent = match enrollment {
+        Some(enrollment) => enrollment::router(enrollment),
+        None => Router::new().route(
+            midas_protocol::enrollment::ENROLL_PATH,
+            axum::routing::post(unavailable),
+        ),
+    };
     router()
-        .route("/agent/enroll", axum::routing::post(unavailable))
+        .merge(agent)
         .layer(axum::middleware::from_fn(observe))
 }
 
