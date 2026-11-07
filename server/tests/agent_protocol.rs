@@ -406,3 +406,52 @@ async fn agent_reconnects_after_connection_loss() {
     agent.connected().await;
     agent.stop().await;
 }
+
+#[tokio::test]
+async fn stopping_is_prompt_while_the_server_stays_silent() {
+    let pki = pki();
+    let resolver = pem_resolver(
+        pki.server.0.pem().as_bytes(),
+        pki.server.1.serialize_pem().as_bytes(),
+    )
+    .unwrap();
+    let config = server_config(resolver, Some(pki.root.pem().as_bytes()), None).unwrap();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let mute = axum::Router::new().route(
+        "/agent/connect",
+        axum::routing::get(|upgrade: axum::extract::ws::WebSocketUpgrade| async {
+            upgrade.on_upgrade(|socket| async move {
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                drop(socket);
+            })
+        }),
+    );
+    tokio::spawn(
+        axum_server::from_tcp_rustls(listener, RustlsConfig::from_config(config))
+            .unwrap()
+            .serve(mute.into_make_service()),
+    );
+    let settings = Settings {
+        handshake_timeout: Duration::from_secs(30),
+        ..Settings::new("127.0.0.1".into(), port, pki.client_tls(), "test")
+    };
+    let (status_tx, status) = watch::channel(Status::Connecting { attempt: 0 });
+    let (stop, stop_rx) = watch::channel(false);
+    let task = tokio::spawn(run(settings, status_tx, stop_rx));
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert_eq!(*status.borrow(), Status::Connecting { attempt: 1 });
+    let started = std::time::Instant::now();
+    stop.send_replace(true);
+    timeout(Duration::from_secs(2), task)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(*status.borrow(), Status::Stopped);
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "{:?}",
+        started.elapsed()
+    );
+}

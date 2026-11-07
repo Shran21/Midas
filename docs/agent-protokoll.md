@@ -32,6 +32,7 @@ Az agent egy tartós, kimenő, hitelesített kapcsolattal csatlakozik a szerverh
 
 - A szerver a `Welcome` üzenetben adja meg a keepalive-időközt (alapértelmezés 30 s; az agent 1–300 s közé korlátozza). Az agent ennyi időnként `Ping` üzenetet küld. Ha a következő időpontig nem érkezik `Pong`, a kapcsolatot elveszettnek tekinti. Így egy néma hálózati kiesést legfeljebb két időközön belül észlel.
 - A szerver bontja azt a kapcsolatot, amelyen három időköznyi ideig nem érkezik üzenet.
+- Minden küldés időkorláthoz kötött, így a beragadt küldőpuffer is kiesésnek számít, és nem tartja fel a leállítást.
 - Kiesés után az agent önállóan újracsatlakozik. A várakozás exponenciálisan nő 1 másodperctől 5 percig, a véletlen szórás az adott lépés felső felében van, hogy egy egyszerre leszakadt flotta ne egy ütemben térjen vissza. Legalább 60 másodpercig stabil kapcsolat után a várakozás újra a legrövidebbről indul.
 - Minden feloldott címet külön időkorláttal próbál; Windowson az elutasított kapcsolat kb. 2 másodperc újrapróbálás után hiúsul meg, ez nem akadályozhatja a következő címet.
 - Az agent állapota (`Connecting`, `Connected`, `Waiting` okkal és várakozási idővel, `Stopped`) figyelhető; a későbbi állapotnézet és tálcaikon (MIDAS-034) erre épülhet.
@@ -44,7 +45,8 @@ A `server/tests/agent_protocol.rs` valódi mTLS-kapcsolaton igazolja:
 - közös verzió hiányában az agent a szerver tartományát tartalmazó elutasítást kap;
 - hibás első üzenetet, érvénytelen tartományt és túl hosszú mezőt a szerver elutasít, majd bont;
 - a néma kapcsolatot a szerver három időköz után bontja;
-- megszakított, majd visszaállított hálózat után, valamint elnémuló kapcsolatnál az agent beavatkozás nélkül újracsatlakozik.
+- megszakított, majd visszaállított hálózat után, valamint elnémuló kapcsolatnál az agent beavatkozás nélkül újracsatlakozik;
+- a leállítás akkor is azonnali, ha a szerver a kézfogás közben nem válaszol.
 
 A `shared/protocol` egységtesztjei az egyeztetést, az újabb mezők és üzenettípusok tűrését és a méretkorlátot, az `agent/agent-core` tesztjei a várakozási idő növekedését, felső korlátját és szórását vizsgálják.
 
@@ -84,6 +86,7 @@ The agent connects to the server over one persistent, outbound, authenticated co
 
 - The server sets the keepalive interval in `Welcome` (default 30 s; the agent bounds it to 1–300 s). The agent sends a `Ping` every interval and treats the connection as lost if no `Pong` arrives by the next one, so silent network loss is detected within two intervals.
 - The server closes a session that has been silent for three intervals.
+- Every send is time-bounded, so a stalled send buffer counts as a loss and cannot delay stopping.
 - After a loss the agent reconnects on its own. The delay doubles from 1 second up to 5 minutes, with jitter in the upper half of each step so a fleet disconnected at the same moment does not return in lockstep. After at least 60 seconds of stable connection the delay starts again from the shortest step.
 - Each resolved address has its own time limit; on Windows a refused connection fails only after about two seconds of retries, which must not starve the next address.
 - The agent status (`Connecting`, `Connected`, `Waiting` with reason and delay, `Stopped`) is observable; the later status view and tray icon (MIDAS-034) can build on it.
@@ -96,7 +99,8 @@ The agent connects to the server over one persistent, outbound, authenticated co
 - without a common version the agent receives a refusal carrying the server's range;
 - the server refuses and closes on a wrong first message, an invalid range or an oversized field;
 - the server closes a silent session after three intervals;
-- the agent reconnects unaided after the network is cut and restored, and after the connection goes silent.
+- the agent reconnects unaided after the network is cut and restored, and after the connection goes silent;
+- stopping is immediate even when the server stays silent during the handshake.
 
 Unit tests in `shared/protocol` cover negotiation, tolerance of newer fields and message types and the size limit; tests in `agent/agent-core` cover delay growth, its cap and jitter.
 

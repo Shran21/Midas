@@ -95,7 +95,10 @@ async fn serve(mut socket: WebSocket, protocol: Arc<AgentProtocol>) {
         keepalive_seconds: u32::try_from(protocol.keepalive.as_secs()).unwrap_or(u32::MAX),
         server_version: env!("CARGO_PKG_VERSION").into(),
     });
-    if send(&mut socket, welcome).await.is_err() {
+    if send(&mut socket, welcome, protocol.keepalive)
+        .await
+        .is_err()
+    {
         return;
     }
     let started = Instant::now();
@@ -110,9 +113,13 @@ async fn serve(mut socket: WebSocket, protocol: Arc<AgentProtocol>) {
             Err(_) => break "idle",
             Ok(Err(())) => break "closed",
             Ok(Ok(Body::Ping(ping))) => {
-                if send(&mut socket, Body::Pong(Pong { nonce: ping.nonce }))
-                    .await
-                    .is_err()
+                if send(
+                    &mut socket,
+                    Body::Pong(Pong { nonce: ping.nonce }),
+                    protocol.keepalive,
+                )
+                .await
+                .is_err()
                 {
                     break "closed";
                 }
@@ -140,15 +147,25 @@ async fn refuse(socket: &mut WebSocket, reason: RejectReason, protocol: &AgentPr
         min_version: protocol.supported.min,
         max_version: protocol.supported.max,
     });
-    if send(socket, reject).await.is_ok() {
-        let _ = socket.send(Message::Close(None)).await;
+    if send(socket, reject, protocol.handshake_timeout)
+        .await
+        .is_ok()
+    {
+        let _ = timeout(
+            protocol.handshake_timeout,
+            socket.send(Message::Close(None)),
+        )
+        .await;
     }
 }
 
-async fn send(socket: &mut WebSocket, body: Body) -> Result<(), axum::Error> {
-    socket
-        .send(Message::Binary(midas_protocol::encode(body).into()))
-        .await
+/// Bounded so an agent that stops reading cannot hold the session task.
+async fn send(socket: &mut WebSocket, body: Body, limit: Duration) -> Result<(), ()> {
+    let message = Message::Binary(midas_protocol::encode(body).into());
+    match timeout(limit, socket.send(message)).await {
+        Ok(Ok(())) => Ok(()),
+        _ => Err(()),
+    }
 }
 
 /// Next known message; unknown message types from newer agents are skipped.

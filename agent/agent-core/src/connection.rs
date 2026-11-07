@@ -130,14 +130,19 @@ async fn session(
         agent_version: settings.agent_version.clone(),
         platform: settings.platform.clone(),
     });
-    if send(&mut socket, hello).await.is_err() {
-        return Outcome::Failed(Reason::Handshake);
-    }
-    let welcome = match timeout(settings.handshake_timeout, receive(&mut socket)).await {
-        Ok(Ok(Body::Welcome(welcome))) if settings.supported.contains(welcome.version) => welcome,
-        Ok(Ok(Body::Reject(reject)))
-            if reject.reason == RejectReason::UnsupportedVersion as i32 =>
-        {
+    let handshake = async {
+        send(&mut socket, hello, settings.handshake_timeout).await?;
+        timeout(settings.handshake_timeout, receive(&mut socket))
+            .await
+            .map_err(|_| ())?
+    };
+    let answer = tokio::select! {
+        answer = handshake => answer,
+        () = stopped(shutdown) => return Outcome::Shutdown,
+    };
+    let welcome = match answer {
+        Ok(Body::Welcome(welcome)) if settings.supported.contains(welcome.version) => welcome,
+        Ok(Body::Reject(reject)) if reject.reason == RejectReason::UnsupportedVersion as i32 => {
             let server = VersionRange::new(reject.min_version, reject.max_version)
                 .unwrap_or(VersionRange { min: 0, max: 0 });
             tracing::warn!(?server, supported = ?settings.supported, "server refused agent protocol versions");
@@ -169,7 +174,7 @@ async fn session(
                     return Outcome::Ended { connected };
                 }
                 let nonce = random();
-                if send(&mut socket, Body::Ping(Ping { nonce })).await.is_err() {
+                if send(&mut socket, Body::Ping(Ping { nonce }), keepalive).await.is_err() {
                     return Outcome::Ended { connected };
                 }
                 pending = Some(nonce);
@@ -177,7 +182,7 @@ async fn session(
             frame = receive(&mut socket) => match frame {
                 Ok(Body::Pong(pong)) if Some(pong.nonce) == pending => pending = None,
                 Ok(Body::Ping(ping)) => {
-                    if send(&mut socket, Body::Pong(Pong { nonce: ping.nonce })).await.is_err() {
+                    if send(&mut socket, Body::Pong(Pong { nonce: ping.nonce }), keepalive).await.is_err() {
                         return Outcome::Ended { connected };
                     }
                 }
@@ -237,11 +242,13 @@ async fn reach(host: &str, port: u16, limit: Duration) -> Option<TcpStream> {
     None
 }
 
-async fn send(socket: &mut Socket, body: Body) -> Result<(), ()> {
-    socket
-        .send(Message::Binary(midas_protocol::encode(body).into()))
-        .await
-        .map_err(|_| ())
+/// Bounded so a stalled send buffer counts as a lost connection instead of hanging.
+async fn send(socket: &mut Socket, body: Body, limit: Duration) -> Result<(), ()> {
+    let message = Message::Binary(midas_protocol::encode(body).into());
+    match timeout(limit, socket.send(message)).await {
+        Ok(Ok(())) => Ok(()),
+        _ => Err(()),
+    }
 }
 
 /// Next known protocol message; unknown message types from newer servers are skipped.
