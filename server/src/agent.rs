@@ -19,7 +19,7 @@ use std::{
 use tokio::time::timeout;
 
 use crate::{
-    enrollment::{Admission, Enrollment},
+    enrollment::{Admission, AgentIdentity, Enrollment, Signal},
     transport::PeerCertificate,
 };
 
@@ -142,12 +142,22 @@ async fn serve(
         device = ?identity.map(|i| i.device),
         "agent session started"
     );
+    let mut assigned = None;
+    if !assign(&mut socket, &protocol, identity, &mut assigned).await {
+        return;
+    }
     let ending = loop {
         let next = tokio::select! {
             next = timeout(protocol.idle_limit(), receive(&mut socket)) => next,
-            () = revoked(&mut admission) => {
-                let _ = timeout(protocol.handshake_timeout, socket.send(Message::Close(None))).await;
-                break "revoked";
+            signal = changed(&mut admission) => {
+                if signal.revoked {
+                    let _ = timeout(protocol.handshake_timeout, socket.send(Message::Close(None))).await;
+                    break "revoked";
+                }
+                if !assign(&mut socket, &protocol, identity, &mut assigned).await {
+                    break "closed";
+                }
+                continue;
             }
         };
         match next {
@@ -165,6 +175,11 @@ async fn serve(
                     break "closed";
                 }
             }
+            Ok(Ok(Body::DirectoryReport(report))) => {
+                if let (Some(identities), Some(identity)) = (&protocol.identities, identity) {
+                    identities.record(identity, &report).await;
+                }
+            }
             Ok(Ok(_)) => {}
         }
     };
@@ -175,13 +190,43 @@ async fn serve(
     );
 }
 
-async fn revoked(admission: &mut Option<Admission>) {
+async fn changed(admission: &mut Option<Admission>) -> Signal {
     match admission {
-        Some(admitted) => {
-            let _ = admitted.revoked.wait_for(|revoked| *revoked).await;
-        }
+        Some(admitted) => match admitted.signal.changed().await {
+            Ok(()) => *admitted.signal.borrow_and_update(),
+            Err(_) => Signal {
+                revoked: true,
+                ..Signal::default()
+            },
+        },
         None => std::future::pending().await,
     }
+}
+
+/// Sends the directory assignment when the device is its tenant's connector and it changed.
+async fn assign(
+    socket: &mut WebSocket,
+    protocol: &AgentProtocol,
+    identity: Option<AgentIdentity>,
+    assigned: &mut Option<u64>,
+) -> bool {
+    let (Some(identities), Some(identity)) = (&protocol.identities, identity) else {
+        return true;
+    };
+    let Some(assignment) = identities.assignment(identity).await else {
+        return true;
+    };
+    if *assigned == Some(assignment.revision) {
+        return true;
+    }
+    *assigned = Some(assignment.revision);
+    send(
+        socket,
+        Body::DirectoryAssignment(assignment),
+        protocol.keepalive,
+    )
+    .await
+    .is_ok()
 }
 
 fn valid_range(hello: &Hello) -> Option<VersionRange> {

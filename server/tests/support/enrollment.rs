@@ -520,7 +520,96 @@ pub async fn verify(database: &Database, admin: &mut PgConnection) {
             matches!(s, Status::Connected { .. })
         })
         .await;
+
+    let connector_path = format!("/api/tenants/{tenant}/directory-connector");
+    let connector = |device: Uuid, url: &str, bases: &[&str]| {
+        json!({
+            "device_id": device,
+            "domain": "corp.example",
+            "url": url,
+            "ca_pem": server_ca.pem(),
+            "base_dns": bases,
+        })
+    };
+    let workstations = ["OU=Workstations,DC=corp,DC=example"];
+    let put = |client: &Client, body: serde_json::Value| {
+        let (app, client, path) = (app.clone(), client.clone(), connector_path.clone());
+        async move { call(&app, "PUT", &path, Some(&client), Some(body), &[]).await }
+    };
+    let server_device = preapproved.device_id;
+    let (status, _, _) = put(
+        &outsider,
+        connector(server_device, "ldaps://dc.corp.example", &workstations),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    for invalid in [
+        connector(Uuid::new_v4(), "ldaps://dc.corp.example", &workstations),
+        connector(device, "ldaps://dc.corp.example", &workstations),
+        connector(server_device, "ldap://dc.corp.example", &workstations),
+        connector(
+            server_device,
+            "ldaps://dc.corp.example",
+            &["OU=X,DC=other,DC=example"],
+        ),
+        connector(server_device, "ldaps://dc.corp.example", &[]),
+    ] {
+        let (status, body, _) = put(&manager, invalid).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    }
+    let (status, _, _) = call(&app, "GET", &connector_path, Some(&manager), None, &[]).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "no connector designated yet");
+    let check = |expected: i64| {
+        let (app, client, path) = (app.clone(), manager.clone(), connector_path.clone());
+        async move {
+            for _ in 0..50 {
+                let (status, view, _) = call(&app, "GET", &path, Some(&client), None, &[]).await;
+                assert_eq!(status, StatusCode::OK, "{view}");
+                if view["last_check"]["revision"] == expected {
+                    return view;
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            panic!("connector report for revision {expected} did not arrive");
+        }
+    };
+    for revision in [1, 2] {
+        let (status, body, _) = put(
+            &manager,
+            connector(server_device, "ldaps://dc.corp.example:636", &workstations),
+        )
+        .await;
+        assert_eq!(
+            (status, body["revision"].as_i64()),
+            (StatusCode::OK, Some(revision))
+        );
+        let view = check(revision).await;
+        assert_eq!(view["device_id"], server_device.to_string());
+        assert_eq!(view["base_dns"], json!(workstations));
+        assert_eq!(view["last_check"]["ok"], false);
+        assert_eq!(view["last_check"]["error"], "unconfigured");
+        assert!(view.get("ca_pem").is_none());
+    }
+    let (status, _, _) = call(&app, "GET", &connector_path, Some(&outsider), None, &[]).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _, _) = call(
+        &app,
+        "GET",
+        &format!("/api/tenants/{other}/directory-connector"),
+        Some(&outsider),
+        None,
+        &[],
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::NOT_FOUND,
+        "the other tenant has no connector"
+    );
     server_agent.stop.send_replace(true);
+    let connector_sets: i64 = sqlx::query_scalar("SELECT count(*) FROM midas.tenant_audit WHERE tenant_id = $1 AND action = 'directory.connector_set' AND outcome = 'success'")
+        .bind(tenant).fetch_one(&mut *admin).await.unwrap();
+    assert_eq!(connector_sets, 2);
 
     let (_, created, _) = create(&manager, tenant, spec.clone()).await;
     sqlx::query("UPDATE midas.enrollment_tokens SET created_at = clock_timestamp() - interval '2 hours', expires_at = clock_timestamp() - interval '1 hour' WHERE id = $1")

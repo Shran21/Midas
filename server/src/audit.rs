@@ -44,6 +44,7 @@ names!(Action {
     EnrollmentApprove => "device.enroll_approve",
     EnrollmentReject => "device.enroll_reject",
     DeviceRevoke => "device.revoke",
+    DirectoryConnectorSet => "directory.connector_set",
 });
 names!(Outcome {
     Success => "success",

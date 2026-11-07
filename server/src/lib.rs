@@ -9,6 +9,7 @@ pub mod audit;
 pub mod auth;
 pub mod authorization;
 pub mod config;
+pub mod connector;
 pub mod database;
 pub mod enrollment;
 pub mod transport;

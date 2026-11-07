@@ -186,11 +186,21 @@ pub struct AgentIdentity {
     pub device: Uuid,
 }
 
+/// State pushed to a device's live sessions.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Signal {
+    pub revoked: bool,
+    /// Bumped when the device's directory assignment changes.
+    pub refresh: u64,
+}
+
+type Live = Arc<Mutex<HashMap<Uuid, watch::Sender<Signal>>>>;
+
 /// A verified operational session; dropping it unregisters the session.
 pub struct Admission {
     pub identity: AgentIdentity,
-    pub revoked: watch::Receiver<bool>,
-    live: Arc<Mutex<HashMap<Uuid, watch::Sender<bool>>>>,
+    pub signal: watch::Receiver<Signal>,
+    live: Live,
 }
 
 impl Drop for Admission {
@@ -209,10 +219,10 @@ type TokenRow = (Uuid, Uuid, Option<Uuid>, String, String, bool, bool, bool);
 type RequestRow = (Vec<u8>, Uuid, Uuid, Option<Vec<u8>>, bool);
 
 pub struct Enrollment {
-    pool: PgPool,
-    authorizer: Authorizer,
+    pub(crate) pool: PgPool,
+    pub(crate) authorizer: Authorizer,
     authority: Authority,
-    live: Arc<Mutex<HashMap<Uuid, watch::Sender<bool>>>>,
+    live: Live,
 }
 
 impl Enrollment {
@@ -225,7 +235,10 @@ impl Enrollment {
         }
     }
 
-    async fn tenant_tx(&self, tenant: Uuid) -> Result<Transaction<'_, Postgres>, sqlx::Error> {
+    pub(crate) async fn tenant_tx(
+        &self,
+        tenant: Uuid,
+    ) -> Result<Transaction<'_, Postgres>, sqlx::Error> {
         let mut tx = self.pool.begin().await?;
         sqlx::query("SELECT set_config('midas.tenant_id', $1, true)")
             .bind(tenant.to_string())
@@ -553,14 +566,7 @@ impl Enrollment {
         self.decided(&mut tx, Action::DeviceRevoke, &identity, tenant, device)
             .await?;
         tx.commit().await?;
-        if let Some(sender) = self
-            .live
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get(&device)
-        {
-            sender.send_replace(true);
-        }
+        self.signal(device, |signal| signal.revoked = true);
         Ok(())
     }
 
@@ -598,20 +604,31 @@ impl Enrollment {
     /// Admits an operational session for a registered, unrevoked certificate.
     pub async fn admit(&self, certificate: &[u8]) -> Option<Admission> {
         let identity = self.identify(certificate).await.ok()??;
-        let revoked = {
+        let signal = {
             let mut live = self.live.lock().unwrap_or_else(|e| e.into_inner());
             live.entry(identity.device)
-                .or_insert_with(|| watch::channel(false).0)
+                .or_insert_with(|| watch::channel(Signal::default()).0)
                 .subscribe()
         };
         let admission = Admission {
             identity,
-            revoked,
+            signal,
             live: self.live.clone(),
         };
         // A revocation between the first lookup and registration is caught here.
-        (self.identify(certificate).await.ok()?? == identity && !*admission.revoked.borrow())
+        (self.identify(certificate).await.ok()?? == identity && !admission.signal.borrow().revoked)
             .then_some(admission)
+    }
+
+    pub(crate) fn signal(&self, device: Uuid, change: impl FnOnce(&mut Signal)) {
+        if let Some(sender) = self
+            .live
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&device)
+        {
+            sender.send_modify(change);
+        }
     }
 }
 

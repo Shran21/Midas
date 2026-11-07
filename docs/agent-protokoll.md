@@ -20,6 +20,7 @@ Az agent egy tartós, kimenő, hitelesített kapcsolattal csatlakozik a szerverh
 | `Welcome` | szerver → agent | egyeztetett verzió, keepalive-időköz másodpercben, szerververzió |
 | `Reject` | szerver → agent | ok (`UNSUPPORTED_VERSION`, `INVALID_HELLO`) és a szerver által támogatott tartomány; utána a szerver bont |
 | `Ping` / `Pong` | mindkét irány | élőség-ellenőrzés véletlen azonosítóval |
+| `DirectoryAssignment` / `DirectoryReport` | szerver → kijelölt connector, illetve vissza | címtár-olvasási feladat és eredménye ([címtár-connector](cimtar-connector.md)) |
 
 ### Verziók és kompatibilitás
 
@@ -74,6 +75,7 @@ The agent connects to the server over one persistent, outbound, authenticated co
 | `Welcome` | server → agent | negotiated version, keepalive interval in seconds, server version |
 | `Reject` | server → agent | reason (`UNSUPPORTED_VERSION`, `INVALID_HELLO`) and the server's supported range; the server then closes |
 | `Ping` / `Pong` | both directions | liveness check with a random identifier |
+| `DirectoryAssignment` / `DirectoryReport` | server → designated connector and back | directory read task and its result ([directory connector](cimtar-connector.md#english)) |
 
 ### Versions and compatibility
 

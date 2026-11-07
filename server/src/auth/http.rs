@@ -184,6 +184,10 @@ pub fn router(state: Arc<WebAuth>) -> Router {
         )
         .route("/api/tenants/{id}/devices/pending", get(pending_devices))
         .route(
+            "/api/tenants/{id}/directory-connector",
+            get(directory_connector).put(set_directory_connector),
+        )
+        .route(
             "/api/tenants/{id}/devices/{device}/{decision}",
             post(decide_device),
         )
@@ -656,6 +660,30 @@ async fn pending_devices(
             .pending(&state.sessions, &context.token, id)
             .await?,
     ))
+}
+
+async fn directory_connector(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<crate::connector::ConnectorView>> {
+    Ok(Json(
+        enrollment(&state)?
+            .connector(&state.sessions, &context.token, id)
+            .await?,
+    ))
+}
+
+async fn set_directory_connector(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<crate::connector::ConnectorSpec>,
+) -> Result<Json<serde_json::Value>> {
+    let revision = enrollment(&state)?
+        .set_connector(&state.sessions, &context.token, id, &body)
+        .await?;
+    Ok(Json(serde_json::json!({ "revision": revision })))
 }
 
 async fn decide_device(

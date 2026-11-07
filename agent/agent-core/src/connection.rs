@@ -30,6 +30,8 @@ pub struct Settings {
     pub backoff: BackoffPolicy,
     /// A session lasting this long resets the backoff.
     pub stable_after: Duration,
+    /// Present only on the agent the tenant designated as its directory connector.
+    pub directory: Option<crate::directory::Credentials>,
 }
 
 impl Settings {
@@ -44,6 +46,7 @@ impl Settings {
             handshake_timeout: Duration::from_secs(10),
             backoff: BackoffPolicy::default(),
             stable_after: Duration::from_secs(60),
+            directory: None,
         }
     }
 }
@@ -166,8 +169,14 @@ async fn session(
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     tick.tick().await;
     let mut pending: Option<u64> = None;
+    let (reports, mut finished) = tokio::sync::mpsc::channel(1);
     loop {
         tokio::select! {
+            Some(report) = finished.recv() => {
+                if send(&mut socket, Body::DirectoryReport(report), keepalive).await.is_err() {
+                    return Outcome::Ended { connected };
+                }
+            }
             _ = tick.tick() => {
                 if pending.is_some() {
                     tracing::warn!("agent keepalive unanswered");
@@ -185,6 +194,22 @@ async fn session(
                     if send(&mut socket, Body::Pong(Pong { nonce: ping.nonce }), keepalive).await.is_err() {
                         return Outcome::Ended { connected };
                     }
+                }
+                Ok(Body::DirectoryAssignment(assignment)) => {
+                    let reports = reports.clone();
+                    let credentials = settings.directory.clone();
+                    tokio::spawn(async move {
+                        let report = match credentials {
+                            Some(credentials) => crate::directory::check(&assignment, &credentials).await,
+                            None => midas_protocol::DirectoryReport {
+                                revision: assignment.revision,
+                                ok: false,
+                                objects: 0,
+                                error: "unconfigured".into(),
+                            },
+                        };
+                        let _ = reports.send(report).await;
+                    });
                 }
                 Ok(_) => {}
                 Err(()) => return Outcome::Ended { connected },

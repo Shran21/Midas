@@ -40,6 +40,7 @@ permissions! {
     ScriptExecute => ("script.execute", true),
     UpdatesManage => ("updates.manage", true),
     DomainJoin => ("domain.join", true),
+    DirectoryDiscover => ("directory.discover", true),
     AccessManage => ("access.manage", true),
     AuditRead => ("audit.read", false),
 }

@@ -7,6 +7,7 @@
 
 use prost::Message;
 
+pub mod directory;
 pub mod enrollment;
 
 /// Versions this build can speak.
@@ -42,7 +43,7 @@ impl VersionRange {
 
 #[derive(Clone, PartialEq, Message)]
 pub struct Envelope {
-    #[prost(oneof = "Body", tags = "1, 2, 3, 4, 5")]
+    #[prost(oneof = "Body", tags = "1, 2, 3, 4, 5, 6, 7")]
     pub body: Option<Body>,
 }
 
@@ -58,6 +59,10 @@ pub enum Body {
     Ping(Ping),
     #[prost(message, tag = "5")]
     Pong(Pong),
+    #[prost(message, tag = "6")]
+    DirectoryAssignment(DirectoryAssignment),
+    #[prost(message, tag = "7")]
+    DirectoryReport(DirectoryReport),
 }
 
 /// First message from the agent.
@@ -113,6 +118,37 @@ pub struct Ping {
 pub struct Pong {
     #[prost(uint64, tag = "1")]
     pub nonce: u64,
+}
+
+/// Server to the tenant's designated directory connector: what it may read.
+#[derive(Clone, PartialEq, Message)]
+pub struct DirectoryAssignment {
+    #[prost(uint64, tag = "1")]
+    pub revision: u64,
+    #[prost(string, tag = "2")]
+    pub domain: String,
+    /// Always `ldaps://`; plain LDAP is refused by the connector.
+    #[prost(string, tag = "3")]
+    pub url: String,
+    /// Trust anchors for the directory; system roots are never used.
+    #[prost(string, tag = "4")]
+    pub ca_pem: String,
+    /// Searches stay inside these organizational units.
+    #[prost(string, repeated, tag = "5")]
+    pub base_dns: Vec<String>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct DirectoryReport {
+    #[prost(uint64, tag = "1")]
+    pub revision: u64,
+    #[prost(bool, tag = "2")]
+    pub ok: bool,
+    #[prost(uint32, tag = "3")]
+    pub objects: u32,
+    /// Stable error code such as `tls`, `bind` or `boundary`; never directory content.
+    #[prost(string, tag = "4")]
+    pub error: String,
 }
 
 #[derive(Debug)]

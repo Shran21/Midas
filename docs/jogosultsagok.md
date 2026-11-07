@@ -49,6 +49,8 @@ Jogosultság nem bővíthető a kezelő saját köre fölé: szerep vagy engedé
 | `POST /api/tenants/{id}/sites` | `access.manage`, friss passkey |
 | `POST /api/tenants/{id}/enrollment-tokens`, `POST …/devices/{id}/approve`, `…/reject`, `…/revoke` | `device.enroll`, friss passkey ([beiratkozás](beiratkozas.md)) |
 | `GET /api/tenants/{id}/devices/pending` | Ügyfélszintű `device.enroll` |
+| `PUT /api/tenants/{id}/directory-connector` | `directory.discover`, friss passkey ([címtár-connector](cimtar-connector.md)) |
+| `GET /api/tenants/{id}/directory-connector` | Ügyfélszintű `directory.discover` |
 
 A webpanel Hozzáférés nézete a tagokat, szerepeket, szabályokat és telephelyeket kezeli; a platformadminisztrátor Ügyfelek nézete új ügyfelet és technikust hoz létre, a kódokat egyszer mutatja meg. A technikus saját passkeyjének regisztrációja az első beállítási folyamattal együtt készül.
 
@@ -70,6 +72,7 @@ A webpanel Hozzáférés nézete a tagokat, szerepeket, szabályokat és telephe
 | `script.execute` | Szkriptfuttatás | Igen |
 | `updates.manage` | Frissítések kezelése | Igen |
 | `domain.join` | Tartományba léptetés | Igen |
+| `directory.discover` | Címtár-connector kijelölése és felderítés | Igen |
 | `access.manage` | Ügyfélhez tartozó hozzáférés kezelése | Igen |
 | `audit.read` | Ügyfélhez tartozó audit olvasása | Nem |
 
@@ -135,6 +138,8 @@ Managers cannot exceed their own access: granting a role or allow, removing a de
 | `POST /api/tenants/{id}/sites` | `access.manage`, fresh passkey |
 | `POST /api/tenants/{id}/enrollment-tokens`, `POST …/devices/{id}/approve`, `…/reject`, `…/revoke` | `device.enroll`, fresh passkey ([enrollment](beiratkozas.md#english)) |
 | `GET /api/tenants/{id}/devices/pending` | Tenant-wide `device.enroll` |
+| `PUT /api/tenants/{id}/directory-connector` | `directory.discover`, fresh passkey ([directory connector](cimtar-connector.md#english)) |
+| `GET /api/tenants/{id}/directory-connector` | Tenant-wide `directory.discover` |
 
 The web panel's Access view manages members, roles, rules and sites; the platform administrator's Customers view creates tenants and technicians and shows the codes once. Technicians register their own passkey with the first-run setup flow.
 
@@ -156,6 +161,7 @@ The web panel's Access view manages members, roles, rules and sites; the platfor
 | `script.execute` | Script execution | Yes |
 | `updates.manage` | Update management | Yes |
 | `domain.join` | Domain joining | Yes |
+| `directory.discover` | Directory connector designation and discovery | Yes |
 | `access.manage` | Tenant access administration | Yes |
 | `audit.read` | Tenant audit reads | No |
 
