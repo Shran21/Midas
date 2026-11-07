@@ -69,8 +69,9 @@ Az ellenőrzés a GitHub saját státuszeseményeit használta (`ProjectV2ItemSt
 
 ### Az 1. fázis indulási feltételei
 
-- A MIDAS-020 Done állapota és a 0. mérföldkő lezárása után az 1. fázis tételei a saját függőségeik szerint léphetnek Readybe. Elsőként a MIDAS-021 (verziózott agentprotokoll) indítható, mert csak a már kész MIDAS-006-tól függ.
-- A MIDAS-034 a MIDAS-019 elfogadására, a fáziszáró MIDAS-040 a MIDAS-018 és a MIDAS-019 elfogadására is vár.
+- A projektgazda 2026. november 7-i döntése alapján az 1. fázis a MIDAS-020 lezárása előtt indul. A MIDAS-018, a MIDAS-019 és a MIDAS-020 projektgazdai ellenőrzése kötelező marad, de Done állapotuk nem feltétele későbbi feladat indításának ([terjedelemváltozások](../feladatlista.md#terjedelemváltozások)). A 0. mérföldkő a MIDAS-020 Done állapota után zárul.
+- Elsőként a MIDAS-021 (verziózott agentprotokoll) indítható, mert csak a már kész MIDAS-006-tól függ.
+- Sikertelen ellenőrzésnél a MIDAS-034, MIDAS-042, MIDAS-047, MIDAS-059 és az ezekre épülő munka újravizsgálandó.
 - Az 1. fázis zárásához külső tesztkörnyezet kell: tíz vegyes tesztgép egyhetes jelentése, 24 órás agentmérés, 1000 szimulált agentes terhelési próba, valamint Debian, Ubuntu és Rocky Linux tesztgép. Ezek előkészítését érdemes a fázis elején megkezdeni.
 
 ## English
@@ -140,6 +141,7 @@ The review used GitHub's own status events (`ProjectV2ItemStatusChangedEvent`), 
 
 ### Phase 1 prerequisites
 
-- After MIDAS-020 is Done and milestone 0 is closed, phase 1 items may become Ready as their own dependencies allow. MIDAS-021 (versioned agent protocol) can start first, as it depends only on the completed MIDAS-006.
-- MIDAS-034 also waits for MIDAS-019 to be accepted; the closure task MIDAS-040 also waits for MIDAS-018 and MIDAS-019.
+- By the project owner's decision on November 7, 2026, phase 1 starts before MIDAS-020 closes. The owner's verification of MIDAS-018, MIDAS-019 and MIDAS-020 remains required, but their Done status is not a prerequisite for starting later tasks ([scope changes](../feladatlista.md#scope-changes)). Milestone 0 closes after MIDAS-020 is Done.
+- MIDAS-021 (versioned agent protocol) can start first, as it depends only on the completed MIDAS-006.
+- If a verification fails, re-check MIDAS-034, MIDAS-042, MIDAS-047, MIDAS-059 and work built on them.
 - Closing phase 1 needs an external test environment: ten mixed test devices reporting for a week, a 24-hour agent measurement, a 1000-simulated-agent load test, and Debian, Ubuntu and Rocky Linux test machines. Start preparing these early in the phase.

@@ -778,7 +778,11 @@
         "security"
       ],
       "github_issue_number": 19,
-      "github_issue_url": "https://github.com/Shran21/Midas/issues/19"
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/19",
+      "pending_owner_verification": {
+        "hu": "Windows 11-es tesztgépes UAC-próba standard fiókkal, a projektgazda végzi.",
+        "en": "Windows 11 test-machine UAC trial with a standard account, performed by the project owner."
+      }
     },
     {
       "id": "MIDAS-019",
@@ -818,7 +822,11 @@
         "agent"
       ],
       "github_issue_number": 20,
-      "github_issue_url": "https://github.com/Shran21/Midas/issues/20"
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/20",
+      "pending_owner_verification": {
+        "hu": "Résztvevős, billentyűzetes és képernyőolvasós próba, a projektgazda végzi.",
+        "en": "Participant, keyboard and screen-reader trials, performed by the project owner."
+      }
     },
     {
       "id": "MIDAS-020",
@@ -868,7 +876,11 @@
         "documentation"
       ],
       "github_issue_number": 21,
-      "github_issue_url": "https://github.com/Shran21/Midas/issues/21"
+      "github_issue_url": "https://github.com/Shran21/Midas/issues/21",
+      "pending_owner_verification": {
+        "hu": "A WebRTC-döntés (ADR 0002) projektgazdai jóváhagyása.",
+        "en": "The project owner's approval of the WebRTC decision (ADR 0002)."
+      }
     },
     {
       "id": "MIDAS-021",
@@ -883,8 +895,7 @@
       "kickoff_status": "Backlog",
       "priority": "P0",
       "depends_on": [
-        "MIDAS-006",
-        "MIDAS-020"
+        "MIDAS-006"
       ],
       "requirements": [
         "PERF-01"
@@ -921,8 +932,7 @@
       "depends_on": [
         "MIDAS-021",
         "MIDAS-011",
-        "MIDAS-012",
-        "MIDAS-020"
+        "MIDAS-012"
       ],
       "requirements": [
         "SEC-02"
@@ -958,8 +968,7 @@
       "kickoff_status": "Backlog",
       "priority": "P0",
       "depends_on": [
-        "MIDAS-022",
-        "MIDAS-020"
+        "MIDAS-022"
       ],
       "requirements": [
         "PERF-05",
@@ -997,8 +1006,7 @@
       "kickoff_status": "Backlog",
       "priority": "P0",
       "depends_on": [
-        "MIDAS-022",
-        "MIDAS-020"
+        "MIDAS-022"
       ],
       "requirements": [
         "SERVER-01"
@@ -1034,8 +1042,7 @@
       "priority": "P0",
       "depends_on": [
         "MIDAS-023",
-        "MIDAS-024",
-        "MIDAS-020"
+        "MIDAS-024"
       ],
       "requirements": [
         "PERF-02",
@@ -1071,8 +1078,7 @@
       "kickoff_status": "Backlog",
       "priority": "P1",
       "depends_on": [
-        "MIDAS-025",
-        "MIDAS-020"
+        "MIDAS-025"
       ],
       "requirements": [
         "PERF-02"
@@ -1108,8 +1114,7 @@
       "priority": "P1",
       "depends_on": [
         "MIDAS-023",
-        "MIDAS-024",
-        "MIDAS-020"
+        "MIDAS-024"
       ],
       "requirements": [
         "SERVER-01",
@@ -1146,8 +1151,7 @@
       "priority": "P1",
       "depends_on": [
         "MIDAS-026",
-        "MIDAS-011",
-        "MIDAS-020"
+        "MIDAS-011"
       ],
       "requirements": [
         "UI-01",
@@ -1186,8 +1190,7 @@
       "depends_on": [
         "MIDAS-025",
         "MIDAS-027",
-        "MIDAS-028",
-        "MIDAS-020"
+        "MIDAS-028"
       ],
       "requirements": [
         "UI-07"
@@ -1222,8 +1225,7 @@
       "kickoff_status": "Backlog",
       "priority": "P2",
       "depends_on": [
-        "MIDAS-029",
-        "MIDAS-020"
+        "MIDAS-029"
       ],
       "requirements": [
         "SEC-01"
@@ -1262,8 +1264,7 @@
         "MIDAS-013",
         "MIDAS-025",
         "MIDAS-026",
-        "MIDAS-029",
-        "MIDAS-020"
+        "MIDAS-029"
       ],
       "requirements": [
         "UI-01",
@@ -1303,8 +1304,7 @@
       "kickoff_status": "Backlog",
       "priority": "P2",
       "depends_on": [
-        "MIDAS-031",
-        "MIDAS-020"
+        "MIDAS-031"
       ],
       "requirements": [
         "UI-03",
@@ -1340,8 +1340,7 @@
       "kickoff_status": "Backlog",
       "priority": "P0",
       "depends_on": [
-        "MIDAS-023",
-        "MIDAS-020"
+        "MIDAS-023"
       ],
       "requirements": [
         "AD-04",
@@ -1378,9 +1377,7 @@
       "kickoff_status": "Backlog",
       "priority": "P1",
       "depends_on": [
-        "MIDAS-023",
-        "MIDAS-019",
-        "MIDAS-020"
+        "MIDAS-023"
       ],
       "requirements": [
         "UI-06",
@@ -1418,8 +1415,7 @@
       "priority": "P0",
       "depends_on": [
         "MIDAS-031",
-        "MIDAS-025",
-        "MIDAS-020"
+        "MIDAS-025"
       ],
       "requirements": [
         "PERF-06",
@@ -1457,8 +1453,7 @@
       "priority": "P0",
       "depends_on": [
         "MIDAS-010",
-        "MIDAS-022",
-        "MIDAS-020"
+        "MIDAS-022"
       ],
       "requirements": [
         "AD-01",
@@ -1494,8 +1489,7 @@
       "priority": "P0",
       "depends_on": [
         "MIDAS-036",
-        "MIDAS-026",
-        "MIDAS-020"
+        "MIDAS-026"
       ],
       "requirements": [
         "AD-03",
@@ -1531,8 +1525,7 @@
       "priority": "P0",
       "depends_on": [
         "MIDAS-037",
-        "MIDAS-031",
-        "MIDAS-020"
+        "MIDAS-031"
       ],
       "requirements": [
         "UI-01",
@@ -1569,8 +1562,7 @@
       "depends_on": [
         "MIDAS-034",
         "MIDAS-024",
-        "MIDAS-027",
-        "MIDAS-020"
+        "MIDAS-027"
       ],
       "requirements": [
         "PERF-01",
@@ -1609,8 +1601,6 @@
       "kickoff_status": "Backlog",
       "priority": "P0",
       "depends_on": [
-        "MIDAS-018",
-        "MIDAS-019",
         "MIDAS-021",
         "MIDAS-022",
         "MIDAS-023",
@@ -1629,8 +1619,7 @@
         "MIDAS-036",
         "MIDAS-037",
         "MIDAS-038",
-        "MIDAS-039",
-        "MIDAS-020"
+        "MIDAS-039"
       ],
       "requirements": [],
       "legacy_ids": [
@@ -1640,12 +1629,12 @@
         "hu": [
           "A monitorozás, felderítés, regisztráció és terhelésmérés elfogadva; az összes vállalt feladat ellenőrzött Done, a támogatási mátrix és a következő fázis feltételei rögzítve.",
           "Tíz vegyes tesztgép egy hétig jelent; a 24 órás agent- és az egyórás, 1000 szimulált agentes mérés bizonyítéka csatolt.",
-          "Az UAC-próba (MIDAS-018) és a használhatósági prototípus (MIDAS-019) döntése dokumentált."
+          "A MIDAS-018 és a MIDAS-019 ellenőrzésének állapota rögzített; Done állapotuk nem feltétele a zárásnak."
         ],
         "en": [
           "Accept monitoring, discovery, enrollment and load evidence; all committed work is reviewed Done, with a support matrix and next-phase prerequisites recorded.",
           "Ten mixed test devices report for one week; attach evidence for the 24-hour agent and one-hour 1000-simulated-agent measurements.",
-          "Record the UAC proof (MIDAS-018) and usability prototype (MIDAS-019) decisions."
+          "Record the verification state of MIDAS-018 and MIDAS-019; their Done status is not a closure condition."
         ]
       },
       "label_names": [
@@ -1706,7 +1695,6 @@
       "kickoff_status": "Backlog",
       "priority": "P0",
       "depends_on": [
-        "MIDAS-018",
         "MIDAS-023",
         "MIDAS-040"
       ],
@@ -1893,7 +1881,6 @@
       "kickoff_status": "Backlog",
       "priority": "P0",
       "depends_on": [
-        "MIDAS-018",
         "MIDAS-023",
         "MIDAS-040"
       ],
@@ -2376,7 +2363,6 @@
       "priority": "P0",
       "depends_on": [
         "MIDAS-058",
-        "MIDAS-019",
         "MIDAS-040"
       ],
       "requirements": [
@@ -4090,6 +4076,134 @@
       "dependency_notes": {
         "hu": "A két feladat megtartja eredeti függőségeit, és nem függ a MIDAS-020-tól, mert a munkájuk M0-ban indult. A MIDAS-040 függ tőlük; a MIDAS-034, a MIDAS-042 és a MIDAS-047 közvetlen függősége változatlan.",
         "en": "Both tasks keep their original dependencies and do not depend on MIDAS-020, because their work started in M0. MIDAS-040 depends on them; the direct dependencies of MIDAS-034, MIDAS-042 and MIDAS-047 are unchanged."
+      }
+    },
+    {
+      "date": "2026-11-07",
+      "kind": "done_requirement_waiver",
+      "items": [
+        "MIDAS-018",
+        "MIDAS-019",
+        "MIDAS-020"
+      ],
+      "decided_by": "project owner",
+      "reason": {
+        "hu": "A három feladat a projektgazda saját ellenőrzésére vár, amely most nem végezhető el; a fejlesztést az ütemterv miatt folytatni kell.",
+        "en": "The three tasks await the project owner's own verification, which cannot be done now; development must continue to keep the schedule."
+      },
+      "rule": {
+        "hu": "A feladatok In review állapotban maradnak, és Done állapotba csak a projektgazdai ellenőrzés után léphetnek. Done állapotuk nem feltétele későbbi feladat vagy fázis indításának, sem fáziskapu zárásának. A kivétel csak erre a három feladatra vonatkozik.",
+        "en": "The tasks stay In review and may become Done only after the project owner's verification. Their Done status is not a prerequisite for starting later tasks or phases or for closing phase gates. The exception covers only these three tasks."
+      },
+      "removed_dependencies": [
+        [
+          "MIDAS-021",
+          "MIDAS-020"
+        ],
+        [
+          "MIDAS-022",
+          "MIDAS-020"
+        ],
+        [
+          "MIDAS-023",
+          "MIDAS-020"
+        ],
+        [
+          "MIDAS-024",
+          "MIDAS-020"
+        ],
+        [
+          "MIDAS-025",
+          "MIDAS-020"
+        ],
+        [
+          "MIDAS-026",
+          "MIDAS-020"
+        ],
+        [
+          "MIDAS-027",
+          "MIDAS-020"
+        ],
+        [
+          "MIDAS-028",
+          "MIDAS-020"
+        ],
+        [
+          "MIDAS-029",
+          "MIDAS-020"
+        ],
+        [
+          "MIDAS-030",
+          "MIDAS-020"
+        ],
+        [
+          "MIDAS-031",
+          "MIDAS-020"
+        ],
+        [
+          "MIDAS-032",
+          "MIDAS-020"
+        ],
+        [
+          "MIDAS-033",
+          "MIDAS-020"
+        ],
+        [
+          "MIDAS-034",
+          "MIDAS-019"
+        ],
+        [
+          "MIDAS-034",
+          "MIDAS-020"
+        ],
+        [
+          "MIDAS-035",
+          "MIDAS-020"
+        ],
+        [
+          "MIDAS-036",
+          "MIDAS-020"
+        ],
+        [
+          "MIDAS-037",
+          "MIDAS-020"
+        ],
+        [
+          "MIDAS-038",
+          "MIDAS-020"
+        ],
+        [
+          "MIDAS-039",
+          "MIDAS-020"
+        ],
+        [
+          "MIDAS-040",
+          "MIDAS-018"
+        ],
+        [
+          "MIDAS-040",
+          "MIDAS-019"
+        ],
+        [
+          "MIDAS-040",
+          "MIDAS-020"
+        ],
+        [
+          "MIDAS-042",
+          "MIDAS-018"
+        ],
+        [
+          "MIDAS-047",
+          "MIDAS-018"
+        ],
+        [
+          "MIDAS-059",
+          "MIDAS-019"
+        ]
+      ],
+      "follow_up": {
+        "hu": "Sikertelen ellenőrzésnél a MIDAS-034, MIDAS-042, MIDAS-047, MIDAS-059 és az ezekre épülő munka újravizsgálandó, szükség esetén újranyitandó.",
+        "en": "If a verification fails, re-check MIDAS-034, MIDAS-042, MIDAS-047, MIDAS-059 and work built on them, reopening where needed."
       }
     }
   ]
