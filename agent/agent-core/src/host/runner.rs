@@ -221,6 +221,7 @@ async fn collect(paths: &Paths, config: &Config, state: &watch::Sender<State>) {
 pub async fn serve(
     paths: Paths,
     platform: Platform,
+    collector: Option<crate::inventory::Collector>,
     state: watch::Sender<State>,
     mut shutdown: watch::Receiver<bool>,
 ) {
@@ -245,14 +246,25 @@ pub async fn serve(
             password: Zeroizing::new(account.password),
         });
     let buffer = crate::metrics::Buffer::shared(crate::metrics::CAPACITY);
-    let collector = tokio::spawn(crate::metrics::collect(
+    let sampling = tokio::spawn(crate::metrics::collect(
         buffer.clone(),
         Some(paths.metrics()),
         shutdown.clone(),
     ));
+    let inventory = collector.map(|collector| {
+        let shared = crate::inventory::shared(paths.inventory());
+        let schedule = tokio::spawn(crate::inventory::schedule(
+            collector,
+            shared.clone(),
+            crate::inventory::staggered(),
+            shutdown.clone(),
+        ));
+        (shared, schedule)
+    });
     let settings = Settings {
         directory,
         metrics: Some(buffer),
+        inventory: inventory.as_ref().map(|(shared, _)| shared.clone()),
         ..Settings::new(config.server.clone(), config.port, tls, platform.as_str())
     };
     let (status_tx, mut status) = watch::channel(Status::Connecting { attempt: 0 });
@@ -261,7 +273,10 @@ pub async fn serve(
         state.send_replace(State::from(&*status.borrow_and_update()));
     }
     let _ = connection.await;
-    let _ = collector.await;
+    let _ = sampling.await;
+    if let Some((_, schedule)) = inventory {
+        let _ = schedule.await;
+    }
     state.send_replace(State::Stopped);
 }
 

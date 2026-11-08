@@ -34,6 +34,8 @@ pub struct Settings {
     pub directory: Option<crate::directory::Credentials>,
     /// Samples waiting for upload; they stay until the server acknowledges them.
     pub metrics: Option<crate::metrics::Shared>,
+    /// Inventory plan waiting for upload, resumed chunk by chunk after reconnecting.
+    pub inventory: Option<crate::inventory::Shared>,
 }
 
 impl Settings {
@@ -50,6 +52,7 @@ impl Settings {
             stable_after: Duration::from_secs(60),
             directory: None,
             metrics: None,
+            inventory: None,
         }
     }
 }
@@ -177,10 +180,15 @@ async fn session(
     let mut checking = false;
     let mut queued: Option<midas_protocol::DirectoryAssignment> = None;
     let mut upload = Upload::default();
+    let mut inventory = InventoryUpload::default();
     if upload
         .offer(&mut socket, settings, keepalive)
         .await
         .is_err()
+        || inventory
+            .offer(&mut socket, settings, keepalive)
+            .await
+            .is_err()
     {
         return Outcome::Ended { connected };
     }
@@ -206,7 +214,9 @@ async fn session(
                     return Outcome::Ended { connected };
                 }
                 pending = Some(nonce);
-                if upload.offer(&mut socket, settings, keepalive).await.is_err() {
+                if upload.offer(&mut socket, settings, keepalive).await.is_err()
+                    || inventory.offer(&mut socket, settings, keepalive).await.is_err()
+                {
                     return Outcome::Ended { connected };
                 }
             }
@@ -214,6 +224,12 @@ async fn session(
                 Ok(Body::Pong(pong)) if Some(pong.nonce) == pending => pending = None,
                 Ok(Body::Ping(ping)) => {
                     if send(&mut socket, Body::Pong(Pong { nonce: ping.nonce }), keepalive).await.is_err() {
+                        return Outcome::Ended { connected };
+                    }
+                }
+                Ok(Body::InventoryAck(ack)) => {
+                    inventory.acknowledged(&ack, settings);
+                    if inventory.offer(&mut socket, settings, keepalive).await.is_err() {
                         return Outcome::Ended { connected };
                     }
                 }
@@ -312,6 +328,52 @@ impl Upload {
             && sequence == ack.sequence
         {
             crate::metrics::lock(buffer).acknowledge(count, dropped);
+            self.in_flight = None;
+        }
+    }
+}
+
+/// One inventory chunk in flight; an interrupted plan resumes from the unacknowledged chunk.
+#[derive(Default)]
+struct InventoryUpload {
+    sequence: u64,
+    in_flight: Option<u64>,
+}
+
+impl InventoryUpload {
+    async fn offer(
+        &mut self,
+        socket: &mut Socket,
+        settings: &Settings,
+        limit: Duration,
+    ) -> Result<(), ()> {
+        let Some(shared) = &settings.inventory else {
+            return Ok(());
+        };
+        if self.in_flight.is_some() {
+            return Ok(());
+        }
+        let update = {
+            let pending = crate::inventory::lock(shared);
+            let sequence = self.sequence.wrapping_add(1);
+            pending
+                .plan
+                .as_ref()
+                .and_then(|plan| plan.update(pending.next, sequence))
+        };
+        let Some(update) = update else {
+            return Ok(());
+        };
+        self.sequence = update.sequence;
+        self.in_flight = Some(update.sequence);
+        send(socket, Body::InventoryUpdate(update), limit).await
+    }
+
+    fn acknowledged(&mut self, ack: &midas_protocol::InventoryAck, settings: &Settings) {
+        if let Some(shared) = &settings.inventory
+            && self.in_flight == Some(ack.sequence)
+        {
+            crate::inventory::lock(shared).acknowledged(ack.applied, crate::inventory::unix_now());
             self.in_flight = None;
         }
     }

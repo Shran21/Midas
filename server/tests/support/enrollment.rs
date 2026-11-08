@@ -84,8 +84,21 @@ impl Agent {
         tls: Arc<ClientConfig>,
         metrics: Option<midas_agent_core::metrics::Shared>,
     ) -> Self {
+        Self::with(port, tls, metrics, None)
+    }
+
+    fn with(
+        port: u16,
+        tls: Arc<ClientConfig>,
+        metrics: Option<midas_agent_core::metrics::Shared>,
+        inventory: Option<(
+            midas_agent_core::inventory::Shared,
+            midas_agent_core::inventory::Collector,
+        )>,
+    ) -> Self {
         let settings = Settings {
             metrics,
+            inventory: inventory.as_ref().map(|(shared, _)| shared.clone()),
             handshake_timeout: Duration::from_secs(3),
             backoff: BackoffPolicy {
                 base: Duration::from_millis(50),
@@ -95,6 +108,14 @@ impl Agent {
         };
         let (status_tx, status) = watch::channel(Status::Connecting { attempt: 0 });
         let (stop, stop_rx) = watch::channel(false);
+        if let Some((shared, collector)) = inventory {
+            tokio::spawn(midas_agent_core::inventory::schedule(
+                collector,
+                shared,
+                Duration::ZERO,
+                stop_rx.clone(),
+            ));
+        }
         tokio::spawn(run(settings, status_tx, stop_rx));
         Self { status, stop }
     }
@@ -122,6 +143,46 @@ impl Agent {
         .is_ok();
         assert!(!connected, "agent connected unexpectedly");
     }
+}
+
+fn software(count: usize) -> midas_agent_core::inventory::Snapshot {
+    let mut snapshot = midas_agent_core::inventory::Snapshot::new();
+    midas_agent_core::inventory::insert(&mut snapshot, "os", "name", "Test OS");
+    for n in 0..count {
+        midas_agent_core::inventory::insert(
+            &mut snapshot,
+            "software",
+            &format!("package-{n:04}"),
+            "1.0",
+        );
+    }
+    snapshot
+}
+
+/// Waits until the stored inventory satisfies `ready`; returns generation and reconciliation time.
+async fn inventory_state(
+    admin: &mut PgConnection,
+    device: Uuid,
+    mut ready: impl FnMut(&std::collections::HashMap<String, String>) -> bool,
+) -> (Option<i64>, Option<f64>) {
+    for _ in 0..150 {
+        let rows: Vec<(String, String)> =
+            sqlx::query_as("SELECT key, value FROM midas.device_inventory WHERE device_id = $1")
+                .bind(device)
+                .fetch_all(&mut *admin)
+                .await
+                .unwrap();
+        let items: std::collections::HashMap<_, _> = rows.into_iter().collect();
+        if ready(&items) {
+            return sqlx::query_as("SELECT inventory_generation, extract(epoch FROM inventory_reconciled_at)::float8 FROM midas.devices WHERE id = $1")
+                .bind(device)
+                .fetch_one(&mut *admin)
+                .await
+                .unwrap();
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    panic!("inventory never reached the expected state");
 }
 
 fn sample(at: i64) -> midas_protocol::Sample {
@@ -767,6 +828,108 @@ pub async fn verify(database: &Database, admin: &mut PgConnection) {
     let (minutes, _) = enrollment.expire(30, 13).await.unwrap();
     assert_eq!(minutes, 2);
     stored(admin, server_device, 135).await;
+
+    // Inventory: full reconciliation, change sets, restart and a refused change set.
+    let store = std::env::temp_dir().join(format!("midas-inventory-test-{}.pb", Uuid::new_v4()));
+    let current = Arc::new(std::sync::Mutex::new(software(450)));
+    let collector: midas_agent_core::inventory::Collector = {
+        let current = current.clone();
+        Arc::new(move || current.lock().unwrap().clone())
+    };
+    let tls = deployment
+        .client_config(roots(&server_ca), &preapproved.certificate)
+        .unwrap();
+    let shared = midas_agent_core::inventory::shared(store.clone());
+    let mut inventoried = Agent::with(
+        proxy_port,
+        tls.clone(),
+        None,
+        Some((shared.clone(), collector.clone())),
+    );
+    let (generation, reconciled) =
+        inventory_state(admin, server_device, |items| items.len() == 451).await;
+    assert!(generation.is_some() && reconciled.is_some());
+
+    {
+        let mut snapshot = current.lock().unwrap();
+        snapshot.remove(&midas_agent_core::inventory::key(
+            "software",
+            "package-0000",
+        ));
+        midas_agent_core::inventory::insert(&mut snapshot, "software", "new-package", "1.0");
+        midas_agent_core::inventory::insert(&mut snapshot, "software", "package-0001", "2.0");
+    }
+    midas_agent_core::inventory::lock(&shared).wake.notify_one();
+    let changed = inventory_state(admin, server_device, |items| {
+        items.get("new-package").is_some()
+            && items.get("package-0000").is_none()
+            && items.get("package-0001").map(String::as_str) == Some("2.0")
+    })
+    .await;
+    assert_eq!(
+        changed,
+        (generation, reconciled),
+        "a change set is not a reconciliation"
+    );
+
+    inventoried.stop.send_replace(true);
+    inventoried
+        .reach("inventory agent stop", |s| *s == Status::Stopped)
+        .await;
+    midas_agent_core::inventory::insert(
+        &mut current.lock().unwrap(),
+        "software",
+        "after-restart",
+        "1",
+    );
+    let restarted = midas_agent_core::inventory::shared(store.clone());
+    let inventoried = Agent::with(
+        proxy_port,
+        tls.clone(),
+        None,
+        Some((restarted.clone(), collector.clone())),
+    );
+    let after = inventory_state(admin, server_device, |items| {
+        items.get("after-restart").is_some()
+    })
+    .await;
+    assert_eq!(
+        after,
+        (generation, reconciled),
+        "a restart resumes from the last reconciliation"
+    );
+
+    sqlx::query("UPDATE midas.devices SET inventory_generation = 999999 WHERE id = $1")
+        .bind(server_device)
+        .execute(&mut *admin)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO midas.device_inventory (tenant_id, device_id, kind, key, value, generation) VALUES ($1, $2, 'software', 'stale', 'x', 999999)")
+        .bind(tenant).bind(server_device).execute(&mut *admin).await.unwrap();
+    midas_agent_core::inventory::insert(&mut current.lock().unwrap(), "software", "trigger", "1");
+    midas_agent_core::inventory::lock(&restarted)
+        .wake
+        .notify_one();
+    let expected = current.lock().unwrap().len();
+    let (full_generation, full_reconciled) = inventory_state(admin, server_device, |items| {
+        items.get("trigger").is_some() && items.get("stale").is_none() && items.len() == expected
+    })
+    .await;
+    assert!(full_generation.is_some() && full_generation != generation);
+    assert!(
+        full_reconciled > reconciled,
+        "the refused change set forced a full reconciliation"
+    );
+
+    let path = format!("/api/tenants/{tenant}/devices/{server_device}/inventory");
+    let (status, view, _) = call(&app, "GET", &path, Some(&manager), None, &[]).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(view["items"].as_array().unwrap().len(), expected);
+    assert!(view["reconciled_at"].as_i64().is_some());
+    let (status, _, _) = call(&app, "GET", &path, Some(&outsider), None, &[]).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    inventoried.stop.send_replace(true);
+    let _ = std::fs::remove_file(&store);
     let connector_sets: i64 = sqlx::query_scalar("SELECT count(*) FROM midas.tenant_audit WHERE tenant_id = $1 AND action = 'directory.connector_set' AND outcome = 'success'")
         .bind(tenant).fetch_one(&mut *admin).await.unwrap();
     assert_eq!(connector_sets, 2);

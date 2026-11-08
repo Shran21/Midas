@@ -177,6 +177,22 @@ async fn serve(
                     break "closed";
                 }
             }
+            Ok(Ok(Body::InventoryUpdate(update))) => {
+                let (Some(identities), Some(identity)) = (&protocol.identities, identity) else {
+                    continue;
+                };
+                let Ok(applied) = identities.apply_inventory(identity, &update).await else {
+                    tracing::error!("inventory could not be stored; closing the session");
+                    break "store";
+                };
+                let ack = Body::InventoryAck(midas_protocol::InventoryAck {
+                    sequence: update.sequence,
+                    applied,
+                });
+                if send(&mut socket, ack, protocol.keepalive).await.is_err() {
+                    break "closed";
+                }
+            }
             Ok(Ok(Body::MetricsBatch(batch))) => {
                 let (Some(identities), Some(identity)) = (&protocol.identities, identity) else {
                     continue;

@@ -1,4 +1,6 @@
-use std::{path::PathBuf, process::ExitCode};
+mod inventory;
+
+use std::{path::PathBuf, process::ExitCode, sync::Arc};
 
 use clap::{Parser, Subcommand};
 use midas_agent_core::host::{
@@ -98,7 +100,13 @@ fn main() -> ExitCode {
                     tracing::info!(state = ?*observed.borrow_and_update(), "agent state");
                 }
             });
-            runtime.block_on(runner::serve(paths, Platform::Linux, state, stopped));
+            runtime.block_on(runner::serve(
+                paths,
+                Platform::Linux,
+                Some(Arc::new(inventory::collect)),
+                state,
+                stopped,
+            ));
             ExitCode::SUCCESS
         }
     }

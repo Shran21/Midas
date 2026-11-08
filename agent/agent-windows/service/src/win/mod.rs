@@ -1,6 +1,7 @@
 #![allow(unsafe_code)]
 //! Reviewed Win32 calls. Each unsafe block states why its pointers and handles are valid.
 
+pub mod inventory;
 pub mod service;
 
 use std::{ffi::c_void, io, os::windows::io::RawHandle, path::PathBuf, ptr};

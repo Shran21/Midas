@@ -43,7 +43,7 @@ impl VersionRange {
 
 #[derive(Clone, PartialEq, Message)]
 pub struct Envelope {
-    #[prost(oneof = "Body", tags = "1, 2, 3, 4, 5, 6, 7, 8, 9")]
+    #[prost(oneof = "Body", tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11")]
     pub body: Option<Body>,
 }
 
@@ -67,6 +67,10 @@ pub enum Body {
     MetricsBatch(MetricsBatch),
     #[prost(message, tag = "9")]
     MetricsAck(MetricsAck),
+    #[prost(message, tag = "10")]
+    InventoryUpdate(InventoryUpdate),
+    #[prost(message, tag = "11")]
+    InventoryAck(InventoryAck),
 }
 
 /// First message from the agent.
@@ -196,6 +200,55 @@ pub struct MetricsBatch {
 pub struct MetricsAck {
     #[prost(uint64, tag = "1")]
     pub sequence: u64,
+}
+
+/// Items per inventory chunk; keeps every chunk well below the message limit.
+pub const MAX_INVENTORY_ITEMS: usize = 200;
+pub const MAX_INVENTORY_TEXT: usize = 256;
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Message)]
+pub struct InventoryKey {
+    /// `hardware`, `os`, `disk`, `software` or `admin`.
+    #[prost(string, tag = "1")]
+    pub kind: String,
+    #[prost(string, tag = "2")]
+    pub key: String,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct InventoryItem {
+    #[prost(message, optional, tag = "1")]
+    pub key: Option<InventoryKey>,
+    #[prost(string, tag = "2")]
+    pub value: String,
+}
+
+/// One chunk of a full reconciliation or of a change set.
+#[derive(Clone, PartialEq, Message)]
+pub struct InventoryUpdate {
+    #[prost(uint64, tag = "1")]
+    pub sequence: u64,
+    /// A full reconciliation starts a new generation; changes carry the current one.
+    #[prost(uint64, tag = "2")]
+    pub generation: u64,
+    #[prost(bool, tag = "3")]
+    pub full: bool,
+    /// Set on the final chunk; a full reconciliation then removes everything not resent.
+    #[prost(bool, tag = "4")]
+    pub last: bool,
+    #[prost(message, repeated, tag = "5")]
+    pub upserts: Vec<InventoryItem>,
+    #[prost(message, repeated, tag = "6")]
+    pub removals: Vec<InventoryKey>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct InventoryAck {
+    #[prost(uint64, tag = "1")]
+    pub sequence: u64,
+    /// False when a change set did not match the stored generation; the agent then reconciles fully.
+    #[prost(bool, tag = "2")]
+    pub applied: bool,
 }
 
 #[derive(Debug)]
