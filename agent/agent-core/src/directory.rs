@@ -5,9 +5,11 @@ use ldap3::{
     adapters::{Adapter, EntriesOnly, PagedResults},
 };
 use midas_protocol::{
-    DirectoryAssignment, DirectoryReport,
+    DIRECTORY_CHUNK_BYTES, DirectoryAssignment, DirectoryChunk, DirectoryComputer, DirectoryReport,
+    MAX_DIRECTORY_CHUNK, MAX_DIRECTORY_DN, MAX_DIRECTORY_TEXT,
     directory::{valid_bases, within},
 };
+use prost::Message;
 use rustls::{
     ClientConfig, RootCertStore,
     pki_types::{CertificateDer, pem::PemObject},
@@ -17,6 +19,18 @@ use zeroize::Zeroizing;
 const PAGE_SIZE: i32 = 500;
 const TIMEOUT: Duration = Duration::from_secs(30);
 const COMPUTERS: &str = "(objectClass=computer)";
+const ATTRIBUTES: [&str; 7] = [
+    "objectGUID",
+    "cn",
+    "dNSHostName",
+    "operatingSystem",
+    "operatingSystemVersion",
+    "lastLogonTimestamp",
+    "userAccountControl",
+];
+/// Seconds between 1601-01-01 (Windows file time) and the Unix epoch.
+const FILETIME_EPOCH: i64 = 11_644_473_600;
+const ACCOUNT_DISABLED: u32 = 0x2;
 
 /// Read-only directory account, held only in the local agent configuration.
 #[derive(Clone)]
@@ -25,21 +39,106 @@ pub struct Credentials {
     pub password: Zeroizing<String>,
 }
 
-/// Connects to the assigned directory and counts the computer objects inside its boundary.
-pub async fn check(assignment: &DirectoryAssignment, credentials: &Credentials) -> DirectoryReport {
-    let (ok, objects, error) = match scan(assignment, credentials).await {
-        Ok(objects) => (true, objects, String::new()),
-        Err(code) => (false, 0, code.to_owned()),
+/// A finished scan: the computer objects inside the boundary and the closing report.
+pub struct Scan {
+    pub computers: Vec<DirectoryComputer>,
+    pub report: DirectoryReport,
+}
+
+impl Scan {
+    /// Chunks bounded by count and encoded size; the report follows the last one.
+    pub fn chunks(&self) -> Vec<DirectoryChunk> {
+        let mut chunks = Vec::new();
+        let mut current = DirectoryChunk {
+            revision: self.report.revision,
+            scan: self.report.scan,
+            computers: Vec::new(),
+        };
+        for computer in &self.computers {
+            let size =
+                1 + prost::length_delimiter_len(computer.encoded_len()) + computer.encoded_len();
+            if !current.computers.is_empty()
+                && (current.computers.len() == MAX_DIRECTORY_CHUNK
+                    || current.encoded_len() + size > DIRECTORY_CHUNK_BYTES)
+            {
+                let next = DirectoryChunk {
+                    computers: Vec::new(),
+                    ..current.clone()
+                };
+                chunks.push(std::mem::replace(&mut current, next));
+            }
+            current.computers.push(computer.clone());
+        }
+        if !current.computers.is_empty() {
+            chunks.push(current);
+        }
+        chunks
+    }
+}
+
+/// Connects to the assigned directory and reads the computer objects inside its boundary.
+pub async fn check(assignment: &DirectoryAssignment, credentials: &Credentials) -> Scan {
+    let (computers, error) = match scan(assignment, credentials).await {
+        Ok(computers) => (computers, String::new()),
+        Err(code) => (Vec::new(), code.to_owned()),
     };
-    if !ok {
+    if !error.is_empty() {
         tracing::warn!(error, "directory check failed");
     }
-    DirectoryReport {
+    let mut id = [0u8; 8];
+    let _ = getrandom::fill(&mut id);
+    let report = DirectoryReport {
         revision: assignment.revision,
-        ok,
-        objects,
+        ok: error.is_empty(),
+        objects: u32::try_from(computers.len()).unwrap_or(u32::MAX),
         error,
-    }
+        scan: if computers.is_empty() {
+            0
+        } else {
+            u64::from_le_bytes(id).max(1)
+        },
+    };
+    Scan { computers, report }
+}
+
+fn text(value: Option<&String>, limit: usize) -> String {
+    value
+        .map(|value| {
+            value
+                .chars()
+                .filter(|c| *c != '\u{0}')
+                .take(limit)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Only what identifies and describes the computer; everything else stays in the directory.
+fn computer(entry: SearchEntry) -> Option<DirectoryComputer> {
+    let first = |name: &str| entry.attrs.get(name).and_then(|values| values.first());
+    let object_guid = entry
+        .bin_attrs
+        .get("objectGUID")
+        .and_then(|values| values.first().cloned())
+        .or_else(|| first("objectGUID").map(|value| value.as_bytes().to_vec()))
+        .filter(|guid| guid.len() == 16)?;
+    let last_logon = first("lastLogonTimestamp")
+        .and_then(|value| value.parse::<i64>().ok())
+        .filter(|ticks| *ticks > 0)
+        .map_or(0, |ticks| ticks / 10_000_000 - FILETIME_EPOCH);
+    let disabled = first("userAccountControl")
+        .and_then(|value| value.parse::<u32>().ok())
+        .is_some_and(|flags| flags & ACCOUNT_DISABLED != 0);
+    Some(DirectoryComputer {
+        object_guid,
+        name: text(first("cn"), MAX_DIRECTORY_TEXT),
+        dns_host_name: text(first("dNSHostName"), MAX_DIRECTORY_TEXT),
+        distinguished_name: text(Some(&entry.dn), MAX_DIRECTORY_DN),
+        operating_system: text(first("operatingSystem"), MAX_DIRECTORY_TEXT),
+        operating_system_version: text(first("operatingSystemVersion"), MAX_DIRECTORY_TEXT),
+        last_logon: last_logon.max(0),
+        disabled,
+    })
 }
 
 fn trust(ca_pem: &str) -> Option<Arc<ClientConfig>> {
@@ -62,7 +161,7 @@ fn trust(ca_pem: &str) -> Option<Arc<ClientConfig>> {
 async fn scan(
     assignment: &DirectoryAssignment,
     credentials: &Credentials,
-) -> Result<u32, &'static str> {
+) -> Result<Vec<DirectoryComputer>, &'static str> {
     if !assignment.url.to_ascii_lowercase().starts_with("ldaps://") {
         return Err("insecure");
     }
@@ -87,7 +186,9 @@ async fn scan(
         .map_err(|_| "connect")?
         .success()
         .map_err(|_| "bind")?;
-    let mut objects = 0u32;
+    let mut computers = Vec::new();
+    // Overlapping boundaries must not list a computer twice.
+    let mut seen = std::collections::HashSet::new();
     for base in &assignment.base_dns {
         let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
             Box::new(EntriesOnly::new()),
@@ -100,17 +201,23 @@ async fn scan(
                 base,
                 Scope::Subtree,
                 COMPUTERS,
-                vec!["objectGUID", "dNSHostName", "cn"],
+                ATTRIBUTES.to_vec(),
             )
             .await
             .map_err(|_| "search")?;
         while let Some(entry) = search.next().await.map_err(|_| "search")? {
-            if within(&SearchEntry::construct(entry).dn, base) {
-                objects = objects.saturating_add(1);
+            let entry = SearchEntry::construct(entry);
+            // A distinguished name longer than the limit could not be checked against the boundary.
+            if entry.dn.chars().count() <= MAX_DIRECTORY_DN
+                && within(&entry.dn, base)
+                && let Some(computer) = computer(entry)
+                && seen.insert(computer.object_guid.clone())
+            {
+                computers.push(computer);
             }
         }
         search.finish().await.success().map_err(|_| "search")?;
     }
     let _ = ldap.unbind().await;
-    Ok(objects)
+    Ok(computers)
 }

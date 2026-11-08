@@ -17,6 +17,7 @@ A leltár (fajta, kulcs, érték) elemekből áll, értékenként legfeljebb 256
 | `disk` | a nem cserélhető kötetek mérete és fájlrendszere |
 | `software` | Windowson a registry Uninstall kulcsai (64 és 32 bites nézet, rendszerkomponensek nélkül), név → „verzió \| kiadó”; Linuxon a dpkg- vagy rpm-csomagok, név → „verzió architektúra” |
 | `admin` | Windowson a beépített Administrators csoport tagjai (a csoportot a jól ismert SID azonosítja, a lokalizált név miatt); Linuxon a root és a sudo, wheel, admin csoport tagjai |
+| `directory` | Windowson tartományi gépnél a DNS-tartomány (`domain`) és a saját számítógépfiók `objectGUID`-ja (`object_guid`); ez alapján egyezteti a szerver a felderített gépeket ([címtár-connector](cimtar-connector.md)) |
 
 ### Ütemezés és változások
 
@@ -60,6 +61,7 @@ The inventory consists of (kind, key, value) items, each value at most 256 chara
 | `disk` | size and file system of non-removable volumes |
 | `software` | on Windows the registry Uninstall keys (64- and 32-bit views, without system components), name → "version \| publisher"; on Linux dpkg or rpm packages, name → "version architecture" |
 | `admin` | on Windows the members of the built-in Administrators group (identified by its well-known SID because the name is localized); on Linux root plus members of sudo, wheel and admin |
+| `directory` | on a Windows domain member the DNS domain (`domain`) and its own computer account's `objectGUID` (`object_guid`); the server matches discovered computers by them ([directory connector](cimtar-connector.md#english)) |
 
 ### Schedule and changes
 

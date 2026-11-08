@@ -46,7 +46,7 @@ impl VersionRange {
 pub struct Envelope {
     #[prost(
         oneof = "Body",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16"
     )]
     pub body: Option<Body>,
 }
@@ -83,6 +83,8 @@ pub enum Body {
     PolicyAssignment(PolicyAssignment),
     #[prost(message, tag = "15")]
     RefreshRequest(RefreshRequest),
+    #[prost(message, tag = "16")]
+    DirectoryChunk(DirectoryChunk),
 }
 
 /// First message from the agent.
@@ -175,7 +177,51 @@ pub struct DirectoryReport {
     /// Stable error code such as `tls`, `bind` or `boundary`; never directory content.
     #[prost(string, tag = "4")]
     pub error: String,
+    /// The scan whose `DirectoryChunk`s precede this report; zero when nothing was sent.
+    #[prost(uint64, tag = "5")]
+    pub scan: u64,
 }
+
+/// One computer object inside the directory boundary; no other attribute leaves the directory.
+#[derive(Clone, PartialEq, Message)]
+pub struct DirectoryComputer {
+    /// The 16 bytes of `objectGUID` as the directory stores them.
+    #[prost(bytes = "vec", tag = "1")]
+    pub object_guid: Vec<u8>,
+    #[prost(string, tag = "2")]
+    pub name: String,
+    #[prost(string, tag = "3")]
+    pub dns_host_name: String,
+    #[prost(string, tag = "4")]
+    pub distinguished_name: String,
+    #[prost(string, tag = "5")]
+    pub operating_system: String,
+    #[prost(string, tag = "6")]
+    pub operating_system_version: String,
+    /// Unix seconds of `lastLogonTimestamp`; zero when unknown.
+    #[prost(int64, tag = "7")]
+    pub last_logon: i64,
+    #[prost(bool, tag = "8")]
+    pub disabled: bool,
+}
+
+/// Part of one directory scan; the `DirectoryReport` with the same `scan` closes it.
+#[derive(Clone, PartialEq, Message)]
+pub struct DirectoryChunk {
+    #[prost(uint64, tag = "1")]
+    pub revision: u64,
+    #[prost(uint64, tag = "2")]
+    pub scan: u64,
+    #[prost(message, repeated, tag = "3")]
+    pub computers: Vec<DirectoryComputer>,
+}
+
+pub const MAX_DIRECTORY_CHUNK: usize = 200;
+/// Encoded size limit of one chunk, well below `MAX_MESSAGE_BYTES`.
+pub const DIRECTORY_CHUNK_BYTES: usize = MAX_MESSAGE_BYTES / 2;
+/// Text attribute limits; longer values are cut by the connector and refused by the server.
+pub const MAX_DIRECTORY_TEXT: usize = 256;
+pub const MAX_DIRECTORY_DN: usize = 512;
 
 /// Most samples in one batch; the next batch waits for the acknowledgement.
 pub const MAX_BATCH_SAMPLES: usize = 60;

@@ -135,14 +135,9 @@ async fn directory(issuer: &Issuer<'static, KeyPair>, ops: Arc<Mutex<Vec<String>
                                 page.push("CN=ROGUE,OU=Elsewhere,DC=corp,DC=example".into());
                             }
                             for dn in page {
+                                let attributes = attributes(&dn);
                                 replies.push(reply(LdapOp::SearchResultEntry(
-                                    LdapSearchResultEntry {
-                                        dn,
-                                        attributes: vec![LdapPartialAttribute {
-                                            atype: "objectGUID".into(),
-                                            vals: vec![vec![7; 16]],
-                                        }],
-                                    },
+                                    LdapSearchResultEntry { dn, attributes },
                                 )));
                             }
                             let cookie = if end < matching.len() {
@@ -177,6 +172,48 @@ async fn directory(issuer: &Issuer<'static, KeyPair>, ops: Arc<Mutex<Vec<String>
     port
 }
 
+/// A distinct objectGUID per computer, as raw bytes that are not valid UTF-8.
+fn guid(dn: &str) -> Vec<u8> {
+    let mut bytes = [0xffu8; 16];
+    let hash = dn.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| {
+        (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
+    });
+    bytes[..8].copy_from_slice(&hash.to_le_bytes());
+    bytes.to_vec()
+}
+
+fn attributes(dn: &str) -> Vec<LdapPartialAttribute> {
+    let name = dn
+        .split(',')
+        .next()
+        .and_then(|first| first.strip_prefix("CN="))
+        .unwrap_or_default()
+        .to_owned();
+    let value = |atype: &str, value: String| LdapPartialAttribute {
+        atype: atype.into(),
+        vals: vec![value.into_bytes()],
+    };
+    vec![
+        LdapPartialAttribute {
+            atype: "objectGUID".into(),
+            vals: vec![guid(dn)],
+        },
+        value("cn", name.clone()),
+        value(
+            "dNSHostName",
+            format!("{}.corp.example", name.to_lowercase()),
+        ),
+        value("operatingSystem", "Windows 11 Pro".into()),
+        value("operatingSystemVersion", "10.0 (26100)".into()),
+        // 2026-11-01T00:00:00Z as Windows file time.
+        value("lastLogonTimestamp", "134379648000000000".into()),
+        value(
+            "userAccountControl",
+            if name == "PC-0007" { "4098" } else { "4096" }.into(),
+        ),
+    ]
+}
+
 fn assignment(port: u16, ca_pem: &str) -> DirectoryAssignment {
     DirectoryAssignment {
         revision: 4,
@@ -199,9 +236,51 @@ async fn reads_only_inside_the_boundary_with_paging() {
     let (ca, issuer) = authority();
     let ops = Arc::new(Mutex::new(Vec::new()));
     let port = directory(&issuer, ops.clone()).await;
-    let report = check(&assignment(port, &ca), &credentials(PASSWORD)).await;
+    let scan = check(&assignment(port, &ca), &credentials(PASSWORD)).await;
+    let report = &scan.report;
     assert!(report.ok, "{}", report.error);
     assert_eq!((report.revision, report.objects), (4, 1206));
+    assert_ne!(report.scan, 0);
+    let guids: std::collections::HashSet<_> = scan
+        .computers
+        .iter()
+        .map(|c| c.object_guid.clone())
+        .collect();
+    assert_eq!(guids.len(), 1206, "every computer keeps its own objectGUID");
+    let pc = scan.computers.iter().find(|c| c.name == "PC-0007").unwrap();
+    assert_eq!(
+        (
+            pc.dns_host_name.as_str(),
+            pc.operating_system.as_str(),
+            pc.last_logon,
+            pc.disabled
+        ),
+        (
+            "pc-0007.corp.example",
+            "Windows 11 Pro",
+            1_793_491_200,
+            true
+        )
+    );
+    assert_eq!(pc.object_guid, guid(&pc.distinguished_name));
+    assert!(
+        scan.computers
+            .iter()
+            .all(|c| !c.distinguished_name.contains("Domain Controllers")
+                && !c.distinguished_name.contains("ROGUE")),
+        "nothing outside the boundary"
+    );
+    let chunks = scan.chunks();
+    assert_eq!(
+        chunks.iter().map(|c| c.computers.len()).sum::<usize>(),
+        1206
+    );
+    assert!(chunks.iter().all(|c| {
+        c.scan == report.scan
+            && c.computers.len() <= midas_protocol::MAX_DIRECTORY_CHUNK
+            && midas_protocol::encode(midas_protocol::Body::DirectoryChunk(c.clone())).len()
+                < midas_protocol::MAX_MESSAGE_BYTES
+    }));
     let ops = ops.lock().unwrap().clone();
     let pages = ops.iter().filter(|op| op.starts_with("search ")).count();
     assert_eq!(pages, 4, "{ops:?}");
@@ -242,8 +321,9 @@ async fn refuses_untrusted_or_insecure_directories_and_bad_credentials() {
         (assignment(port, &ca), "", "bind"),
     ];
     for (assignment, password, error) in cases {
-        let report = check(&assignment, &credentials(password)).await;
-        assert!(!report.ok);
+        let scan = check(&assignment, &credentials(password)).await;
+        let report = &scan.report;
+        assert!(!report.ok && scan.computers.is_empty() && report.scan == 0);
         assert_eq!((report.objects, report.error.as_str()), (0, error));
     }
 }

@@ -1865,6 +1865,202 @@ pub async fn verify(database: &Database, admin: &mut PgConnection) {
         .bind(tenant).bind(server_device).fetch_one(&mut *admin).await.unwrap();
     assert_eq!(refreshes, 1);
 
+    // Discovery: the connector's scan becomes candidates. Only an identity the device's own agent
+    // reported links a computer to it; a host name or another customer's device never does.
+    let connector_identity = midas_server::enrollment::AgentIdentity {
+        tenant,
+        device: server_device,
+    };
+    let computer = |n: u8, dn: String, name: &str| midas_protocol::DirectoryComputer {
+        object_guid: vec![n; 16],
+        name: name.into(),
+        dns_host_name: format!("{}.corp.example", name.to_lowercase()),
+        distinguished_name: dn,
+        operating_system: "Windows 11 Pro".into(),
+        operating_system_version: "10.0 (26100)".into(),
+        last_logon: 1_793_491_200,
+        disabled: n == 4,
+    };
+    let in_boundary = |name: &str| format!("CN={name},{}", workstations[0]);
+    let chunk = |scan: u64, computers| midas_protocol::DirectoryChunk {
+        revision: 2,
+        scan,
+        computers,
+    };
+    let report = |scan: u64, objects: u32| midas_protocol::DirectoryReport {
+        revision: 2,
+        ok: true,
+        objects,
+        error: String::new(),
+        scan,
+    };
+    enrollment
+        .store_directory(
+            connector_identity,
+            &chunk(
+                11,
+                vec![
+                    computer(1, in_boundary("PC-01"), "PC-01"),
+                    computer(2, in_boundary("PC-02"), "PC-02"),
+                    computer(4, in_boundary("PC-04"), "PC-04"),
+                    computer(
+                        5,
+                        "CN=ROGUE,OU=Elsewhere,DC=corp,DC=example".into(),
+                        "ROGUE",
+                    ),
+                ],
+            ),
+        )
+        .await
+        .unwrap();
+    for (identity, scan_chunk) in [
+        (
+            midas_server::enrollment::AgentIdentity { tenant, device },
+            chunk(12, vec![computer(9, in_boundary("NOT-A-CONNECTOR"), "X")]),
+        ),
+        (
+            connector_identity,
+            midas_protocol::DirectoryChunk {
+                revision: 1,
+                ..chunk(12, vec![computer(9, in_boundary("OLD-REVISION"), "X")])
+            },
+        ),
+    ] {
+        enrollment
+            .store_directory(identity, &scan_chunk)
+            .await
+            .unwrap();
+    }
+    enrollment.record(connector_identity, &report(11, 3)).await;
+    let guid = |n: u8| Uuid::from_bytes_le([n; 16]);
+    sqlx::query("INSERT INTO midas.device_inventory (tenant_id, device_id, kind, key, value, generation) VALUES ($1, $2, 'directory', 'object_guid', $3, 1), ($1, $2, 'directory', 'domain', 'corp.example', 1)")
+        .bind(tenant).bind(server_device).bind(format!("{{{}}}", guid(1).to_string().to_uppercase()))
+        .execute(&mut *admin).await.unwrap();
+    let (namesake, foreign) = (Uuid::new_v4(), Uuid::new_v4());
+    for (owner, id, name) in [(tenant, namesake, "PC-02"), (other, foreign, "PC-02")] {
+        sqlx::query("INSERT INTO midas.devices (tenant_id, id, name, kind, platform, enrollment) VALUES ($1, $2, $3, 'workstation', 'windows', 'active')")
+            .bind(owner).bind(id).bind(name).execute(&mut *admin).await.unwrap();
+    }
+    sqlx::query("INSERT INTO midas.device_inventory (tenant_id, device_id, kind, key, value, generation) VALUES ($1, $2, 'directory', 'object_guid', $3, 1), ($1, $2, 'directory', 'domain', 'corp.example', 1)")
+        .bind(other).bind(foreign).bind(guid(2).to_string())
+        .execute(&mut *admin).await.unwrap();
+    let discovered = |client: &Client, owner: Uuid| {
+        let (app, client) = (app.clone(), client.clone());
+        async move {
+            call(
+                &app,
+                "GET",
+                &format!("/api/tenants/{owner}/directory/computers"),
+                Some(&client),
+                None,
+                &[],
+            )
+            .await
+        }
+    };
+    let (status, listed, _) = discovered(&manager, tenant).await;
+    assert_eq!(status, StatusCode::OK, "{listed}");
+    let summary: Vec<(String, String, usize, usize)> = listed
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| {
+            (
+                item["name"].as_str().unwrap().to_owned(),
+                item["status"].as_str().unwrap().to_owned(),
+                item["devices"].as_array().unwrap().len(),
+                item["name_matches"].as_array().unwrap().len(),
+            )
+        })
+        .collect();
+    let entry = |name: &str, status: &str, devices, hints| {
+        (name.to_owned(), status.to_owned(), devices, hints)
+    };
+    assert_eq!(
+        summary,
+        [
+            entry("PC-01", "managed", 1, 0),
+            entry("PC-02", "candidate", 0, 1),
+            entry("PC-04", "candidate", 0, 0),
+        ],
+        "the boundary holds, the same name is only a hint and another customer's claim is ignored"
+    );
+    let first = &listed[0];
+    assert_eq!(
+        (
+            &first["object_guid"],
+            &first["devices"][0]["id"],
+            &first["domain"],
+            &first["last_logon_at"]
+        ),
+        (
+            &json!(guid(1).to_string()),
+            &json!(server_device.to_string()),
+            &json!("corp.example"),
+            &json!(1_793_491_200)
+        )
+    );
+    assert_eq!(listed[2]["disabled"], true);
+    assert_eq!(listed[1]["name_matches"][0]["id"], namesake.to_string());
+    for (client, owner, expected) in [
+        (&outsider, tenant, StatusCode::NOT_FOUND),
+        (&technician, tenant, StatusCode::NOT_FOUND),
+    ] {
+        assert_eq!(discovered(client, owner).await.0, expected);
+    }
+    let (status, foreign_view, _) = discovered(&outsider, other).await;
+    assert_eq!((status, foreign_view), (StatusCode::OK, json!([])));
+
+    enrollment
+        .store_directory(
+            connector_identity,
+            &chunk(13, vec![computer(1, in_boundary("PC-01"), "PC-01")]),
+        )
+        .await
+        .unwrap();
+    enrollment.record(connector_identity, &report(13, 2)).await;
+    let removed = |listed: &serde_json::Value| -> Vec<bool> {
+        listed
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| !item["removed_at"].is_null())
+            .collect()
+    };
+    let (_, listed, _) = discovered(&manager, tenant).await;
+    assert_eq!(
+        removed(&listed),
+        [false, false, false],
+        "an incomplete scan removes nothing"
+    );
+    enrollment
+        .store_directory(
+            connector_identity,
+            &chunk(
+                14,
+                vec![
+                    computer(1, in_boundary("PC-01"), "PC-01"),
+                    computer(2, in_boundary("PC-02"), "PC-02"),
+                ],
+            ),
+        )
+        .await
+        .unwrap();
+    enrollment.record(connector_identity, &report(14, 2)).await;
+    let (_, listed, _) = discovered(&manager, tenant).await;
+    assert_eq!(
+        (removed(&listed), listed[2]["name"].clone()),
+        (vec![false, false, true], json!("PC-04")),
+        "a complete scan marks what it no longer lists as removed"
+    );
+    let stored: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM midas.directory_computers WHERE name IN ('ROGUE', 'X')",
+    )
+    .fetch_one(&mut *admin)
+    .await
+    .unwrap();
+    assert_eq!(stored, 0);
+
     let (_, created, _) = create(&manager, tenant, spec.clone()).await;
     sqlx::query("UPDATE midas.enrollment_tokens SET created_at = clock_timestamp() - interval '2 hours', expires_at = clock_timestamp() - interval '1 hour' WHERE id = $1")
         .bind(created["id"].as_str().unwrap().parse::<Uuid>().unwrap())

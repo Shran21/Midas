@@ -247,6 +247,15 @@ async fn serve(
                     break "closed";
                 }
             }
+            Ok(Ok(Body::DirectoryChunk(chunk))) => {
+                let (Some(identities), Some(identity)) = (&protocol.identities, identity) else {
+                    continue;
+                };
+                if identities.store_directory(identity, &chunk).await.is_err() {
+                    tracing::error!("directory entries could not be stored; closing the session");
+                    break "store";
+                }
+            }
             Ok(Ok(Body::DirectoryReport(report))) => {
                 if let (Some(identities), Some(identity)) = (&protocol.identities, identity) {
                     identities.record(identity, &report).await;

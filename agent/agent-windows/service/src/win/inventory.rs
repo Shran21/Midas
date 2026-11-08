@@ -6,11 +6,16 @@ use windows_sys::Win32::{
     NetworkManagement::NetManagement::{
         LOCALGROUP_MEMBERS_INFO_3, MAX_PREFERRED_LENGTH, NetApiBufferFree, NetLocalGroupGetMembers,
     },
-    Security::{Authorization::ConvertStringSidToSidW, LookupAccountSidW, PSID},
+    Security::{
+        Authentication::Identity::{GetComputerObjectNameW, NameUniqueId},
+        Authorization::ConvertStringSidToSidW,
+        LookupAccountSidW, PSID,
+    },
     System::Registry::{
         HKEY, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_32KEY, KEY_WOW64_64KEY, REG_SAM_FLAGS,
         RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegCloseKey, RegEnumKeyExW, RegGetValueW, RegOpenKeyExW,
     },
+    System::SystemInformation::{ComputerNameDnsDomain, GetComputerNameExW},
 };
 
 use super::{from_wide, wide};
@@ -19,12 +24,45 @@ const UNINSTALL: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
 /// Built-in Administrators; the group name itself is localized.
 const ADMINISTRATORS: &str = "S-1-5-32-544";
 
-/// Common inventory plus installed software and local administrators.
+/// Common inventory plus installed software, local administrators and the machine's own
+/// directory identity.
 pub fn collect() -> Snapshot {
     let mut snapshot = common();
     software(&mut snapshot);
     administrators(&mut snapshot);
+    if let Some((domain, guid)) = directory_identity() {
+        insert(&mut snapshot, "directory", "domain", domain);
+        insert(&mut snapshot, "directory", "object_guid", guid);
+    }
     snapshot
+}
+
+/// The DNS domain and the objectGUID of this computer's own directory account, as the local
+/// security authority knows them. The server matches discovered computers only by this.
+pub fn directory_identity() -> Option<(String, String)> {
+    let mut size = 256u32;
+    let mut domain = vec![0u16; size as usize];
+    // SAFETY: `domain` holds `size` UTF-16 units and both pointers are valid for the call.
+    let ok = unsafe { GetComputerNameExW(ComputerNameDnsDomain, domain.as_mut_ptr(), &mut size) };
+    if ok == 0 || size == 0 {
+        return None;
+    }
+    let domain =
+        String::from_utf16_lossy(&domain[..(size as usize).min(domain.len())]).to_lowercase();
+    let mut size = 64u32;
+    let mut name = vec![0u16; size as usize];
+    // SAFETY: `name` holds `size` UTF-16 units; the call fails on a computer outside a domain.
+    if !unsafe { GetComputerObjectNameW(NameUniqueId, name.as_mut_ptr(), &mut size) } {
+        return None;
+    }
+    // SAFETY: on success the buffer holds a NUL-terminated name.
+    let guid = unsafe { from_wide(name.as_ptr()) };
+    let guid = guid.trim_matches(['{', '}']).to_lowercase();
+    let valid = guid.len() == 36
+        && guid.chars().enumerate().all(|(index, c)| {
+            matches!(index, 8 | 13 | 18 | 23) == (c == '-') && (c == '-' || c.is_ascii_hexdigit())
+        });
+    valid.then_some((domain, guid))
 }
 
 struct Key(HKEY);

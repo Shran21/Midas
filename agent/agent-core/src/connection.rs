@@ -16,6 +16,8 @@ use tokio_tungstenite::{
 };
 
 const KEEPALIVE_LIMITS: (u32, u32) = (1, 300);
+/// How often the designated connector reads the directory again.
+pub const DIRECTORY_EVERY: Duration = Duration::from_secs(6 * 3600);
 
 #[derive(Clone)]
 pub struct Settings {
@@ -186,6 +188,13 @@ async fn session(
     // One directory check at a time; a newer assignment waits for the running one.
     let mut checking = false;
     let mut queued: Option<midas_protocol::DirectoryAssignment> = None;
+    // The directory is read again on a schedule while the assignment stays the same.
+    let mut current: Option<midas_protocol::DirectoryAssignment> = None;
+    let mut rescan = tokio::time::interval_at(
+        tokio::time::Instant::now() + DIRECTORY_EVERY,
+        DIRECTORY_EVERY,
+    );
+    rescan.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let mut upload = Upload::default();
     let mut inventory = InventoryUpload::default();
     let mut health = HealthUpload::default();
@@ -206,14 +215,29 @@ async fn session(
     }
     loop {
         tokio::select! {
-            Some(report) = finished.recv() => {
+            Some(scan) = finished.recv() => {
                 checking = false;
                 if let Some(next) = queued.take() {
                     checking = true;
                     directory_check(next, settings.directory.clone(), reports.clone());
                 }
-                if send(&mut socket, Body::DirectoryReport(report), keepalive).await.is_err() {
+                for chunk in scan.chunks() {
+                    if send(&mut socket, Body::DirectoryChunk(chunk), keepalive).await.is_err() {
+                        return Outcome::Ended { connected };
+                    }
+                }
+                if send(&mut socket, Body::DirectoryReport(scan.report), keepalive).await.is_err() {
                     return Outcome::Ended { connected };
+                }
+            }
+            _ = rescan.tick() => {
+                if let Some(assignment) = current.clone() {
+                    if checking {
+                        queued.get_or_insert(assignment);
+                    } else {
+                        checking = true;
+                        directory_check(assignment, settings.directory.clone(), reports.clone());
+                    }
                 }
             }
             _ = tick.tick() => {
@@ -275,6 +299,7 @@ async fn session(
                     }
                 }
                 Ok(Body::DirectoryAssignment(assignment)) => {
+                    current = Some(assignment.clone());
                     if checking {
                         queued = Some(assignment);
                     } else {
@@ -463,19 +488,23 @@ impl HealthUpload {
 fn directory_check(
     assignment: midas_protocol::DirectoryAssignment,
     credentials: Option<crate::directory::Credentials>,
-    reports: tokio::sync::mpsc::Sender<midas_protocol::DirectoryReport>,
+    reports: tokio::sync::mpsc::Sender<crate::directory::Scan>,
 ) {
     tokio::spawn(async move {
-        let report = match credentials {
+        let scan = match credentials {
             Some(credentials) => crate::directory::check(&assignment, &credentials).await,
-            None => midas_protocol::DirectoryReport {
-                revision: assignment.revision,
-                ok: false,
-                objects: 0,
-                error: "unconfigured".into(),
+            None => crate::directory::Scan {
+                computers: Vec::new(),
+                report: midas_protocol::DirectoryReport {
+                    revision: assignment.revision,
+                    ok: false,
+                    objects: 0,
+                    error: "unconfigured".into(),
+                    scan: 0,
+                },
             },
         };
-        let _ = reports.send(report).await;
+        let _ = reports.send(scan).await;
     });
 }
 

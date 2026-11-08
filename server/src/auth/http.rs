@@ -231,6 +231,10 @@ pub fn router(state: Arc<WebAuth>) -> Router {
             get(directory_connector).put(set_directory_connector),
         )
         .route(
+            "/api/tenants/{id}/directory/computers",
+            get(directory_computers),
+        )
+        .route(
             "/api/tenants/{id}/devices/{device}/{decision}",
             post(decide_device),
         )
@@ -939,6 +943,18 @@ async fn set_alert_recipients(
         .set_alert_recipients(&state.sessions, &context.token, id, &body)
         .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn directory_computers(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Vec<crate::discovery::ComputerView>>> {
+    Ok(Json(
+        enrollment(&state)?
+            .directory_computers(&state.sessions, &context.token, id)
+            .await?,
+    ))
 }
 
 async fn directory_connector(

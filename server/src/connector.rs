@@ -57,7 +57,7 @@ type ConnectorRow = (
 );
 
 impl Enrollment {
-    async fn directory_operator(
+    pub(crate) async fn directory_operator(
         &self,
         sessions: &Sessions,
         token: &SessionToken,
@@ -197,6 +197,8 @@ impl Enrollment {
     }
 
     /// Stores a check result; reports from other devices or for older revisions are ignored.
+    /// A successful scan whose computers all arrived closes it: entries it did not list are
+    /// marked removed.
     pub async fn record(&self, identity: AgentIdentity, report: &DirectoryReport) {
         let error = report.error.as_str();
         if error.len() > 32 || !error.bytes().all(|b| b.is_ascii_lowercase() || b == b'_') {
@@ -207,11 +209,36 @@ impl Enrollment {
         };
         let stored = async {
             let mut tx = self.tenant_tx(identity.tenant).await?;
-            sqlx::query("UPDATE midas.directory_connectors SET last_check_at = clock_timestamp(), last_check_revision = revision, last_check_ok = $3, last_check_objects = $4, last_check_error = $5 WHERE device_id = $1 AND revision = $2")
+            let current = sqlx::query("UPDATE midas.directory_connectors SET last_check_at = clock_timestamp(), last_check_revision = revision, last_check_ok = $3, last_check_objects = $4, last_check_error = $5 WHERE device_id = $1 AND revision = $2")
                 .bind(identity.device).bind(revision).bind(report.ok)
                 .bind(i32::try_from(report.objects).unwrap_or(i32::MAX)).bind(error)
-                .execute(&mut *tx).await?;
-            tx.commit().await
+                .execute(&mut *tx).await?.rows_affected() == 1;
+            let mut closed = false;
+            if current && report.ok {
+                let scan = report.scan.cast_signed();
+                let arrived: i64 = sqlx::query_scalar(
+                    "SELECT count(*) FROM midas.directory_computers WHERE scan = $1",
+                )
+                .bind(scan)
+                .fetch_one(&mut *tx)
+                .await?;
+                if arrived == i64::from(report.objects) {
+                    sqlx::query("UPDATE midas.directory_computers SET removed_at = clock_timestamp() WHERE scan <> $1 AND removed_at IS NULL")
+                        .bind(scan).execute(&mut *tx).await?;
+                    closed = true;
+                } else {
+                    tracing::warn!(
+                        arrived,
+                        expected = report.objects,
+                        "directory scan incomplete; nothing marked removed"
+                    );
+                }
+            }
+            tx.commit().await?;
+            if closed {
+                self.changed(identity.tenant);
+            }
+            Ok::<(), sqlx::Error>(())
         };
         if stored.await.is_err() {
             tracing::error!("directory report could not be stored");
