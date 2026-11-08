@@ -1,8 +1,8 @@
 use std::ptr;
 
 use midas_agent_core::health::{
-    ANTIVIRUS, ENCRYPTION, Finding, SERVICES, STORAGE, UPDATES, combine, days_between, result,
-    services as services_check, space, unavailable, volumes,
+    ANTIVIRUS, ENCRYPTION, Finding, SERVICES, STORAGE, Thresholds, UPDATES, combine, days_between,
+    result, services as services_check, space, unavailable, volumes,
 };
 use midas_protocol::{HealthCheck, HealthState};
 use windows::{
@@ -58,15 +58,15 @@ const REBOOT_KEYS: [&str; 2] = [
     r"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending",
 ];
 
-pub fn check() -> Vec<HealthCheck> {
-    let com = Com::init();
-    let com = com.is_some();
+pub fn check(limits: &Thresholds) -> Vec<HealthCheck> {
+    let guard = Com::init();
+    let com = guard.is_some();
     vec![
         services(),
-        updates(com),
-        antivirus(com),
+        updates(com, limits),
+        antivirus(com, limits),
         encryption(com),
-        storage(com),
+        storage(com, limits),
     ]
 }
 
@@ -387,6 +387,7 @@ fn update_findings(
     reboot: bool,
     dates: Option<(Option<i64>, Option<i64>)>,
     now: i64,
+    limits: &Thresholds,
 ) -> Vec<Finding> {
     let mut findings = Vec::new();
     if reboot {
@@ -407,8 +408,8 @@ fn update_findings(
             "No successful update installation is recorded",
             [],
         )),
-        Some(days) if days > 35 => findings.push(Finding::new(
-            if days > 60 {
+        Some(days) if days > limits.update_warning_days => findings.push(Finding::new(
+            if days > limits.update_critical_days {
                 HealthState::Critical
             } else {
                 HealthState::Warning
@@ -432,13 +433,18 @@ fn update_findings(
     findings
 }
 
-fn updates(com: bool) -> HealthCheck {
+fn updates(com: bool, limits: &Thresholds) -> HealthCheck {
     let reboot = REBOOT_KEYS.iter().any(|key| key_exists(key));
     let dates = if com { update_dates() } else { None };
     if dates.is_none() && !reboot {
         return unavailable(UPDATES, "error", "Windows Update status could not be read");
     }
-    let findings = update_findings(reboot, dates, midas_agent_core::inventory::unix_now());
+    let findings = update_findings(
+        reboot,
+        dates,
+        midas_agent_core::inventory::unix_now(),
+        limits,
+    );
     combine(UPDATES, "current", "Updates are current", &findings)
 }
 
@@ -453,7 +459,7 @@ struct Defender {
     other_product: bool,
 }
 
-fn defender(status: &Defender) -> HealthCheck {
+fn defender(status: &Defender, limits: &Thresholds) -> HealthCheck {
     let off = status.service == Some(false)
         || status.antivirus == Some(false)
         || status.realtime == Some(false);
@@ -495,11 +501,11 @@ fn defender(status: &Defender) -> HealthCheck {
             [],
         ));
     }
-    if let Some(days) = status.signature_days
-        && days > 3
+    if let Some(days) = status.signature_days.map(i64::from)
+        && days > limits.signature_warning_days
     {
         findings.push(Finding::new(
-            if days > 7 {
+            if days > limits.signature_critical_days {
                 HealthState::Critical
             } else {
                 HealthState::Warning
@@ -517,7 +523,7 @@ fn defender(status: &Defender) -> HealthCheck {
     )
 }
 
-fn antivirus(com: bool) -> HealthCheck {
+fn antivirus(com: bool, limits: &Thresholds) -> HealthCheck {
     if !com {
         return not_available(ANTIVIRUS, "Microsoft Defender", &Failure::Error);
     }
@@ -531,14 +537,17 @@ fn antivirus(com: bool) -> HealthCheck {
     let Some(row) = rows.first() else {
         return not_available(ANTIVIRUS, "Microsoft Defender", &Failure::Missing);
     };
-    defender(&Defender {
-        service: row.flag("AMServiceEnabled"),
-        antivirus: row.flag("AntivirusEnabled"),
-        realtime: row.flag("RealTimeProtectionEnabled"),
-        signature_days: row.number("AntivirusSignatureAge"),
-        mode: row.text("AMRunningMode"),
-        other_product: security_center_protected(),
-    })
+    defender(
+        &Defender {
+            service: row.flag("AMServiceEnabled"),
+            antivirus: row.flag("AntivirusEnabled"),
+            realtime: row.flag("RealTimeProtectionEnabled"),
+            signature_days: row.number("AntivirusSignatureAge"),
+            mode: row.text("AMRunningMode"),
+            other_product: security_center_protected(),
+        },
+        limits,
+    )
 }
 
 /// Security Center exists on client editions only; elsewhere this is false.
@@ -694,7 +703,7 @@ fn disk_findings(disks: &[(String, u32)]) -> Vec<Finding> {
     findings
 }
 
-fn storage(com: bool) -> HealthCheck {
+fn storage(com: bool, limits: &Thresholds) -> HealthCheck {
     let volumes = volumes();
     let disks = com
         .then(|| {
@@ -708,7 +717,7 @@ fn storage(com: bool) -> HealthCheck {
     if volumes.is_empty() && disks.is_none() {
         return unavailable(STORAGE, "error", "Volumes and disks could not be read");
     }
-    let mut findings = space(&volumes);
+    let mut findings = space(&volumes, limits);
     if let Some(rows) = disks {
         let disks: Vec<(String, u32)> = rows
             .iter()
@@ -733,6 +742,38 @@ fn storage(com: bool) -> HealthCheck {
 mod tests {
     use super::*;
 
+    fn defend(status: &Defender) -> HealthCheck {
+        defender(status, &Thresholds::default())
+    }
+
+    #[test]
+    fn policy_limits_change_the_verdicts() {
+        use midas_protocol::{PolicySetting, policy};
+        let relaxed = Thresholds::from_policy(&[
+            PolicySetting {
+                key: policy::UPDATE_WARNING_DAYS.key.into(),
+                value: 45,
+            },
+            PolicySetting {
+                key: policy::SIGNATURE_WARNING_DAYS.key.into(),
+                value: 10,
+            },
+        ]);
+        let now = 1_800_000_000;
+        let old = Some((Some(now - 40 * 86_400), Some(now)));
+        assert_eq!(
+            update_findings(false, old, now, &Thresholds::default()).len(),
+            1
+        );
+        assert!(update_findings(false, old, now, &relaxed).is_empty());
+        let status = Defender {
+            signature_days: Some(5),
+            ..Defender::default()
+        };
+        assert_eq!(defend(&status).code, "signatures_old");
+        assert_eq!(defender(&status, &relaxed).code, "protected");
+    }
+
     fn state(check: &HealthCheck) -> HealthState {
         HealthState::try_from(check.state).unwrap()
     }
@@ -747,8 +788,8 @@ mod tests {
             mode: Some("Normal".into()),
             other_product: false,
         };
-        assert_eq!(defender(&healthy).code, "protected");
-        let off = defender(&Defender {
+        assert_eq!(defend(&healthy).code, "protected");
+        let off = defend(&Defender {
             antivirus: Some(false),
             ..Defender::default()
         });
@@ -756,7 +797,7 @@ mod tests {
             (state(&off), off.code.as_str()),
             (HealthState::Critical, "disabled")
         );
-        let realtime = defender(&Defender {
+        let realtime = defend(&Defender {
             realtime: Some(false),
             signature_days: Some(5),
             ..Defender::default()
@@ -766,7 +807,7 @@ mod tests {
             (HealthState::Critical, "realtime_off")
         );
         assert!(realtime.summary.contains("5 days old"));
-        let stale = defender(&Defender {
+        let stale = defend(&Defender {
             signature_days: Some(9),
             ..Defender::default()
         });
@@ -782,7 +823,7 @@ mod tests {
                 ["9".to_owned()].as_slice()
             )
         );
-        let passive = defender(&Defender {
+        let passive = defend(&Defender {
             realtime: Some(false),
             mode: Some("Passive Mode".into()),
             ..Defender::default()
@@ -791,7 +832,7 @@ mod tests {
             (state(&passive), passive.code.as_str()),
             (HealthState::Ok, "passive")
         );
-        let replaced = defender(&Defender {
+        let replaced = defend(&Defender {
             antivirus: Some(false),
             signature_days: Some(400),
             other_product: true,
@@ -843,8 +884,21 @@ mod tests {
     fn update_age_and_pending_restart_are_reported() {
         let now = 1_800_000_000;
         let day = 86_400;
-        assert!(update_findings(false, Some((Some(now - day), Some(now))), now).is_empty());
-        let old = update_findings(true, Some((Some(now - 40 * day), Some(now - 9 * day))), now);
+        assert!(
+            update_findings(
+                false,
+                Some((Some(now - day), Some(now))),
+                now,
+                &Thresholds::default()
+            )
+            .is_empty()
+        );
+        let old = update_findings(
+            true,
+            Some((Some(now - 40 * day), Some(now - 9 * day))),
+            now,
+            &Thresholds::default(),
+        );
         let codes: Vec<_> = old
             .iter()
             .map(|finding| (finding.state, finding.code))
@@ -857,14 +911,22 @@ mod tests {
                 (HealthState::Warning, "search_failed"),
             ]
         );
-        let ancient = update_findings(false, Some((Some(now - 61 * day), None)), now);
+        let ancient = update_findings(
+            false,
+            Some((Some(now - 61 * day), None)),
+            now,
+            &Thresholds::default(),
+        );
         assert_eq!(
             (ancient[0].state, ancient[0].code),
             (HealthState::Critical, "outdated")
         );
-        let never = update_findings(false, Some((None, Some(now))), now);
+        let never = update_findings(false, Some((None, Some(now))), now, &Thresholds::default());
         assert_eq!(never[0].code, "outdated");
-        assert_eq!(update_findings(true, None, now).len(), 1);
+        assert_eq!(
+            update_findings(true, None, now, &Thresholds::default()).len(),
+            1
+        );
     }
 
     #[test]

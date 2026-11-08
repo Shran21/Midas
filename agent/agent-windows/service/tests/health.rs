@@ -7,7 +7,7 @@ use midas_protocol::HealthState;
 /// legitimately be unavailable, but it must say why instead of disappearing.
 #[test]
 fn the_real_machine_answers_every_check() {
-    let checks = check();
+    let checks = check(&midas_agent_core::health::Thresholds::default());
     let ids: Vec<&str> = checks.iter().map(|check| check.id.as_str()).collect();
     assert_eq!(ids, CHECKS);
     for check in &checks {

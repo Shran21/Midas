@@ -192,6 +192,20 @@ pub fn router(state: Arc<WebAuth>) -> Router {
             get(device_health),
         )
         .route(
+            "/api/tenants/{id}/devices/{device}/policy",
+            get(device_policy),
+        )
+        .route("/api/tenants/{id}/policies", get(policies))
+        .route(
+            "/api/tenants/{id}/policies/{level}/{scope}/{key}",
+            put(set_policy).delete(clear_policy),
+        )
+        .route("/api/tenants/{id}/groups", get(groups).post(create_group))
+        .route(
+            "/api/tenants/{id}/groups/{group}/devices/{device}",
+            put(add_member_device).delete(remove_member_device),
+        )
+        .route(
             "/api/tenants/{id}/directory-connector",
             get(directory_connector).put(set_directory_connector),
         )
@@ -692,6 +706,111 @@ async fn device_health(
             .health(&state.sessions, &context.token, id, device)
             .await?,
     ))
+}
+
+async fn device_policy(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((id, device)): Path<(Uuid, Uuid)>,
+) -> Result<Json<Vec<crate::policy::EffectiveSetting>>> {
+    Ok(Json(
+        enrollment(&state)?
+            .device_policy(&state.sessions, &context.token, id, device)
+            .await?,
+    ))
+}
+
+async fn policies(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<crate::policy::PolicyView>> {
+    Ok(Json(
+        enrollment(&state)?
+            .policies(&state.sessions, &context.token, id)
+            .await?,
+    ))
+}
+
+async fn set_policy(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((id, level, scope, key)): Path<(Uuid, crate::policy::Level, Uuid, String)>,
+    Json(body): Json<crate::policy::ValueSpec>,
+) -> Result<StatusCode> {
+    enrollment(&state)?
+        .set_policy(
+            &state.sessions,
+            &context.token,
+            id,
+            (level, scope, &key),
+            body.value,
+        )
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn clear_policy(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((id, level, scope, key)): Path<(Uuid, crate::policy::Level, Uuid, String)>,
+) -> Result<StatusCode> {
+    if !enrollment(&state)?
+        .clear_policy(&state.sessions, &context.token, id, (level, scope, &key))
+        .await?
+    {
+        return Err(Failure(StatusCode::NOT_FOUND, "not_found"));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn groups(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Vec<crate::policy::Group>>> {
+    Ok(Json(
+        enrollment(&state)?
+            .groups(&state.sessions, &context.token, id)
+            .await?,
+    ))
+}
+
+async fn create_group(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<crate::policy::GroupSpec>,
+) -> Result<(StatusCode, Json<crate::policy::Group>)> {
+    let group = enrollment(&state)?
+        .create_group(&state.sessions, &context.token, id, &body)
+        .await?;
+    Ok((StatusCode::CREATED, Json(group)))
+}
+
+async fn add_member_device(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((id, group, device)): Path<(Uuid, Uuid, Uuid)>,
+) -> Result<StatusCode> {
+    enrollment(&state)?
+        .set_membership(&state.sessions, &context.token, id, (group, device), true)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn remove_member_device(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((id, group, device)): Path<(Uuid, Uuid, Uuid)>,
+) -> Result<StatusCode> {
+    if !enrollment(&state)?
+        .set_membership(&state.sessions, &context.token, id, (group, device), false)
+        .await?
+    {
+        return Err(Failure(StatusCode::NOT_FOUND, "not_found"));
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn directory_connector(

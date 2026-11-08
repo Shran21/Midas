@@ -24,6 +24,7 @@ Az agent egy tartós, kimenő, hitelesített kapcsolattal csatlakozik a szerverh
 | `MetricsBatch` / `MetricsAck` | agent → szerver, illetve vissza | legfeljebb 60 perces minta és a tárolás utáni nyugta ([metrikák](metrikak.md)) |
 | `InventoryUpdate` / `InventoryAck` | agent → szerver, illetve vissza | teljes leltár vagy változáscsomag darabja és a nyugta ([leltár](leltar.md)) |
 | `HealthReport` / `HealthAck` | agent → szerver, illetve vissza | az ellenőrzések legutóbbi eredménye és a tárolás utáni nyugta ([állapotellenőrzések](allapotellenorzes.md)) |
+| `PolicyAssignment` | szerver → agent | az eszköz öröklés utáni, érvényes beállításai; kapcsolódáskor és változáskor ([szabályzatok](szabalyzatok.md)) |
 
 ### Verziók és kompatibilitás
 
@@ -81,6 +82,7 @@ The agent connects to the server over one persistent, outbound, authenticated co
 | `MetricsBatch` / `MetricsAck` | agent → server and back | up to 60 minute samples and the acknowledgement after storage ([metrics](metrikak.md#english)) |
 | `InventoryUpdate` / `InventoryAck` | agent → server and back | a chunk of a full inventory or change set and its acknowledgement ([inventory](leltar.md#english)) |
 | `HealthReport` / `HealthAck` | agent → server and back | the latest check results and the acknowledgement after storage ([health checks](allapotellenorzes.md#english)) |
+| `PolicyAssignment` | server → agent | the device's effective settings after inheritance; on connecting and on change ([policies](szabalyzatok.md#english)) |
 
 ### Versions and compatibility
 

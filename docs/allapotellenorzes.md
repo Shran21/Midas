@@ -50,7 +50,7 @@ Az agent a `Hello` üzenetben felsorolja, mit tud az adott platformon, például
 
 - Valódi szolgáltatás-, Defender- és BitLocker-hibát a fejlesztői gépen nem idéztem elő, mert az a gép biztonsági beállításait módosítaná; ezeket a szimulált tesztek fedik. A tulajdonosi Windows- és Linux-próba ([Windows](meresek/windows-szolgaltatas.md), [Linux](meresek/linux-agent.md)) a szolgáltatásjoggal futó lekérdezést is megmutatja.
 - Linuxon a `dnf --cacheonly` a megerősített unit alatt cache nélkül sikertelen lehet; ekkor a frissítési ellenőrzés `unavailable` / `error`.
-- A küszöbök egyelőre rögzítettek; testreszabásuk a szabályzatokhoz (MIDAS-028) tartozik.
+- A szabadhely-, frissítési és definíciós küszöbök ügyfél-, telephely- és csoportszabályzattal módosíthatók ([szabályzatok](szabalyzatok.md)); az itt leírt értékek az alapértékek.
 
 ## English
 
@@ -105,4 +105,4 @@ The agent lists in its `Hello` what it can do on its platform, such as `metrics`
 
 - Real service, Defender and BitLocker failures were not provoked on the development machine, because that would change its security settings; the simulated tests cover them. The owner's Windows and Linux trials ([Windows](meresek/windows-szolgaltatas.md#english), [Linux](meresek/linux-agent.md#english)) also show the queries running with service rights.
 - On Linux `dnf --cacheonly` may fail under the hardened unit without a cache; the update check is then `unavailable` / `error`.
-- Thresholds are fixed for now; customizing them belongs to policies (MIDAS-028).
+- Free-space, update and security-intelligence thresholds can be changed by customer, site and group policies ([policies](szabalyzatok.md#english)); the values above are the defaults.

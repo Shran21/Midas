@@ -192,6 +192,8 @@ pub struct Signal {
     pub revoked: bool,
     /// Bumped when the device's directory assignment changes.
     pub refresh: u64,
+    /// Bumped when a policy value or the device's groups may have changed.
+    pub policy: u64,
 }
 
 type Live = Arc<Mutex<HashMap<Uuid, watch::Sender<Signal>>>>;

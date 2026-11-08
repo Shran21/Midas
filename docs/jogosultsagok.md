@@ -51,6 +51,11 @@ Jogosultság nem bővíthető a kezelő saját köre fölé: szerep vagy engedé
 | `GET /api/tenants/{id}/devices/pending` | Ügyfélszintű `device.enroll` |
 | `PUT /api/tenants/{id}/directory-connector` | `directory.discover`, friss passkey ([címtár-connector](cimtar-connector.md)) |
 | `GET /api/tenants/{id}/directory-connector` | Ügyfélszintű `directory.discover` |
+| `GET /api/tenants/{id}/devices/{device}/inventory`, `…/health`, `…/policy` | `device.read` az eszközre ([leltár](leltar.md), [állapotellenőrzések](allapotellenorzes.md), [szabályzatok](szabalyzatok.md)) |
+| `GET /api/tenants/{id}/policies` | Ügyfélszintű `policy.manage` |
+| `PUT /api/tenants/{id}/policies/{szint}/{hatókör}/{kulcs}`, `DELETE …` | `policy.manage`, friss passkey |
+| `GET /api/tenants/{id}/groups` | Ügyfélszintű `access.manage` |
+| `POST /api/tenants/{id}/groups`, `PUT …/groups/{csoport}/devices/{eszköz}`, `DELETE …` | `access.manage`, friss passkey (a csoporttagság a szerepek hatókörét is meghatározza) |
 
 A webpanel Hozzáférés nézete a tagokat, szerepeket, szabályokat és telephelyeket kezeli; a platformadminisztrátor Ügyfelek nézete új ügyfelet és technikust hoz létre, a kódokat egyszer mutatja meg. A technikus saját passkeyjének regisztrációja az első beállítási folyamattal együtt készül.
 
@@ -74,6 +79,7 @@ A webpanel Hozzáférés nézete a tagokat, szerepeket, szabályokat és telephe
 | `domain.join` | Tartományba léptetés | Igen |
 | `directory.discover` | Címtár-connector kijelölése és felderítés | Igen |
 | `access.manage` | Ügyfélhez tartozó hozzáférés kezelése | Igen |
+| `policy.manage` | Ügyfél-, telephely- és csoportszabályzatok kezelése | Igen |
 | `audit.read` | Ügyfélhez tartozó audit olvasása | Nem |
 
 A frissesség jelenleg legfeljebb ötperces, ellenőrzött passkey-belépést jelent. TOTP vagy helyreállító kód nem teljesíti, még Administrator szereppel sem. A munkamenet aktuális állapota és a hitelesítők verziója is érvényes kell legyen. A későbbi, konkrét művelethez kötött újbóli megerősítés és a rövid életű végrehajtási felhatalmazás nem része ennek a modulnak.
@@ -140,6 +146,11 @@ Managers cannot exceed their own access: granting a role or allow, removing a de
 | `GET /api/tenants/{id}/devices/pending` | Tenant-wide `device.enroll` |
 | `PUT /api/tenants/{id}/directory-connector` | `directory.discover`, fresh passkey ([directory connector](cimtar-connector.md#english)) |
 | `GET /api/tenants/{id}/directory-connector` | Tenant-wide `directory.discover` |
+| `GET /api/tenants/{id}/devices/{device}/inventory`, `…/health`, `…/policy` | `device.read` for the device ([inventory](leltar.md#english), [health checks](allapotellenorzes.md#english), [policies](szabalyzatok.md#english)) |
+| `GET /api/tenants/{id}/policies` | Tenant-wide `policy.manage` |
+| `PUT /api/tenants/{id}/policies/{level}/{scope}/{key}`, `DELETE …` | `policy.manage`, fresh passkey |
+| `GET /api/tenants/{id}/groups` | Tenant-wide `access.manage` |
+| `POST /api/tenants/{id}/groups`, `PUT …/groups/{group}/devices/{device}`, `DELETE …` | `access.manage`, fresh passkey (group membership also scopes roles) |
 
 The web panel's Access view manages members, roles, rules and sites; the platform administrator's Customers view creates tenants and technicians and shows the codes once. Technicians register their own passkey with the first-run setup flow.
 
@@ -163,6 +174,7 @@ The web panel's Access view manages members, roles, rules and sites; the platfor
 | `domain.join` | Domain joining | Yes |
 | `directory.discover` | Directory connector designation and discovery | Yes |
 | `access.manage` | Tenant access administration | Yes |
+| `policy.manage` | Customer, site and group policy administration | Yes |
 | `audit.read` | Tenant audit reads | No |
 
 Fresh currently means a verified passkey login within five minutes, with a still-valid session and credential version. Password+TOTP and recovery never qualify, including for Administrators. Future request-bound step-up verification and short-lived execution grants remain separate work.

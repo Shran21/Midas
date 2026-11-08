@@ -45,6 +45,11 @@ names!(Action {
     EnrollmentReject => "device.enroll_reject",
     DeviceRevoke => "device.revoke",
     DirectoryConnectorSet => "directory.connector_set",
+    PolicySet => "policy.set",
+    PolicyClear => "policy.clear",
+    GroupCreate => "inventory.group_create",
+    GroupMemberAdd => "inventory.group_member_add",
+    GroupMemberRemove => "inventory.group_member_remove",
 });
 names!(Outcome {
     Success => "success",

@@ -6,8 +6,8 @@ use std::{
 };
 
 use midas_agent_core::health::{
-    ANTIVIRUS, ENCRYPTION, Finding, SERVICES, STORAGE, UPDATES, combine, result, services, space,
-    unavailable, volumes,
+    ANTIVIRUS, ENCRYPTION, Finding, SERVICES, STORAGE, Thresholds, UPDATES, combine, result,
+    services, space, unavailable, volumes,
 };
 use midas_protocol::{HealthCheck, HealthState};
 
@@ -21,7 +21,7 @@ const MOUNTINFO: &str = "/proc/self/mountinfo";
 const BLOCK_DEVICES: &str = "/sys/dev/block";
 const EXT4: &str = "/sys/fs/ext4";
 
-pub fn check() -> Vec<HealthCheck> {
+pub fn check(limits: &Thresholds) -> Vec<HealthCheck> {
     vec![
         service_check(),
         updates(),
@@ -31,7 +31,7 @@ pub fn check() -> Vec<HealthCheck> {
             "No antivirus check is available on Linux",
         ),
         encryption(),
-        storage(),
+        storage(limits),
     ]
 }
 
@@ -304,12 +304,12 @@ pub fn file_system_errors(directory: &Path) -> Vec<String> {
     failing
 }
 
-fn storage() -> HealthCheck {
+fn storage(limits: &Thresholds) -> HealthCheck {
     let volumes = volumes();
     if volumes.is_empty() {
         return unavailable(STORAGE, "error", "No file system could be read");
     }
-    let mut findings = space(&volumes);
+    let mut findings = space(&volumes, limits);
     let failing = file_system_errors(Path::new(EXT4));
     if !failing.is_empty() {
         findings.push(Finding::new(
@@ -441,7 +441,7 @@ mod tests {
 
     #[test]
     fn antivirus_is_reported_as_unavailable() {
-        let checks = check();
+        let checks = check(&Thresholds::default());
         let antivirus = checks.iter().find(|check| check.id == ANTIVIRUS).unwrap();
         assert_eq!(antivirus.state, HealthState::Unavailable as i32);
         assert_eq!(checks.len(), 5);

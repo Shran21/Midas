@@ -4,13 +4,57 @@ use std::{
 };
 
 use midas_protocol::{
-    HealthCheck, HealthReport, HealthState, MAX_HEALTH_CHECKS, MAX_HEALTH_SUBJECTS, MAX_HEALTH_TEXT,
+    HealthCheck, HealthReport, HealthState, MAX_HEALTH_CHECKS, MAX_HEALTH_SUBJECTS,
+    MAX_HEALTH_TEXT, PolicySetting, policy,
 };
 use prost::Message;
-use tokio::sync::watch;
+use tokio::sync::{Notify, watch};
 
 /// Platform-specific checks; they may block, so they run on a blocking thread.
-pub type Checker = Arc<dyn Fn() -> Vec<HealthCheck> + Send + Sync>;
+pub type Checker = Arc<dyn Fn(&Thresholds) -> Vec<HealthCheck> + Send + Sync>;
+
+/// Limits the server may override through policy; out-of-range values are clamped.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Thresholds {
+    pub low_space_percent: u64,
+    pub critical_space_percent: u64,
+    pub update_warning_days: i64,
+    pub update_critical_days: i64,
+    pub signature_warning_days: i64,
+    pub signature_critical_days: i64,
+}
+
+impl Default for Thresholds {
+    fn default() -> Self {
+        Self::from_policy(&[])
+    }
+}
+
+impl Thresholds {
+    /// Defaults with the assigned settings applied; unknown keys are ignored.
+    pub fn from_policy(settings: &[PolicySetting]) -> Self {
+        let value = |setting: &policy::Setting| {
+            settings
+                .iter()
+                .rev()
+                .find(|assigned| assigned.key == setting.key)
+                .map_or(setting.default, |assigned| setting.clamp(assigned.value))
+        };
+        let percent = |setting| u64::try_from(value(setting)).unwrap_or(1);
+        let low_space_percent = percent(&policy::LOW_SPACE_PERCENT);
+        let update_warning_days = value(&policy::UPDATE_WARNING_DAYS);
+        let signature_warning_days = value(&policy::SIGNATURE_WARNING_DAYS);
+        Self {
+            low_space_percent,
+            critical_space_percent: percent(&policy::CRITICAL_SPACE_PERCENT).min(low_space_percent),
+            update_warning_days,
+            update_critical_days: value(&policy::UPDATE_CRITICAL_DAYS).max(update_warning_days),
+            signature_warning_days,
+            signature_critical_days: value(&policy::SIGNATURE_CRITICAL_DAYS)
+                .max(signature_warning_days),
+        }
+    }
+}
 
 pub const CHECK_EVERY: Duration = Duration::from_secs(5 * 60);
 /// An unchanged result is resent this often so the server knows it is current.
@@ -22,9 +66,7 @@ pub const ANTIVIRUS: &str = "antivirus";
 pub const ENCRYPTION: &str = "encryption";
 pub const STORAGE: &str = "storage";
 
-/// Below this share of free space a volume is low, unless it still has `ROOMY` bytes free.
-const LOW_PERMILLE: u64 = 100;
-const CRITICAL_PERMILLE: u64 = 50;
+/// A volume with this much free space is never low, whatever its percentage.
 const ROOMY: u64 = 100 * 1024 * 1024 * 1024;
 const REPORT_BYTES: usize = midas_protocol::MAX_MESSAGE_BYTES / 2;
 /// Read-only images that are always full, such as snap packages.
@@ -153,23 +195,20 @@ pub fn volumes() -> Vec<Volume> {
         .collect()
 }
 
-/// Low free space as findings: below 10 % a warning, below 5 % critical.
-pub fn space(volumes: &[Volume]) -> Vec<Finding> {
+/// Low free space as findings: below the low limit a warning, below the critical one critical.
+pub fn space(volumes: &[Volume], thresholds: &Thresholds) -> Vec<Finding> {
+    let critical = thresholds.critical_space_percent * 10;
+    let low_limit = thresholds.low_space_percent * 10;
     let mut findings = Vec::new();
-    for (state, limit) in [
-        (HealthState::Critical, CRITICAL_PERMILLE),
-        (HealthState::Warning, LOW_PERMILLE),
+    for (state, limit, floor) in [
+        (HealthState::Critical, critical, 0),
+        (HealthState::Warning, low_limit, critical),
     ] {
         let low: Vec<String> = volumes
             .iter()
             .filter(|volume| {
                 let permille = volume.available.saturating_mul(1000) / volume.total.max(1);
-                let previous = if state == HealthState::Warning {
-                    CRITICAL_PERMILLE
-                } else {
-                    0
-                };
-                volume.available < ROOMY && permille < limit && permille >= previous
+                volume.available < ROOMY && permille < limit && permille >= floor
             })
             .map(|volume| {
                 let percent = volume.available.saturating_mul(100) / volume.total.max(1);
@@ -199,6 +238,10 @@ pub struct Latest {
     /// Grows with every result worth sending; zero before the first run.
     pub revision: u64,
     published: Option<Instant>,
+    /// Defaults until the server assigns a policy; not kept across restarts.
+    pub thresholds: Thresholds,
+    /// Runs the checks at once when the policy changes.
+    pub wake: Arc<Notify>,
 }
 
 pub type Shared = Arc<Mutex<Latest>>;
@@ -252,6 +295,17 @@ impl Latest {
         true
     }
 
+    /// Applies an assigned policy; a change re-runs the checks with the new limits.
+    pub fn assign(&mut self, settings: &[PolicySetting]) -> bool {
+        let thresholds = Thresholds::from_policy(settings);
+        if thresholds == self.thresholds {
+            return false;
+        }
+        self.thresholds = thresholds;
+        self.wake.notify_one();
+        true
+    }
+
     pub fn report(&self, sequence: u64) -> Option<HealthReport> {
         (self.revision > 0).then(|| HealthReport {
             sequence,
@@ -260,22 +314,25 @@ impl Latest {
     }
 }
 
-/// Runs the checks after `first_delay` and then every five minutes.
+/// Runs the checks after `first_delay`, then every five minutes and after a policy change.
 pub async fn schedule(
     checker: Checker,
     shared: Shared,
     first_delay: Duration,
     mut shutdown: watch::Receiver<bool>,
 ) {
+    let wake = lock(&shared).wake.clone();
     let mut wait = first_delay;
     loop {
         tokio::select! {
             () = tokio::time::sleep(wait) => {}
+            () = wake.notified() => {}
             _ = shutdown.wait_for(|stop| *stop) => return,
         }
         wait = CHECK_EVERY;
         let check = checker.clone();
-        if let Ok(checks) = tokio::task::spawn_blocking(move || check()).await {
+        let thresholds = lock(&shared).thresholds;
+        if let Ok(checks) = tokio::task::spawn_blocking(move || check(&thresholds)).await {
             lock(&shared).publish(checks, Instant::now());
         }
     }
@@ -352,7 +409,7 @@ mod tests {
             Volume {
                 name: "E:\\".into(),
                 total: 200 * gib,
-                available: 100 * gib,
+                available: 60 * gib,
             },
             Volume {
                 name: "/data".into(),
@@ -360,7 +417,7 @@ mod tests {
                 available: 150 * gib,
             },
         ];
-        let findings = space(&volumes);
+        let findings = space(&volumes, &Thresholds::default());
         assert_eq!(findings.len(), 2);
         assert_eq!(findings[0].state, HealthState::Critical);
         assert_eq!(findings[0].subjects, ["C:\\ (4% free)"]);
@@ -371,6 +428,50 @@ mod tests {
             (state(&check), check.code.as_str()),
             (HealthState::Critical, "low_space")
         );
+        let strict = Thresholds::from_policy(&[PolicySetting {
+            key: policy::LOW_SPACE_PERCENT.key.into(),
+            value: 60,
+        }]);
+        let findings = space(&volumes, &strict);
+        assert_eq!(
+            findings[1].subjects.len(),
+            2,
+            "E: at 30% is now low as well; /data keeps over 100 GiB"
+        );
+    }
+
+    #[test]
+    fn assigned_policies_are_clamped_and_kept_consistent() {
+        let setting = |key: &str, value| PolicySetting {
+            key: key.into(),
+            value,
+        };
+        assert_eq!(Thresholds::default().low_space_percent, 10);
+        let assigned = Thresholds::from_policy(&[
+            setting(policy::LOW_SPACE_PERCENT.key, 4),
+            setting(policy::CRITICAL_SPACE_PERCENT.key, 8),
+            setting(policy::UPDATE_WARNING_DAYS.key, 90),
+            setting(policy::SIGNATURE_CRITICAL_DAYS.key, -5),
+            setting("health.unknown", 1),
+        ]);
+        assert_eq!(
+            (
+                assigned.low_space_percent,
+                assigned.critical_space_percent,
+                assigned.update_warning_days,
+                assigned.update_critical_days,
+                assigned.signature_critical_days,
+            ),
+            (4, 4, 90, 90, 3)
+        );
+        let mut latest = Latest::default();
+        let woken = latest.wake.clone();
+        assert!(!latest.assign(&[]), "defaults are not a change");
+        assert!(latest.assign(&[setting(policy::LOW_SPACE_PERCENT.key, 20)]));
+        assert_eq!(latest.thresholds.low_space_percent, 20);
+        assert!(!latest.assign(&[setting(policy::LOW_SPACE_PERCENT.key, 20)]));
+        let mut notified = std::pin::pin!(woken.notified());
+        assert!(notified.as_mut().enable(), "a change wakes the checks");
     }
 
     #[test]

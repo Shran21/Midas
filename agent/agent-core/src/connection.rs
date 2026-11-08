@@ -252,6 +252,13 @@ async fn session(
                         return Outcome::Ended { connected };
                     }
                 }
+                Ok(Body::PolicyAssignment(assignment)) => {
+                    if let Some(shared) = &settings.health
+                        && crate::health::lock(shared).assign(&assignment.settings)
+                    {
+                        tracing::info!(settings = assignment.settings.len(), "agent policy applied");
+                    }
+                }
                 Ok(Body::MetricsAck(ack)) => {
                     upload.acknowledged(&ack, settings);
                     if upload.offer(&mut socket, settings, keepalive).await.is_err() {

@@ -9,6 +9,7 @@ use prost::Message;
 
 pub mod directory;
 pub mod enrollment;
+pub mod policy;
 
 /// Versions this build can speak.
 pub const SUPPORTED: VersionRange = VersionRange { min: 1, max: 1 };
@@ -43,7 +44,7 @@ impl VersionRange {
 
 #[derive(Clone, PartialEq, Message)]
 pub struct Envelope {
-    #[prost(oneof = "Body", tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13")]
+    #[prost(oneof = "Body", tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14")]
     pub body: Option<Body>,
 }
 
@@ -75,6 +76,8 @@ pub enum Body {
     HealthReport(HealthReport),
     #[prost(message, tag = "13")]
     HealthAck(HealthAck),
+    #[prost(message, tag = "14")]
+    PolicyAssignment(PolicyAssignment),
 }
 
 /// First message from the agent.
@@ -308,6 +311,24 @@ pub struct HealthReport {
 pub struct HealthAck {
     #[prost(uint64, tag = "1")]
     pub sequence: u64,
+}
+
+pub const MAX_POLICY_SETTINGS: usize = 64;
+
+#[derive(Clone, PartialEq, Message)]
+pub struct PolicySetting {
+    /// Such as `health.low_space_percent`; agents ignore keys they do not know.
+    #[prost(string, tag = "1")]
+    pub key: String,
+    #[prost(int64, tag = "2")]
+    pub value: i64,
+}
+
+/// The device's effective settings after inheritance; it replaces any earlier assignment.
+#[derive(Clone, PartialEq, Message)]
+pub struct PolicyAssignment {
+    #[prost(message, repeated, tag = "1")]
+    pub settings: Vec<PolicySetting>,
 }
 
 #[derive(Debug)]

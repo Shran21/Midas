@@ -15,6 +15,7 @@ pub mod enrollment;
 pub mod health;
 pub mod inventory;
 pub mod metrics;
+pub mod policy;
 pub mod transport;
 
 #[derive(Serialize)]

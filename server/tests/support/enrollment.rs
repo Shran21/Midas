@@ -1010,7 +1010,7 @@ pub async fn verify(database: &Database, admin: &mut PgConnection) {
     ]));
     let checker: midas_agent_core::health::Checker = {
         let results = results.clone();
-        Arc::new(move || results.lock().unwrap().clone())
+        Arc::new(move |_: &midas_agent_core::health::Thresholds| results.lock().unwrap().clone())
     };
     let health = midas_agent_core::health::shared();
     let capabilities: Vec<String> = [
@@ -1087,6 +1087,206 @@ pub async fn verify(database: &Database, admin: &mut PgConnection) {
         "a check no longer reported is removed"
     );
     checked.stop.send_replace(true);
+
+    // Policies: a group override reaches only its members, shows its source and reaches the
+    // live agent, which re-runs its checks with the new limit.
+    let low = midas_protocol::policy::LOW_SPACE_PERCENT.key;
+    let api =
+        |method: &'static str, path: String, client: &Client, body: Option<serde_json::Value>| {
+            let (app, client) = (app.clone(), client.clone());
+            async move { call(&app, method, &path, Some(&client), body, &[]).await }
+        };
+    let effective = |target: Uuid| {
+        let manager = manager.clone();
+        async move {
+            let (status, settings, _) = api(
+                "GET",
+                format!("/api/tenants/{tenant}/devices/{target}/policy"),
+                &manager,
+                None,
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK);
+            let setting = settings
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|setting| setting["key"] == low)
+                .unwrap()
+                .clone();
+            (
+                setting["value"].as_i64().unwrap(),
+                setting["source"]["level"].as_str().unwrap().to_owned(),
+                setting["source"]["name"].as_str().map(str::to_owned),
+            )
+        }
+    };
+    assert_eq!(effective(server_device).await, (10, "default".into(), None));
+    let tenant_value = format!("/api/tenants/{tenant}/policies/tenant/{tenant}/{low}");
+    let (status, _, _) = api(
+        "PUT",
+        tenant_value.clone(),
+        &outsider,
+        Some(json!({"value": 15})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    for (path, value) in [
+        (tenant_value.clone(), 0),
+        (
+            format!("/api/tenants/{tenant}/policies/tenant/{tenant}/health.unknown"),
+            5,
+        ),
+        (
+            format!("/api/tenants/{tenant}/policies/tenant/{other}/{low}"),
+            15,
+        ),
+    ] {
+        let (status, _, _) = api("PUT", path, &manager, Some(json!({"value": value}))).await;
+        assert!(
+            status == StatusCode::BAD_REQUEST || status == StatusCode::NOT_FOUND,
+            "{status}"
+        );
+    }
+    let (status, _, _) = api(
+        "PUT",
+        tenant_value.clone(),
+        &manager,
+        Some(json!({"value": 15})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let group = |name: &str, priority: i32| {
+        let manager = manager.clone();
+        let body = json!({"name": name, "priority": priority});
+        async move {
+            let (status, created, _) = api(
+                "POST",
+                format!("/api/tenants/{tenant}/groups"),
+                &manager,
+                Some(body),
+            )
+            .await;
+            assert_eq!(status, StatusCode::CREATED);
+            created["id"].as_str().unwrap().parse::<Uuid>().unwrap()
+        }
+    };
+    let servers = group("Servers", 10).await;
+    let everyone = group("Everyone", 0).await;
+    for (group, member) in [
+        (servers, server_device),
+        (everyone, server_device),
+        (everyone, device),
+    ] {
+        let path = format!("/api/tenants/{tenant}/groups/{group}/devices/{member}");
+        let (status, _, _) = api("PUT", path, &manager, None).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+    }
+    let unknown = format!(
+        "/api/tenants/{tenant}/groups/{servers}/devices/{}",
+        Uuid::new_v4()
+    );
+    assert_eq!(
+        api("PUT", unknown, &manager, None).await.0,
+        StatusCode::NOT_FOUND
+    );
+    let servers_value = format!("/api/tenants/{tenant}/policies/group/{servers}/{low}");
+    let (status, _, _) = api(
+        "PUT",
+        servers_value.clone(),
+        &manager,
+        Some(json!({"value": 25})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        effective(server_device).await,
+        (25, "group".into(), Some("Servers".into()))
+    );
+    assert_eq!(
+        effective(device).await,
+        (15, "tenant".into(), Some("Enrollment A".into())),
+        "the group override does not reach a device outside the group"
+    );
+    let everyone_value = format!("/api/tenants/{tenant}/policies/group/{everyone}/{low}");
+    let (status, _, _) = api("PUT", everyone_value, &manager, Some(json!({"value": 30}))).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        effective(server_device).await,
+        (25, "group".into(), Some("Servers".into())),
+        "the higher-priority group wins"
+    );
+    assert_eq!(
+        effective(device).await,
+        (30, "group".into(), Some("Everyone".into()))
+    );
+
+    let limits: midas_agent_core::health::Checker =
+        Arc::new(|limits: &midas_agent_core::health::Thresholds| {
+            vec![health_check(
+                "storage",
+                midas_protocol::HealthState::Ok,
+                "healthy",
+                &[&limits.low_space_percent.to_string()],
+            )]
+        });
+    let policed = Agent::checked(
+        proxy_port,
+        tls.clone(),
+        midas_agent_core::health::shared(),
+        limits,
+        Vec::new(),
+    );
+    let reported = |expected: &'static str| {
+        move |rows: &[HealthRow]| rows.len() == 1 && rows[0].3 == [expected]
+    };
+    health_rows(admin, server_device, reported("25")).await;
+    let (status, _, _) = api("DELETE", servers_value.clone(), &manager, None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        api("DELETE", servers_value, &manager, None).await.0,
+        StatusCode::NOT_FOUND
+    );
+    health_rows(admin, server_device, reported("30")).await;
+    let membership = format!("/api/tenants/{tenant}/groups/{everyone}/devices/{server_device}");
+    assert_eq!(
+        api("DELETE", membership.clone(), &manager, None).await.0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        api("DELETE", membership, &manager, None).await.0,
+        StatusCode::NOT_FOUND
+    );
+    health_rows(admin, server_device, reported("15")).await;
+    assert_eq!(
+        effective(server_device).await,
+        (15, "tenant".into(), Some("Enrollment A".into()))
+    );
+    let path = format!("/api/tenants/{tenant}/devices/{server_device}/policy");
+    let (status, _, _) = call(&app, "GET", &path, Some(&outsider), None, &[]).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, view, _) = api(
+        "GET",
+        format!("/api/tenants/{tenant}/policies"),
+        &manager,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(view["values"].as_array().unwrap().len(), 2);
+    policed.stop.send_replace(true);
+    let policy_events: Vec<(String, i64)> = sqlx::query_as("SELECT action, count(*) FROM midas.tenant_audit WHERE tenant_id = $1 AND (action LIKE 'policy.%' OR action LIKE 'inventory.group%') GROUP BY action ORDER BY action")
+        .bind(tenant).fetch_all(&mut *admin).await.unwrap();
+    assert_eq!(
+        policy_events,
+        [
+            ("inventory.group_create".to_owned(), 2),
+            ("inventory.group_member_add".to_owned(), 3),
+            ("inventory.group_member_remove".to_owned(), 1),
+            ("policy.clear".to_owned(), 1),
+            ("policy.set".to_owned(), 3),
+        ]
+    );
     let connector_sets: i64 = sqlx::query_scalar("SELECT count(*) FROM midas.tenant_audit WHERE tenant_id = $1 AND action = 'directory.connector_set' AND outcome = 'success'")
         .bind(tenant).fetch_one(&mut *admin).await.unwrap();
     assert_eq!(connector_sets, 2);

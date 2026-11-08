@@ -327,7 +327,7 @@ mod tests {
         assert_eq!(Probes::default().capabilities(), ["metrics"]);
         let probes = Probes {
             inventory: Some(Arc::new(crate::inventory::Snapshot::new)),
-            health: Some(Arc::new(Vec::new)),
+            health: Some(Arc::new(|_: &crate::health::Thresholds| Vec::new())),
             checks: vec![crate::health::SERVICES, crate::health::STORAGE],
         };
         assert_eq!(

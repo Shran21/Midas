@@ -42,6 +42,7 @@ permissions! {
     DomainJoin => ("domain.join", true),
     DirectoryDiscover => ("directory.discover", true),
     AccessManage => ("access.manage", true),
+    PolicyManage => ("policy.manage", true),
     AuditRead => ("audit.read", false),
 }
 

@@ -143,6 +143,7 @@ async fn serve(
         "agent session started"
     );
     let mut assigned = None;
+    let mut policy = None;
     seen(&protocol, identity).await;
     if let (Some(identities), Some(identity)) = (&protocol.identities, identity)
         && identities
@@ -152,7 +153,9 @@ async fn serve(
     {
         tracing::error!("device capabilities could not be recorded");
     }
-    if !assign(&mut socket, &protocol, identity, &mut assigned).await {
+    if !assign(&mut socket, &protocol, identity, &mut assigned).await
+        || !send_policy(&mut socket, &protocol, identity, &mut policy).await
+    {
         return;
     }
     let ending = loop {
@@ -163,7 +166,9 @@ async fn serve(
                     let _ = timeout(protocol.handshake_timeout, socket.send(Message::Close(None))).await;
                     break "revoked";
                 }
-                if !assign(&mut socket, &protocol, identity, &mut assigned).await {
+                if !assign(&mut socket, &protocol, identity, &mut assigned).await
+                    || !send_policy(&mut socket, &protocol, identity, &mut policy).await
+                {
                     break "closed";
                 }
                 continue;
@@ -288,6 +293,32 @@ async fn assign(
     send(
         socket,
         Body::DirectoryAssignment(assignment),
+        protocol.keepalive,
+    )
+    .await
+    .is_ok()
+}
+
+/// Sends the device's effective policy when it differs from what this session last sent.
+async fn send_policy(
+    socket: &mut WebSocket,
+    protocol: &AgentProtocol,
+    identity: Option<AgentIdentity>,
+    sent: &mut Option<midas_protocol::PolicyAssignment>,
+) -> bool {
+    let (Some(identities), Some(identity)) = (&protocol.identities, identity) else {
+        return true;
+    };
+    let Some(assignment) = identities.policy_assignment(identity).await else {
+        return true;
+    };
+    if sent.as_ref() == Some(&assignment) {
+        return true;
+    }
+    *sent = Some(assignment.clone());
+    send(
+        socket,
+        Body::PolicyAssignment(assignment),
         protocol.keepalive,
     )
     .await
