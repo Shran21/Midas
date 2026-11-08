@@ -8,7 +8,7 @@
 
 ### Tartalom
 
-A leltár (fajta, kulcs, érték) elemekből áll, értékenként legfeljebb 256 karakter:
+A leltár (fajta, kulcs, érték) elemekből áll, értékenként legfeljebb 256 karakter; a NUL karaktert az agent elhagyja, a szerver az érvénytelen elemet kihagyja:
 
 | Fajta | Tartalom |
 | --- | --- |
@@ -21,7 +21,7 @@ A leltár (fajta, kulcs, érték) elemekből áll, értékenként legfeljebb 256
 ### Ütemezés és változások
 
 - Az első gyűjtés véletlen, legfeljebb egyperces késleltetéssel indul, hogy a gépek ne egyszerre gyűjtsenek; utána 15 percenként fut.
-- **Teljes egyeztetés:** az első alkalommal, majd 24 óránként. Új generációt kap, és darabokban (legfeljebb 200 elem) megy; a következő darab a nyugta után indul. Az utolsó darab után a szerver törli az adott eszköz minden más generációjú elemét.
+- **Teljes egyeztetés:** az első alkalommal, majd 24 óránként. Új generációt kap, és darabokban (legfeljebb 200 elem és 32 KiB, így a hosszú, többbájtos nevek sem lépik túl a 64 KiB-os üzenethatárt) megy; a következő darab a nyugta után indul. Az utolsó darab után a szerver törli az adott eszköz minden más generációjú elemét.
 - **Változáscsomag:** a két teljes egyeztetés között csak az új, módosult és eltűnt elemek mennek. A szerver csak akkor alkalmazza, ha a generáció egyezik a tárolttal; különben elutasítja, és az agent azonnal teljes egyeztetést indít.
 - Az agent az utolsó sikeresen nyugtázott leltárt és a teljes egyeztetés idejét a védett állapotmappájában (`inventory.pb`) tárolja. Újraindulás után innen folytatja: változást küld, és a napi teljes egyeztetést az eredeti időponthoz igazítja. Megszakadt küldés nem számít sikeres egyeztetésnek; a következő kapcsolat a nyugtázatlan darabtól folytatja.
 
@@ -31,7 +31,7 @@ A leltár (fajta, kulcs, érték) elemekből áll, értékenként legfeljebb 256
 
 ### Ellenőrzés
 
-- Az agent-core egységtesztjei a különbségszámítást, a teljes és változásalapú tervezést, a darabolást és az üzenetméretet, a mentést csak az utolsó nyugta után, az újraindulás utáni visszatöltést, az elutasítás miatti teljes egyeztetést, a 63 bites generációt és a valódi gépen futó közös leltárt vizsgálják.
+- Az agent-core egységtesztjei a különbségszámítást, a teljes és változásalapú tervezést, a darabolást és az üzenetméretet (hosszú, többbájtos szövegekkel is), a mentést csak az utolsó nyugta után, az újraindulás utáni visszatöltést, az elutasítás miatti teljes egyeztetést, a 63 bites generációt és a valódi gépen futó közös leltárt vizsgálják.
 - A Windows-gyűjtő tesztje a valódi gépen telepített szoftvert, helyi rendszergazdát és OS-nevet talál. A Linux-elemzők tesztjei a dpkg-, az rpm- és a group-formátumot ellenőrzik.
 - Az adatbázisos tesztcsomag valódi PostgreSQL-lel és mTLS-sel igazolja a következőket:
   - 450 szoftveres leltár darabokban megérkezik;
@@ -51,7 +51,7 @@ November 8, 2026 · MIDAS-026 · PERF-02
 
 ### Content
 
-The inventory consists of (kind, key, value) items, each value at most 256 characters:
+The inventory consists of (kind, key, value) items, each value at most 256 characters; the agent drops NUL characters and the server skips invalid items:
 
 | Kind | Content |
 | --- | --- |
@@ -64,7 +64,7 @@ The inventory consists of (kind, key, value) items, each value at most 256 chara
 ### Schedule and changes
 
 - The first collection starts after a random delay of up to one minute so machines do not collect together, then runs every 15 minutes.
-- **Full reconciliation:** the first time, then every 24 hours. It gets a new generation and is sent in chunks (at most 200 items); the next chunk follows the acknowledgement. After the last chunk the server deletes every item of that device from other generations.
+- **Full reconciliation:** the first time, then every 24 hours. It gets a new generation and is sent in chunks (at most 200 items and 32 KiB, so long multi-byte names stay below the 64 KiB message limit); the next chunk follows the acknowledgement. After the last chunk the server deletes every item of that device from other generations.
 - **Change set:** between full reconciliations only new, changed and removed items are sent. The server applies it only if its generation matches the stored one; otherwise it refuses, and the agent starts a full reconciliation at once.
 - The agent keeps the last fully acknowledged inventory and the time of its full reconciliation in its protected state folder (`inventory.pb`). After a restart it continues from there: it sends changes and keeps the daily full reconciliation on its original schedule. An interrupted upload is not a successful reconciliation; the next connection resumes from the unacknowledged chunk.
 
@@ -74,7 +74,7 @@ The inventory consists of (kind, key, value) items, each value at most 256 chara
 
 ### Verification
 
-- agent-core unit tests cover diffing, full versus change planning, chunking and message size, saving only after the last acknowledgement, reload after restart, a full run after a refusal, 63-bit generations and the common inventory on the real machine.
+- agent-core unit tests cover diffing, full versus change planning, chunking and message size (also with long multi-byte texts), saving only after the last acknowledgement, reload after restart, a full run after a refusal, 63-bit generations and the common inventory on the real machine.
 - The Windows collector test finds installed software, a local administrator and the OS name on the real machine. Linux parser tests check the dpkg, rpm and group formats.
 - The database suite, with real PostgreSQL and mTLS, verifies the following:
   - a 450-package inventory arrives in chunks;

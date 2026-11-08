@@ -27,7 +27,9 @@ fn valid_kind(kind: &str) -> bool {
 }
 
 fn valid_text(text: &str, allow_empty: bool) -> bool {
-    (allow_empty || !text.is_empty()) && text.chars().count() <= MAX_INVENTORY_TEXT
+    (allow_empty || !text.is_empty())
+        && !text.contains('\0')
+        && text.chars().count() <= MAX_INVENTORY_TEXT
 }
 
 fn columns(items: &[InventoryItem]) -> (Vec<String>, Vec<String>, Vec<String>) {
@@ -133,5 +135,35 @@ impl Enrollment {
             reconciled_at,
             items,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use midas_protocol::InventoryKey;
+
+    #[test]
+    fn invalid_items_are_skipped_instead_of_failing_the_chunk() {
+        let item = |kind: &str, key: &str, value: &str| InventoryItem {
+            key: Some(InventoryKey {
+                kind: kind.into(),
+                key: key.into(),
+            }),
+            value: value.into(),
+        };
+        let items = [
+            item("software", "ok", "1.0"),
+            item("software", "nul\0", "1.0"),
+            item("software", "value", "1\0"),
+            item("Software", "case", ""),
+            item("software", "", "empty key"),
+            item("software", &"x".repeat(257), ""),
+        ];
+        let (kinds, keys, values) = columns(&items);
+        assert_eq!(
+            (kinds.len(), keys[0].as_str(), values[0].as_str()),
+            (1, "ok", "1.0")
+        );
     }
 }

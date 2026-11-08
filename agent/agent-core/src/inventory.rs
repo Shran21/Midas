@@ -7,6 +7,7 @@ use std::{
 
 use midas_protocol::{
     InventoryItem, InventoryKey, InventoryUpdate, MAX_INVENTORY_ITEMS, MAX_INVENTORY_TEXT,
+    MAX_MESSAGE_BYTES,
 };
 use prost::Message;
 use tokio::sync::{Notify, watch};
@@ -18,9 +19,16 @@ pub type Collector = Arc<dyn Fn() -> Snapshot + Send + Sync>;
 pub const FULL_EVERY_SECONDS: i64 = 24 * 3600;
 const GENERATION_MASK: u64 = i64::MAX as u64;
 pub const CHECK_EVERY: Duration = Duration::from_secs(15 * 60);
+/// Encoded bytes per chunk; long multi-byte texts would otherwise exceed the message limit.
+const CHUNK_BYTES: usize = MAX_MESSAGE_BYTES / 2;
 
+/// PostgreSQL text cannot hold NUL, so it never leaves the agent.
 fn bounded(text: &str) -> String {
-    text.trim().chars().take(MAX_INVENTORY_TEXT).collect()
+    text.trim()
+        .chars()
+        .filter(|c| *c != '\0')
+        .take(MAX_INVENTORY_TEXT)
+        .collect()
 }
 
 pub fn key(kind: &str, key: &str) -> InventoryKey {
@@ -187,17 +195,40 @@ impl Plan {
     }
 }
 
+enum Entry {
+    Upsert(InventoryItem),
+    Removal(InventoryKey),
+}
+
+/// At most `MAX_INVENTORY_ITEMS` entries and `CHUNK_BYTES` encoded bytes per chunk.
 fn chunked(changes: Changes) -> Vec<(Vec<InventoryItem>, Vec<InventoryKey>)> {
     let mut chunks = Vec::new();
-    let mut upserts = changes.upserts.into_iter().peekable();
-    let mut removals = changes.removals.into_iter().peekable();
-    while upserts.peek().is_some() || removals.peek().is_some() {
-        let items: Vec<_> = upserts.by_ref().take(MAX_INVENTORY_ITEMS).collect();
-        let keys: Vec<_> = removals
-            .by_ref()
-            .take(MAX_INVENTORY_ITEMS - items.len())
-            .collect();
-        chunks.push((items, keys));
+    let mut current: (Vec<InventoryItem>, Vec<InventoryKey>) = (Vec::new(), Vec::new());
+    let mut bytes = 0;
+    let entries = changes
+        .upserts
+        .into_iter()
+        .map(Entry::Upsert)
+        .chain(changes.removals.into_iter().map(Entry::Removal));
+    for entry in entries {
+        let length = match &entry {
+            Entry::Upsert(item) => item.encoded_len(),
+            Entry::Removal(key) => key.encoded_len(),
+        };
+        let size = 1 + prost::length_delimiter_len(length) + length;
+        let full = current.0.len() + current.1.len() == MAX_INVENTORY_ITEMS;
+        if full || (bytes > 0 && bytes + size > CHUNK_BYTES) {
+            chunks.push(std::mem::take(&mut current));
+            bytes = 0;
+        }
+        bytes += size;
+        match entry {
+            Entry::Upsert(item) => current.0.push(item),
+            Entry::Removal(key) => current.1.push(key),
+        }
+    }
+    if !current.0.is_empty() || !current.1.is_empty() {
+        chunks.push(current);
     }
     chunks
 }
@@ -440,6 +471,46 @@ mod tests {
             full.update(0, 1).unwrap(),
         ));
         assert!(encoded.len() < midas_protocol::MAX_MESSAGE_BYTES);
+    }
+
+    #[test]
+    fn long_multi_byte_texts_stay_below_the_message_limit() {
+        let mut big = Snapshot::new();
+        for n in 0..300 {
+            let name = format!("{n:04}{}", "ő".repeat(300));
+            insert(&mut big, "software", &name, "日".repeat(300));
+        }
+        let full = plan(None, big.clone(), 0, 1).unwrap();
+        assert!(full.chunks.len() > 2);
+        let mut sent = 0;
+        for index in 0..full.chunks.len() {
+            let update = full.update(index, 1).unwrap();
+            sent += update.upserts.len();
+            let encoded = midas_protocol::encode(midas_protocol::Body::InventoryUpdate(update));
+            assert!(encoded.len() < midas_protocol::MAX_MESSAGE_BYTES);
+        }
+        assert_eq!(sent, 300);
+        let mut changed = big.clone();
+        let removed: Vec<_> = changed.keys().take(150).cloned().collect();
+        for key in &removed {
+            changed.remove(key);
+        }
+        let state = State {
+            snapshot: big,
+            generation: 1,
+            last_full: 0,
+        };
+        let delta = plan(Some(&state), changed, 10, 2).unwrap();
+        let removals: usize = delta.chunks.iter().map(|(_, keys)| keys.len()).sum();
+        assert_eq!(removals, 150);
+    }
+
+    #[test]
+    fn nul_characters_never_leave_the_agent() {
+        let mut snapshot = Snapshot::new();
+        insert(&mut snapshot, "software", "bad\0name", "1\0.0");
+        let (key, value) = snapshot.into_iter().next().unwrap();
+        assert_eq!((key.key.as_str(), value.as_str()), ("badname", "1.0"));
     }
 
     #[test]
