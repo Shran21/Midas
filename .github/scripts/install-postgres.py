@@ -4,8 +4,9 @@ import pathlib
 import platform
 import shutil
 import tempfile
-import urllib.request
 import zipfile
+
+from download import fetch
 
 if platform.system() != 'Windows' or platform.machine().lower() not in ('amd64', 'x86_64'):
     raise SystemExit('This package is for Windows x86_64')
@@ -17,8 +18,7 @@ destination = destination.resolve()
 destination.mkdir(parents=True, exist_ok=True)
 
 with tempfile.TemporaryFile() as archive:
-    with urllib.request.urlopen(url, timeout=60) as response:
-        shutil.copyfileobj(response, archive)
+    fetch(url, archive)
     archive.seek(0)
     if hashlib.file_digest(archive, 'sha256').hexdigest() != expected:
         raise SystemExit('PostgreSQL archive checksum mismatch')

@@ -4,8 +4,9 @@ import os
 import pathlib
 import platform
 import tarfile
-import urllib.request
 import zipfile
+
+from download import fetch
 
 version = "1.59.0"
 assets = {
@@ -14,8 +15,7 @@ assets = {
 }
 suffix, expected = assets[platform.system()]
 url = f"https://github.com/casey/just/releases/download/{version}/just-{version}-{suffix}"
-with urllib.request.urlopen(url, timeout=60) as response:
-    archive = response.read()
+archive = fetch(url)
 if hashlib.sha256(archive).hexdigest() != expected:
     raise SystemExit("just archive checksum mismatch")
 destination = pathlib.Path(os.environ["RUNNER_TEMP"]) / "midas-tools"

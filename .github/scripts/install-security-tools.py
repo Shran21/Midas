@@ -5,8 +5,9 @@ import os
 import pathlib
 import platform
 import tarfile
-import urllib.request
 import zipfile
+
+from download import fetch
 
 tools = {
     "cargo-deny": {
@@ -40,8 +41,7 @@ destination.mkdir(parents=True, exist_ok=True)
 
 for name, release in tools.items():
     asset, expected = release[system]
-    with urllib.request.urlopen(release["base"] + asset, timeout=60) as response:
-        archive = response.read()
+    archive = fetch(release["base"] + asset)
     if hashlib.sha256(archive).hexdigest() != expected:
         raise SystemExit(f"{name}: archive checksum mismatch")
     binary_name = name + (".exe" if system == "Windows" else "")
