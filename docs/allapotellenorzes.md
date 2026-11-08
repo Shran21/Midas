@@ -28,7 +28,7 @@ Az agent a `Hello` üzenetben felsorolja, mit tud az adott platformon, például
 
 - Az agent a legutóbbi eredményt `HealthReport` üzenetben küldi: kapcsolódáskor, változáskor, és változatlan eredménynél óránként, hogy a szerver lássa, friss. Egyszerre egy jelentés van úton; a következő a `HealthAck` után megy. A jelentés legfeljebb 32 KiB; ha hosszú, többbájtos nevek miatt nagyobb lenne, az agent a leghosszabb listák végéről elhagy érintett elemeket, a szöveg és az állapot megmarad.
 - A szerver minden ellenőrzést külön sorban tárol (`device_health`, ügyfélenkénti RLS). A változás ideje csak az állapot vagy az ok változásakor mozdul. Az érvénytelen ellenőrzést kihagyja, a jelentésből kimaradt ellenőrzést törli, és rögzíti a jelentés idejét.
-- `GET /api/tenants/{ügyfél}/devices/{eszköz}/health` (`device.read`): képességek, a legutóbbi jelentés ideje és az ellenőrzések. Riasztás a MIDAS-029, megjelenítés a MIDAS-031 része.
+- `GET /api/tenants/{ügyfél}/devices/{eszköz}/health` (`device.read`): képességek, a legutóbbi jelentés ideje és az ellenőrzések. A riasztásokat a [riasztások](riasztasok.md), a megjelenítést az [eszközoldal](eszkozoldal.md) írja le; ott a technikus azonnali újraellenőrzést is kérhet.
 
 ### Ellenőrzés
 
@@ -78,7 +78,7 @@ The agent lists in its `Hello` what it can do on its platform, such as `metrics`
 
 - The agent sends its latest result as a `HealthReport`: on connecting, on every change, and hourly when unchanged so the server knows it is current. One report is in flight at a time; the next follows the `HealthAck`. A report is at most 32 KiB; if long multi-byte names would make it larger, the agent drops subjects from the end of the longest lists and keeps every text and state.
 - The server stores each check as its own row (`device_health`, per-tenant RLS). The change time moves only when the state or the reason changes. Invalid checks are skipped, checks missing from the report are removed, and the report time is recorded.
-- `GET /api/tenants/{tenant}/devices/{device}/health` (`device.read`): capabilities, the latest report time and the checks. Alerting belongs to MIDAS-029 and display to MIDAS-031.
+- `GET /api/tenants/{tenant}/devices/{device}/health` (`device.read`): capabilities, the latest report time and the checks. Alerting is described in [alerts](riasztasok.md#english) and display in [device pages](eszkozoldal.md#english), where an operator can also ask for an immediate re-check.
 
 ### Verification
 

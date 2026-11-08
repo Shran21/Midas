@@ -25,6 +25,7 @@ Az agent egy tartós, kimenő, hitelesített kapcsolattal csatlakozik a szerverh
 | `InventoryUpdate` / `InventoryAck` | agent → szerver, illetve vissza | teljes leltár vagy változáscsomag darabja és a nyugta ([leltár](leltar.md)) |
 | `HealthReport` / `HealthAck` | agent → szerver, illetve vissza | az ellenőrzések legutóbbi eredménye és a tárolás utáni nyugta ([állapotellenőrzések](allapotellenorzes.md)) |
 | `PolicyAssignment` | szerver → agent | az eszköz öröklés utáni, érvényes beállításai; kapcsolódáskor és változáskor ([szabályzatok](szabalyzatok.md)) |
+| `RefreshRequest` | szerver → agent | a technikus friss adatot kért: az agent azonnal ellenőriz, változatlan eredményt is küld, és leltárt gyűjt ([eszközoldal](eszkozoldal.md)) |
 
 ### Verziók és kompatibilitás
 
@@ -83,6 +84,7 @@ The agent connects to the server over one persistent, outbound, authenticated co
 | `InventoryUpdate` / `InventoryAck` | agent → server and back | a chunk of a full inventory or change set and its acknowledgement ([inventory](leltar.md#english)) |
 | `HealthReport` / `HealthAck` | agent → server and back | the latest check results and the acknowledgement after storage ([health checks](allapotellenorzes.md#english)) |
 | `PolicyAssignment` | server → agent | the device's effective settings after inheritance; on connecting and on change ([policies](szabalyzatok.md#english)) |
+| `RefreshRequest` | server → agent | an operator asked for current data: the agent checks at once, sends even an unchanged result and collects its inventory ([device pages](eszkozoldal.md#english)) |
 
 ### Versions and compatibility
 

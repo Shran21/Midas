@@ -36,6 +36,15 @@ pub struct Client {
     csrf: String,
 }
 
+impl Client {
+    pub fn cookie(&self) -> &str {
+        &self.cookie
+    }
+    pub fn csrf(&self) -> &str {
+        &self.csrf
+    }
+}
+
 pub async fn call(
     app: &Router,
     method: &str,

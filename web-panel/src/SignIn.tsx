@@ -31,6 +31,8 @@ export function errorText(error: unknown, t: Copy) {
       return t.conflict;
     case "recent_sign_in_required":
       return t.recentSignInRequired;
+    case "device_offline":
+      return t.blockedOffline;
     default:
       return t.errorUnavailable;
   }

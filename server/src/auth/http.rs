@@ -145,6 +145,7 @@ impl From<AccessError> for Failure {
             AccessError::Unavailable => {
                 Self(StatusCode::SERVICE_UNAVAILABLE, "temporarily_unavailable")
             }
+            AccessError::Offline => Self(StatusCode::CONFLICT, "device_offline"),
         }
     }
 }
@@ -182,7 +183,17 @@ pub fn router(state: Arc<WebAuth>) -> Router {
             "/api/tenants/{id}/enrollment-tokens",
             post(create_enrollment_token),
         )
+        .route("/api/tenants/{id}/devices", get(devices))
         .route("/api/tenants/{id}/devices/pending", get(pending_devices))
+        .route("/api/tenants/{id}/devices/{device}", get(device))
+        .route(
+            "/api/tenants/{id}/devices/{device}/metrics",
+            get(device_metrics),
+        )
+        .route(
+            "/api/tenants/{id}/devices/{device}/alerts",
+            get(device_alerts),
+        )
         .route(
             "/api/tenants/{id}/devices/{device}/inventory",
             get(device_inventory),
@@ -694,6 +705,54 @@ async fn pending_devices(
     ))
 }
 
+async fn devices(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Vec<crate::devices::DeviceSummary>>> {
+    Ok(Json(
+        enrollment(&state)?
+            .devices(&state.sessions, &context.token, id)
+            .await?,
+    ))
+}
+
+async fn device(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((id, device)): Path<(Uuid, Uuid)>,
+) -> Result<Json<crate::devices::DeviceSummary>> {
+    Ok(Json(
+        enrollment(&state)?
+            .device(&state.sessions, &context.token, id, device)
+            .await?,
+    ))
+}
+
+async fn device_metrics(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((id, device)): Path<(Uuid, Uuid)>,
+) -> Result<Json<crate::devices::MetricsView>> {
+    Ok(Json(
+        enrollment(&state)?
+            .device_metrics(&state.sessions, &context.token, id, device)
+            .await?,
+    ))
+}
+
+async fn device_alerts(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((id, device)): Path<(Uuid, Uuid)>,
+) -> Result<Json<Vec<crate::alerts::AlertView>>> {
+    Ok(Json(
+        enrollment(&state)?
+            .device_alerts(&state.sessions, &context.token, id, device)
+            .await?,
+    ))
+}
+
 async fn device_inventory(
     State(state): State<Arc<WebAuth>>,
     Extension(context): Extension<Context>,
@@ -917,6 +976,7 @@ async fn decide_device(
         "approve" => enrollment.approve(sessions, token, id, device).await?,
         "reject" => enrollment.reject(sessions, token, id, device).await?,
         "revoke" => enrollment.revoke(sessions, token, id, device).await?,
+        "refresh" => enrollment.refresh(sessions, token, id, device).await?,
         _ => return Err(Failure(StatusCode::NOT_FOUND, "not_found")),
     }
     Ok(StatusCode::NO_CONTENT)
@@ -1294,6 +1354,37 @@ struct Handshake {
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 enum Command {
     Session,
+    /// Device changes in this tenant are announced without details; the panel refetches what it may see.
+    Watch {
+        tenant: Uuid,
+    },
+}
+
+/// Bursts of changes become one notice.
+const CHANGE_DELAY: Duration = Duration::from_millis(500);
+
+async fn next_change(
+    changes: &mut Option<tokio::sync::broadcast::Receiver<Uuid>>,
+) -> std::result::Result<Uuid, tokio::sync::broadcast::error::RecvError> {
+    match changes {
+        Some(changes) => changes.recv().await,
+        None => std::future::pending().await,
+    }
+}
+
+async fn until(due: Option<tokio::time::Instant>) {
+    match due {
+        Some(at) => tokio::time::sleep_until(at).await,
+        None => std::future::pending().await,
+    }
+}
+
+async fn member(state: &WebAuth, token: &SessionToken, tenant: Uuid) -> bool {
+    state
+        .authorizer
+        .tenant_context(&state.sessions, token, tenant)
+        .await
+        .is_ok()
 }
 
 async fn send(socket: &mut WebSocket, message: Message) -> bool {
@@ -1327,11 +1418,32 @@ async fn channel(
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut window = tokio::time::Instant::now();
         let mut messages = 0;
+        let mut watched: Option<Uuid> = None;
+        let mut changes = None;
+        let mut due = None;
         loop {
             tokio::select! {
                 biased;
                 event = revoked.recv() => { if event.is_err() || event.is_ok_and(|revoked_id| revoked_id == id) { break; } }
-                _ = interval.tick() => { if state.sessions.validate(&token, false).await.is_err() { break; } }
+                _ = interval.tick() => {
+                    if state.sessions.validate(&token, false).await.is_err() { break; }
+                    if let Some(tenant) = watched && !member(&state, &token, tenant).await {
+                        watched = None;
+                        changes = None;
+                        due = None;
+                    }
+                }
+                change = next_change(&mut changes) => match change {
+                    Ok(tenant) if Some(tenant) != watched => {}
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => changes = None,
+                    _ => { due.get_or_insert_with(|| tokio::time::Instant::now() + CHANGE_DELAY); }
+                },
+                () = until(due) => {
+                    due = None;
+                    let Some(tenant) = watched else { continue; };
+                    let notice = serde_json::json!({ "type": "devices_changed", "tenant": tenant }).to_string();
+                    if !send(&mut socket, Message::Text(notice.into())).await { break; }
+                }
                 message = socket.recv() => {
                     if window.elapsed() >= Duration::from_secs(10) { window = tokio::time::Instant::now(); messages = 0; }
                     messages += 1;
@@ -1339,8 +1451,22 @@ async fn channel(
                     let Ok(info) = state.sessions.validate(&token, false).await else { break; };
                     match message {
                         Some(Ok(Message::Text(text))) => {
-                            if serde_json::from_str::<Command>(&text).is_err() { break; }
-                            let Ok(text) = serde_json::to_string(&info) else { break; };
+                            let reply = match serde_json::from_str::<Command>(&text) {
+                                Ok(Command::Session) => serde_json::to_string(&info).ok(),
+                                Ok(Command::Watch { tenant }) => {
+                                    let allowed = member(&state, &token, tenant).await;
+                                    watched = allowed.then_some(tenant);
+                                    due = None;
+                                    if !allowed {
+                                        changes = None;
+                                    } else if changes.is_none() {
+                                        changes = state.enrollment.as_ref().map(|enrollment| enrollment.subscribe());
+                                    }
+                                    Some(serde_json::json!({ "type": if allowed { "watching" } else { "watch_refused" }, "tenant": tenant }).to_string())
+                                }
+                                Err(_) => break,
+                            };
+                            let Some(text) = reply else { break; };
                             if !send(&mut socket, Message::Text(text.into())).await { break; }
                         }
                         Some(Ok(Message::Ping(_))) | Some(Ok(Message::Pong(_))) => {},

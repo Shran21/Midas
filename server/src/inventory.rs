@@ -99,6 +99,7 @@ impl Enrollment {
                 .bind(identity.device).bind(generation).execute(&mut *tx).await?;
         }
         tx.commit().await?;
+        self.changed(identity.tenant);
         Ok(true)
     }
 

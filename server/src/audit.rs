@@ -52,6 +52,7 @@ names!(Action {
     GroupMemberRemove => "inventory.group_member_remove",
     AlertAcknowledge => "alert.acknowledge",
     AlertRecipientsSet => "alert.recipients_set",
+    DeviceRefresh => "device.refresh",
 });
 names!(Outcome {
     Success => "success",

@@ -37,7 +37,7 @@
 ### Ismert korlátok
 
 - A megőrzési idő minden ügyfélre azonos (30 nap / 13 hónap); az ügyfélenkénti beállítás későbbi feladat.
-- A metrikák megjelenítése (MIDAS-031) és az offline riasztás (MIDAS-029) külön feladat.
+- A webpanel az eszközlistán a legutóbbi mérést, az eszközoldalon az elmúlt óra grafikonját mutatja ([eszközoldal](eszkozoldal.md)); az offline riasztást a [riasztások](riasztasok.md) írják le.
 
 ## English
 
@@ -74,4 +74,4 @@ November 7, 2026 · MIDAS-025 · PERF-02, PERF-05
 ### Known limits
 
 - Retention is the same for every customer (30 days / 13 months); per-customer settings are later work.
-- Displaying metrics (MIDAS-031) and offline alerts (MIDAS-029) are separate tasks.
+- The web panel shows the latest sample in the device list and the last hour as a chart on the device page ([device pages](eszkozoldal.md#english)); offline alerts are described in [alerts](riasztasok.md#english).

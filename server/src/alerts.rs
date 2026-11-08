@@ -272,8 +272,10 @@ impl Enrollment {
         let (mut opened, mut resolved) = (0, 0);
         for tenant in self.tenants().await? {
             let mut tx = self.tenant_tx(tenant).await?;
-            resolved += sqlx::query("UPDATE midas.alerts a SET resolved_at = clock_timestamp() FROM midas.devices d WHERE d.id = a.device_id AND a.kind = $1 AND a.resolved_at IS NULL AND (d.online OR d.enrollment <> 'active')")
+            let cleared = sqlx::query("UPDATE midas.alerts a SET resolved_at = clock_timestamp() FROM midas.devices d WHERE d.id = a.device_id AND a.kind = $1 AND a.resolved_at IS NULL AND (d.online OR d.enrollment <> 'active')")
                 .bind(OFFLINE).execute(&mut *tx).await?.rows_affected();
+            resolved += cleared;
+            let mut touched = cleared > 0;
             let candidates: Vec<(Uuid, f64)> = sqlx::query_as("SELECT d.id, extract(epoch FROM clock_timestamp() - d.last_seen_at)::float8 FROM midas.devices d WHERE NOT d.online AND d.enrollment = 'active' AND d.last_seen_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM midas.alerts a WHERE a.device_id = d.id AND a.kind = $1 AND a.resolved_at IS NULL)")
                 .bind(OFFLINE).fetch_all(&mut *tx).await?;
             for (device, seconds) in candidates {
@@ -301,9 +303,13 @@ impl Enrollment {
                 .await?
                 {
                     opened += 1;
+                    touched = true;
                 }
             }
             tx.commit().await?;
+            if touched {
+                self.changed(tenant);
+            }
         }
         Ok((opened, resolved))
     }
@@ -425,6 +431,7 @@ impl Enrollment {
         event.device = Some(device);
         audit::append_tenant(&mut tx, &event).await?;
         tx.commit().await?;
+        self.changed(tenant);
         Ok(())
     }
 

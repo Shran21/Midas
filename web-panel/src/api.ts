@@ -53,7 +53,109 @@ export type CreatedOperator = {
   recovery_codes: string[];
 };
 export type Tenant = { id: string; name: string };
-export type TenantContext = Tenant & { capabilities: string[] };
+export type TenantContext = Tenant & {
+  capabilities: string[];
+  tenant_wide: string[];
+  fresh_passkey: string[];
+};
+export type Named = { id: string; name: string };
+export type HealthState = "ok" | "warning" | "critical" | "unavailable";
+export type DeviceSummary = {
+  id: string;
+  name: string;
+  kind: "workstation" | "server";
+  platform: "windows" | "linux";
+  enrollment: "active" | "revoked";
+  site: Named | null;
+  groups: Named[];
+  online: boolean;
+  last_seen_at: number | null;
+  decided_at: number | null;
+  os: string | null;
+  capabilities: string[];
+  health: HealthState | null;
+  health_reported_at: number | null;
+  inventory_reconciled_at: number | null;
+  restart_pending: boolean;
+  open_alerts: number;
+  critical_alerts: number;
+  metrics: {
+    at: number;
+    cpu_permille: number;
+    memory_used: number;
+    memory_total: number;
+    disk_used: number;
+    disk_total: number;
+  } | null;
+  permissions: string[];
+};
+export type HealthCheck = {
+  id: string;
+  state: HealthState;
+  code: string;
+  summary: string;
+  subjects: string[];
+  changed_at: number;
+};
+export type HealthView = {
+  capabilities: string[];
+  reported_at: number | null;
+  checks: HealthCheck[];
+};
+export type InventoryView = {
+  reconciled_at: number | null;
+  items: { kind: string; key: string; value: string; updated_at: number }[];
+};
+export type EffectiveSetting = {
+  key: string;
+  value: number;
+  default: number;
+  source: {
+    level: "default" | "tenant" | "site" | "group";
+    id: string | null;
+    name: string | null;
+  };
+};
+export type Sample = {
+  at: number;
+  cpu_permille: number;
+  memory_used: number;
+  memory_total: number;
+  disk_used: number;
+  disk_total: number;
+  net_rx: number;
+  net_tx: number;
+};
+export type MetricsView = {
+  recent: Sample[];
+  hourly: {
+    hour: number;
+    cpu_avg_permille: number;
+    cpu_max_permille: number;
+    memory_used_avg: number;
+    memory_total: number;
+    disk_used_max: number;
+    disk_total: number;
+  }[];
+};
+export type AlertView = {
+  id: string;
+  device_id: string;
+  device_name: string;
+  kind: string;
+  severity: "warning" | "critical";
+  summary: string;
+  opened_at: number;
+  last_seen_at: number;
+  occurrences: number;
+  resolved_at: number | null;
+  acknowledged_at: number | null;
+  acknowledged_by: string | null;
+  notifications_sent: number;
+  notifications_pending: number;
+  notifications_failed: number;
+};
+export type Group = { id: string; name: string; priority: number };
 
 export class ApiError extends Error {
   constructor(
@@ -236,7 +338,60 @@ export const api = {
   },
   logout: (csrf: string) =>
     request<void>("/api/session/logout", { method: "POST", csrf }),
+  devices: (tenant: string) =>
+    request<DeviceSummary[]>(`${tenantPath(tenant)}/devices`),
+  device: (tenant: string, device: string) =>
+    request<DeviceSummary>(devicePath(tenant, device)),
+  health: (tenant: string, device: string) =>
+    request<HealthView>(`${devicePath(tenant, device)}/health`),
+  inventory: (tenant: string, device: string) =>
+    request<InventoryView>(`${devicePath(tenant, device)}/inventory`),
+  policy: (tenant: string, device: string) =>
+    request<EffectiveSetting[]>(`${devicePath(tenant, device)}/policy`),
+  metrics: (tenant: string, device: string) =>
+    request<MetricsView>(`${devicePath(tenant, device)}/metrics`),
+  deviceAlerts: (tenant: string, device: string) =>
+    request<AlertView[]>(`${devicePath(tenant, device)}/alerts`),
+  refresh: (tenant: string, device: string, csrf: string) =>
+    request<void>(`${devicePath(tenant, device)}/refresh`, {
+      method: "POST",
+      csrf,
+    }),
+  revokeDevice: (tenant: string, device: string, csrf: string) =>
+    request<void>(`${devicePath(tenant, device)}/revoke`, {
+      method: "POST",
+      csrf,
+    }),
+  alerts: (tenant: string, openOnly: boolean) =>
+    request<AlertView[]>(
+      `${tenantPath(tenant)}/alerts${openOnly ? "/open" : ""}`,
+    ),
+  acknowledge: (tenant: string, alert: string, csrf: string) =>
+    request<void>(
+      `${tenantPath(tenant)}/alerts/${encodeURIComponent(alert)}/acknowledge`,
+      { method: "POST", csrf },
+    ),
+  groups: (tenant: string) => request<Group[]>(`${tenantPath(tenant)}/groups`),
+  setGroupMember: (
+    tenant: string,
+    group: string,
+    device: string,
+    member: boolean,
+    csrf: string,
+  ) =>
+    request<void>(
+      `${tenantPath(tenant)}/groups/${encodeURIComponent(group)}/devices/${encodeURIComponent(device)}`,
+      { method: member ? "PUT" : "DELETE", csrf },
+    ),
 };
+
+function tenantPath(tenant: string) {
+  return `/api/tenants/${encodeURIComponent(tenant)}`;
+}
+
+function devicePath(tenant: string, device: string) {
+  return `${tenantPath(tenant)}/devices/${encodeURIComponent(device)}`;
+}
 
 function decode(value: string) {
   const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
@@ -335,14 +490,39 @@ async function createCredential(options: Record<string, unknown>) {
   };
 }
 
-/** Opens the session status channel; `onEnd` runs when the server closes it. */
-export function watchSession(csrf: string, onEnd: () => void) {
+/**
+ * Opens the session status channel; `onEnd` runs when the server closes it.
+ * While a tenant is watched, `onChange` runs when its devices change; the notice carries no details.
+ */
+export function watchSession(
+  csrf: string,
+  onEnd: () => void,
+  tenant: string | null = null,
+  onChange: () => void = () => {},
+) {
   const scheme = location.protocol === "https:" ? "wss:" : "ws:";
   const socket = new WebSocket(
     `${scheme}//${location.host}/api/session/socket`,
   );
   let closed = false;
-  socket.onopen = () => socket.send(JSON.stringify({ csrf_token: csrf }));
+  socket.onopen = () => {
+    socket.send(JSON.stringify({ csrf_token: csrf }));
+    if (tenant) socket.send(JSON.stringify({ type: "watch", tenant }));
+  };
+  socket.onmessage = (event) => {
+    try {
+      const message: unknown = JSON.parse(String(event.data));
+      if (
+        typeof message === "object" &&
+        message !== null &&
+        "type" in message &&
+        message.type === "devices_changed" &&
+        "tenant" in message &&
+        message.tenant === tenant
+      )
+        onChange();
+    } catch {}
+  };
   socket.onclose = () => {
     if (!closed) onEnd();
   };

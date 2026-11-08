@@ -62,7 +62,11 @@ impl Enrollment {
             sqlx::query("INSERT INTO midas.device_connectivity (tenant_id, device_id, online) VALUES ($1, $2, true)")
                 .bind(identity.tenant).bind(identity.device).execute(&mut *tx).await?;
         }
-        tx.commit().await
+        tx.commit().await?;
+        if was == Some(false) {
+            self.changed(identity.tenant);
+        }
+        Ok(())
     }
 
     /// Stores a batch; resent samples are ignored, implausible ones skipped.
@@ -120,6 +124,9 @@ impl Enrollment {
                     .bind(tenant).bind(device).execute(&mut *tx).await?;
             }
             tx.commit().await?;
+            if !devices.is_empty() {
+                self.changed(tenant);
+            }
             offline.extend(
                 devices
                     .into_iter()

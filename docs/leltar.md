@@ -27,7 +27,7 @@ A leltár (fajta, kulcs, érték) elemekből áll, értékenként legfeljebb 256
 
 ### Megjelenítés
 
-- `GET /api/tenants/{ügyfél}/devices/{eszköz}/inventory` (`device.read`): elemek a legutóbbi változás idejével, valamint az utolsó teljes egyeztetés időpontja. Az eszközoldal a MIDAS-031 része.
+- `GET /api/tenants/{ügyfél}/devices/{eszköz}/inventory` (`device.read`): elemek a legutóbbi változás idejével, valamint az utolsó teljes egyeztetés időpontja. A webpanel az eszközoldal leltár fülén mutatja ([eszközoldal](eszkozoldal.md)).
 
 ### Ellenőrzés
 
@@ -70,7 +70,7 @@ The inventory consists of (kind, key, value) items, each value at most 256 chara
 
 ### Display
 
-- `GET /api/tenants/{tenant}/devices/{device}/inventory` (`device.read`): items with their last change time and the time of the last full reconciliation. The device page belongs to MIDAS-031.
+- `GET /api/tenants/{tenant}/devices/{device}/inventory` (`device.read`): items with their last change time and the time of the last full reconciliation. The web panel shows it on the device page inventory tab ([device pages](eszkozoldal.md#english)).
 
 ### Verification
 

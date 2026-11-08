@@ -59,7 +59,7 @@ A szerver tartományon kívüli vagy ismeretlen kulcsot nem fogad el. Ha az ör�
 
 - A szabályzatkezelés ügyfélszintű jogot kér; telephelyre vagy csoportra szűkített szabályzatkezelő szerep még nincs.
 - Csoport átnevezése, prioritásának módosítása és törlése, valamint telephely törlése még nem érhető el.
-- A webpanel szabályzatnézete és az eszközoldal (MIDAS-031) még hátravan; addig az API mutatja az eredetet.
+- Az eszközoldal szabályzat füle mutatja az érvényes értékeket és az eredetüket ([eszközoldal](eszkozoldal.md)). Az ügyfél-, telephely- és csoportszabályzat szerkesztése a webpanelen még hátravan; addig az API-n végezhető.
 - A karbantartási és újraindítási beállítások a MIDAS-063 feladattal bővítik a katalógust.
 
 ## English
@@ -119,5 +119,5 @@ The server refuses out-of-range values and unknown keys. If inheritance yields a
 
 - Policy administration needs a tenant-wide permission; there is no site- or group-scoped policy administrator role yet.
 - Renaming groups, changing their priority, deleting groups and deleting sites are not available yet.
-- The web panel's policy view and the device page (MIDAS-031) are still to come; until then the API shows the source.
+- The device page policy tab shows effective values and their source ([device pages](eszkozoldal.md#english)). Editing customer, site and group policies in the web panel is still to come; until then it is done through the API.
 - MIDAS-063 extends the catalogue with maintenance and restart settings.

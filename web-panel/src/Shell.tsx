@@ -15,6 +15,10 @@ import {
   type TenantContext,
   watchSession,
 } from "./api";
+import { AlertsView } from "./devices/AlertsView";
+import type { Tab } from "./devices/DeviceMenu";
+import { DevicePage } from "./devices/DevicePage";
+import { DevicesView } from "./devices/DevicesView";
 import { Icon, type IconName } from "./Icon";
 import { type Copy, type Language, translations } from "./i18n";
 import { permissionNames } from "./permissions";
@@ -113,6 +117,9 @@ export function Shell({
     state: "loading",
   });
   const [section, setSection] = useState<Section>("overview");
+  const [device, setDevice] = useState<{ id: string; tab: Tab } | null>(null);
+  const [deviceName, setDeviceName] = useState<string | null>(null);
+  const [changes, setChanges] = useState(0);
   const [reload, setReload] = useState(0);
   const heading = useRef<HTMLHeadingElement>(null);
   const firstRender = useRef(true);
@@ -157,6 +164,7 @@ export function Shell({
     if (!tenantId) return;
     let active = true;
     remember(tenantKey, tenantId);
+    setDevice(null);
     setContext({ state: "loading" });
     api.tenant(tenantId).then(
       (value) => active && setContext({ state: "ready", value }),
@@ -177,24 +185,33 @@ export function Shell({
   useEffect(() => {
     let stop = () => {};
     let active = true;
+    let retry: ReturnType<typeof setTimeout> | undefined;
     const connect = () => {
-      stop = watchSession(signedIn.csrf_token, () => {
-        api.session().then(
-          () => {
-            if (active) setTimeout(connect, 5000);
-          },
-          (error) => {
-            if (active && !fail(error)) setTimeout(connect, 5000);
-          },
-        );
-      });
+      stop = watchSession(
+        signedIn.csrf_token,
+        () => {
+          api.session().then(
+            () => {
+              if (!active) return;
+              retry = setTimeout(connect, 5000);
+              setChanges((n) => n + 1);
+            },
+            (error) => {
+              if (active && !fail(error)) retry = setTimeout(connect, 5000);
+            },
+          );
+        },
+        tenantId,
+        () => setChanges((n) => n + 1),
+      );
     };
     connect();
     return () => {
       active = false;
+      clearTimeout(retry);
       stop();
     };
-  }, [signedIn.csrf_token, fail]);
+  }, [signedIn.csrf_token, fail, tenantId]);
 
   const capabilities =
     context.state === "ready" ? context.value.capabilities : [];
@@ -208,10 +225,18 @@ export function Shell({
       ? tenants.value.find((item) => item.id === tenantId)?.name
       : undefined;
   const title = t[section];
+  const openDevice = useCallback((id: string, tab: Tab) => {
+    setSection("devices");
+    setDeviceName(null);
+    setDevice({ id, tab });
+  }, []);
+  const deviceTitle = device ? (deviceName ?? t.loading) : null;
 
   useEffect(() => {
-    document.title = ["MIDAS", tenantName, title].filter(Boolean).join(" · ");
-  }, [tenantName, title]);
+    document.title = ["MIDAS", tenantName, deviceTitle ?? title]
+      .filter(Boolean)
+      .join(" · ");
+  }, [tenantName, title, deviceTitle]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: focus moves to the heading after navigation
   useEffect(() => {
     if (firstRender.current) {
@@ -219,7 +244,7 @@ export function Shell({
       return;
     }
     heading.current?.focus();
-  }, [section]);
+  }, [section, device?.id]);
 
   const signOut = async () => {
     try {
@@ -235,8 +260,11 @@ export function Shell({
         key={target}
         type="button"
         className={section === target ? "nav-item active" : "nav-item"}
-        onClick={() => setSection(target)}
-        aria-current={section === target ? "page" : undefined}
+        onClick={() => {
+          setSection(target);
+          setDevice(null);
+        }}
+        aria-current={section === target && !device ? "page" : undefined}
       >
         <Icon name={icon} />
         <span>{t[target]}</span>
@@ -375,13 +403,51 @@ export function Shell({
         fail={fail}
       />
     );
-  } else if (section === "devices") {
-    content = (
-      <Empty icon="monitor" title={t.noDevicesTitle} hint={t.noDevicesHint} />
+  } else if (section === "devices" && tenantId && context.state === "ready") {
+    content = device ? (
+      <DevicePage
+        key={`${tenantId}-${device.id}`}
+        tenant={tenantId}
+        tenantName={tenantName ?? ""}
+        access={context.value}
+        t={t}
+        language={language}
+        csrf={signedIn.csrf_token}
+        fail={fail}
+        changes={changes}
+        deviceId={device.id}
+        tab={device.tab}
+        onTab={(tab) => setDevice({ id: device.id, tab })}
+        onOpen={openDevice}
+        onIdentity={setDeviceName}
+      />
+    ) : (
+      <DevicesView
+        key={tenantId}
+        tenant={tenantId}
+        tenantName={tenantName ?? ""}
+        access={context.value}
+        t={t}
+        language={language}
+        csrf={signedIn.csrf_token}
+        fail={fail}
+        changes={changes}
+        onOpen={openDevice}
+      />
     );
-  } else if (section === "alerts") {
+  } else if (section === "alerts" && tenantId && context.state === "ready") {
     content = (
-      <Empty icon="alert" title={t.noAlertsTitle} hint={t.noAlertsHint} />
+      <AlertsView
+        key={tenantId}
+        tenant={tenantId}
+        access={context.value}
+        t={t}
+        language={language}
+        csrf={signedIn.csrf_token}
+        fail={fail}
+        changes={changes}
+        onOpen={openDevice}
+      />
     );
   } else {
     content = (
@@ -443,7 +509,15 @@ export function Shell({
           <div className="breadcrumbs">
             <span>{tenantName ?? t.account}</span>
             <Icon name="chevron" size={13} />
-            <strong>{title}</strong>
+            {deviceTitle ? (
+              <>
+                <span>{title}</span>
+                <Icon name="chevron" size={13} />
+                <strong>{deviceTitle}</strong>
+              </>
+            ) : (
+              <strong>{title}</strong>
+            )}
           </div>
           {tenants.state === "ready" && tenants.value.length > 0 && (
             <label className="customer-select tenant-select">
@@ -480,17 +554,30 @@ export function Shell({
         <main id="main" tabIndex={-1}>
           <div className="page-heading">
             <div>
+              {device && (
+                <button
+                  type="button"
+                  className="back-link"
+                  onClick={() => setDevice(null)}
+                >
+                  <Icon name="back" size={15} />
+                  {t.backToDevices}
+                </button>
+              )}
               {section !== "sessions" &&
                 section !== "customers" &&
-                tenantName && (
+                tenantName &&
+                !device && (
                   <p className="eyebrow">
                     {t.tenant}: {tenantName}
                   </p>
                 )}
               <h1 ref={heading} tabIndex={-1}>
-                {title}
+                {deviceTitle ?? title}
               </h1>
-              <p className="page-description">{description[section]}</p>
+              <p className="page-description">
+                {device ? t.devicePageDescription : description[section]}
+              </p>
             </div>
           </div>
           {content}

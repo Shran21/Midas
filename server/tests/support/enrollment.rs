@@ -17,7 +17,7 @@ use midas_server::{
         http::{WebAuth, router},
         sessions::SessionConfig,
     },
-    authorization::{Authorizer, BuiltinRole, Scope},
+    authorization::{Authorizer, BuiltinRole, Effect, Permission, Rule, Scope},
     database::Database,
     enrollment::{Authority, Enrollment},
     transport::{PeerCertificates, pem_resolver, server_config},
@@ -337,6 +337,94 @@ enum Link {
 }
 
 /// Forwards to `upstream`; switching to `Silent` keeps sockets open but stops all traffic.
+type Panel =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+async fn next(socket: &mut Panel) -> serde_json::Value {
+    use futures_util::StreamExt;
+    loop {
+        match timeout(Duration::from_secs(10), socket.next()).await {
+            Ok(Some(Ok(tokio_tungstenite::tungstenite::Message::Text(text)))) => {
+                return serde_json::from_str(&text).unwrap();
+            }
+            Ok(Some(Ok(_))) => continue,
+            other => panic!("session channel ended: {other:?}"),
+        }
+    }
+}
+
+/// A browser session channel watching `tenant`; the task ends with the first change notice.
+async fn live_panel(
+    app: &axum::Router,
+    client: &Client,
+    tenant: Uuid,
+    foreign: Uuid,
+) -> tokio::task::JoinHandle<serde_json::Value> {
+    use futures_util::SinkExt;
+    use tokio_tungstenite::{
+        connect_async,
+        tungstenite::{Message, client::IntoClientRequest},
+    };
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let router = app.clone();
+    tokio::spawn(async move {
+        axum::serve(
+            listener,
+            router.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .unwrap();
+    });
+    let mut request = format!("ws://{address}/api/session/socket")
+        .into_client_request()
+        .unwrap();
+    request
+        .headers_mut()
+        .insert("origin", ORIGIN.parse().unwrap());
+    request
+        .headers_mut()
+        .insert("cookie", client.cookie().parse().unwrap());
+    let (mut socket, _) = connect_async(request).await.unwrap();
+    let send = |value: serde_json::Value| Message::Text(value.to_string().into());
+    socket
+        .send(send(json!({ "csrf_token": client.csrf() })))
+        .await
+        .unwrap();
+    assert!(
+        next(&mut socket).await.get("id").is_some(),
+        "session details first"
+    );
+    socket
+        .send(send(json!({ "type": "watch", "tenant": foreign })))
+        .await
+        .unwrap();
+    assert_eq!(
+        next(&mut socket).await,
+        json!({ "type": "watch_refused", "tenant": foreign }),
+        "a customer the operator is not a member of cannot be watched"
+    );
+    socket
+        .send(send(json!({ "type": "watch", "tenant": tenant })))
+        .await
+        .unwrap();
+    assert_eq!(
+        next(&mut socket).await,
+        json!({ "type": "watching", "tenant": tenant })
+    );
+    tokio::spawn(async move { next(&mut socket).await })
+}
+
+async fn reported_at(admin: &mut PgConnection, device: Uuid) -> f64 {
+    sqlx::query_scalar(
+        "SELECT extract(epoch FROM health_reported_at)::float8 FROM midas.devices WHERE id = $1",
+    )
+    .bind(device)
+    .fetch_one(admin)
+    .await
+    .unwrap()
+}
+
 async fn proxy(upstream: std::net::SocketAddr) -> (u16, Arc<watch::Sender<Link>>) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -1519,6 +1607,263 @@ pub async fn verify(database: &Database, admin: &mut PgConnection) {
     let connector_sets: i64 = sqlx::query_scalar("SELECT count(*) FROM midas.tenant_audit WHERE tenant_id = $1 AND action = 'directory.connector_set' AND outcome = 'success'")
         .bind(tenant).fetch_one(&mut *admin).await.unwrap();
     assert_eq!(connector_sets, 2);
+
+    // Devices: the list carries the permissions the endpoints enforce, a scoped technician sees
+    // only its devices, changes reach the watching panel, and a refresh reaches only a live agent.
+    let listed = |client: &Client| {
+        let (app, client) = (app.clone(), client.clone());
+        async move {
+            let (status, body, _) = call(
+                &app,
+                "GET",
+                &format!("/api/tenants/{tenant}/devices"),
+                Some(&client),
+                None,
+                &[],
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{body}");
+            body.as_array().unwrap().clone()
+        }
+    };
+    let id_of = |item: &serde_json::Value| item["id"].as_str().unwrap().parse::<Uuid>().unwrap();
+    let all = listed(&manager).await;
+    let ids: Vec<Uuid> = all.iter().map(id_of).collect();
+    assert!(ids.contains(&server_device) && ids.contains(&device));
+    assert!(
+        !ids.contains(&rejected_device),
+        "rejected and pending devices stay in the enrollment view"
+    );
+    let summary = all
+        .iter()
+        .find(|item| id_of(item) == server_device)
+        .unwrap();
+    assert_eq!(
+        (
+            &summary["kind"],
+            &summary["platform"],
+            &summary["enrollment"],
+            &summary["groups"][0]["name"],
+            &summary["open_alerts"],
+        ),
+        (
+            &json!("server"),
+            &json!("linux"),
+            &json!("active"),
+            &json!("Servers"),
+            &json!(0)
+        )
+    );
+    let held = |item: &serde_json::Value, permission: &str| {
+        item["permissions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p == permission)
+    };
+    assert!(held(summary, "device.read") && held(summary, "policy.manage"));
+    assert!(
+        !held(summary, "remote.uac.interact") && !held(summary, "remote.unattended"),
+        "UAC needs Windows and unattended access needs an opted-in server"
+    );
+    let revoked = all.iter().find(|item| id_of(item) == device).unwrap();
+    assert_eq!(revoked["enrollment"], "revoked");
+    assert!(held(revoked, "remote.uac.interact"));
+    let (status, _, _) = call(
+        &app,
+        "GET",
+        &format!("/api/tenants/{tenant}/devices"),
+        Some(&outsider),
+        None,
+        &[],
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "another customer's operator");
+
+    let (technician_id, mut technician_key) =
+        operator(&web, "enrollment-technician", "Technician").await;
+    policy
+        .set_membership(tenant, technician_id, true, Actor::SYSTEM)
+        .await
+        .unwrap();
+    for scope in [Scope::Site(site), Scope::Group(servers)] {
+        policy
+            .assign_role(
+                tenant,
+                technician_id,
+                BuiltinRole::Technician.id(),
+                scope,
+                Actor::SYSTEM,
+            )
+            .await
+            .unwrap();
+    }
+    policy
+        .override_permission(
+            tenant,
+            technician_id,
+            Scope::Device(server_device),
+            Rule {
+                permission: Permission::MonitorRead,
+                effect: Effect::Deny,
+            },
+            Actor::SYSTEM,
+        )
+        .await
+        .unwrap();
+    let technician = passkey(&app, "enrollment-technician", &mut technician_key).await;
+    let (status, context, _) = call(
+        &app,
+        "GET",
+        &format!("/api/tenants/{tenant}"),
+        Some(&technician),
+        None,
+        &[],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        context["tenant_wide"],
+        json!([]),
+        "nothing is held tenant-wide"
+    );
+    assert!(
+        context["fresh_passkey"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p == "device.enroll")
+    );
+    let scoped = listed(&technician).await;
+    let mut seen: Vec<Uuid> = scoped.iter().map(id_of).collect();
+    seen.sort();
+    let mut expected = vec![device, server_device];
+    expected.sort();
+    assert_eq!(seen, expected, "the site and the group, nothing else");
+    let grouped = scoped
+        .iter()
+        .find(|item| id_of(item) == server_device)
+        .unwrap();
+    assert!(held(grouped, "device.read") && !held(grouped, "monitor.read"));
+    assert!(!held(grouped, "policy.manage"));
+    for item in &scoped {
+        let target = id_of(item);
+        for (suffix, permission) in [
+            ("", "device.read"),
+            ("/health", "device.read"),
+            ("/metrics", "monitor.read"),
+            ("/alerts", "monitor.read"),
+        ] {
+            let (status, _, _) = call(
+                &app,
+                "GET",
+                &format!("/api/tenants/{tenant}/devices/{target}{suffix}"),
+                Some(&technician),
+                None,
+                &[],
+            )
+            .await;
+            let expected = if held(item, permission) {
+                StatusCode::OK
+            } else {
+                StatusCode::NOT_FOUND
+            };
+            assert_eq!(status, expected, "{suffix} on {target} follows the list");
+        }
+    }
+    let (status, _, _) = call(
+        &app,
+        "GET",
+        &format!("/api/tenants/{tenant}/devices/{rejected_device}"),
+        Some(&manager),
+        None,
+        &[],
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let mut changes = enrollment.subscribe();
+    let panel = live_panel(&app, &manager, tenant, other).await;
+    let watched = Agent::checked(
+        proxy_port,
+        tls.clone(),
+        midas_agent_core::health::shared(),
+        Arc::new(|_: &midas_agent_core::health::Thresholds| {
+            vec![health_check(
+                "storage",
+                midas_protocol::HealthState::Ok,
+                "healthy",
+                &[],
+            )]
+        }),
+        Vec::new(),
+    );
+    let announced = timeout(Duration::from_secs(10), async {
+        loop {
+            if changes.recv().await.unwrap() == tenant {
+                break;
+            }
+        }
+    })
+    .await;
+    assert!(announced.is_ok(), "a health report announces a change");
+    let notice = timeout(Duration::from_secs(10), panel)
+        .await
+        .expect("the watching panel hears about the change")
+        .unwrap();
+    assert_eq!(
+        notice,
+        json!({ "type": "devices_changed", "tenant": tenant })
+    );
+    health_rows(admin, server_device, |rows| {
+        rows.len() == 1 && rows[0].0 == "storage" && rows[0].3.is_empty()
+    })
+    .await;
+    let before = reported_at(admin, server_device).await;
+    let refresh = format!("/api/tenants/{tenant}/devices/{server_device}/refresh");
+    assert_eq!(
+        call(&app, "POST", &refresh, Some(&outsider), None, &[])
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        call(&app, "POST", &refresh, Some(&technician), None, &[])
+            .await
+            .0,
+        StatusCode::NOT_FOUND,
+        "the denied monitoring permission also blocks a refresh"
+    );
+    assert_eq!(
+        call(&app, "POST", &refresh, Some(&manager), None, &[])
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    timeout(Duration::from_secs(10), async {
+        while reported_at(admin, server_device).await <= before {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("the unchanged result is resent at once");
+    assert_eq!(
+        call(&app, "POST", &refresh, Some(&manager), None, &[])
+            .await
+            .0,
+        StatusCode::NO_CONTENT,
+        "a repeat within the window is accepted without waking the agent"
+    );
+    watched.stop.send_replace(true);
+    let offline_refresh = format!("/api/tenants/{tenant}/devices/{device}/refresh");
+    let (status, body, _) = call(&app, "POST", &offline_refresh, Some(&manager), None, &[]).await;
+    assert_eq!(
+        (status, &body["error"]),
+        (StatusCode::CONFLICT, &json!("device_offline"))
+    );
+    let refreshes: i64 = sqlx::query_scalar("SELECT count(*) FROM midas.tenant_audit WHERE tenant_id = $1 AND action = 'device.refresh' AND device_id = $2")
+        .bind(tenant).bind(server_device).fetch_one(&mut *admin).await.unwrap();
+    assert_eq!(refreshes, 1);
 
     let (_, created, _) = create(&manager, tenant, spec.clone()).await;
     sqlx::query("UPDATE midas.enrollment_tokens SET created_at = clock_timestamp() - interval '2 hours', expires_at = clock_timestamp() - interval '1 hour' WHERE id = $1")

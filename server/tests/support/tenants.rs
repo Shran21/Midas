@@ -216,8 +216,21 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
-        context,
-        json!({ "id": alpha.to_string(), "name": "Alfa Kft.", "capabilities": ["device.read", "monitor.read"] })
+        (&context["id"], &context["name"], &context["capabilities"]),
+        (
+            &json!(alpha.to_string()),
+            &json!("Alfa Kft."),
+            &json!(["device.read", "monitor.read"])
+        )
+    );
+    assert_eq!(
+        context["tenant_wide"],
+        json!(["device.read", "monitor.read"])
+    );
+    assert_eq!(
+        context["fresh_passkey"].as_array().map(Vec::len),
+        Some(12),
+        "every permission that needs a fresh passkey"
     );
     let (_, context) = call(
         &app,
@@ -235,6 +248,11 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
             "remote.view",
             "alert.acknowledge"
         ])
+    );
+    assert_eq!(
+        context["tenant_wide"],
+        json!([]),
+        "a site role grants nothing tenant-wide"
     );
     for missing in [disabled, foreign, Uuid::new_v4()] {
         let (status, body) = call(

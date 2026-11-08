@@ -44,7 +44,10 @@ impl VersionRange {
 
 #[derive(Clone, PartialEq, Message)]
 pub struct Envelope {
-    #[prost(oneof = "Body", tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14")]
+    #[prost(
+        oneof = "Body",
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15"
+    )]
     pub body: Option<Body>,
 }
 
@@ -78,6 +81,8 @@ pub enum Body {
     HealthAck(HealthAck),
     #[prost(message, tag = "14")]
     PolicyAssignment(PolicyAssignment),
+    #[prost(message, tag = "15")]
+    RefreshRequest(RefreshRequest),
 }
 
 /// First message from the agent.
@@ -330,6 +335,10 @@ pub struct PolicyAssignment {
     #[prost(message, repeated, tag = "1")]
     pub settings: Vec<PolicySetting>,
 }
+
+/// An operator asked for current data: the agent runs its health checks and collects its inventory at once.
+#[derive(Clone, PartialEq, Message)]
+pub struct RefreshRequest {}
 
 #[derive(Debug)]
 pub enum DecodeError {

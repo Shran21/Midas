@@ -3,6 +3,7 @@ import type { Language } from "./i18n";
 export const permissionNames: Record<Language, Record<string, string>> = {
   hu: {
     "device.read": "Eszközadatok megtekintése",
+    "device.enroll": "Eszközök regisztrálása és visszavonása",
     "monitor.read": "Monitorozás megtekintése",
     "remote.view": "Képernyő megtekintése",
     "remote.control": "Normál távvezérlés",
@@ -16,10 +17,14 @@ export const permissionNames: Record<Language, Record<string, string>> = {
     "updates.manage": "Frissítések kezelése",
     "domain.join": "Tartományba léptetés",
     "access.manage": "Hozzáférés kezelése",
+    "directory.discover": "Címtár-felderítés",
+    "policy.manage": "Szabályzatok kezelése",
+    "alert.acknowledge": "Riasztások nyugtázása",
     "audit.read": "Audit olvasása",
   },
   en: {
     "device.read": "View device data",
+    "device.enroll": "Enroll and revoke devices",
     "monitor.read": "View monitoring",
     "remote.view": "View screen",
     "remote.control": "Normal remote control",
@@ -33,6 +38,9 @@ export const permissionNames: Record<Language, Record<string, string>> = {
     "updates.manage": "Manage updates",
     "domain.join": "Join domain",
     "access.manage": "Manage access",
+    "directory.discover": "Directory discovery",
+    "policy.manage": "Manage policies",
+    "alert.acknowledge": "Acknowledge alerts",
     "audit.read": "Read audit",
   },
 };

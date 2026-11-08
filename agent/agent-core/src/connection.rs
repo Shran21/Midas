@@ -259,6 +259,15 @@ async fn session(
                         tracing::info!(settings = assignment.settings.len(), "agent policy applied");
                     }
                 }
+                Ok(Body::RefreshRequest(_)) => {
+                    if let Some(shared) = &settings.health {
+                        crate::health::lock(shared).refresh();
+                    }
+                    if let Some(shared) = &settings.inventory {
+                        crate::inventory::lock(shared).wake.notify_one();
+                    }
+                    tracing::info!("agent refresh requested");
+                }
                 Ok(Body::MetricsAck(ack)) => {
                     upload.acknowledged(&ack, settings);
                     if upload.offer(&mut socket, settings, keepalive).await.is_err() {

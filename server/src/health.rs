@@ -113,7 +113,9 @@ impl Enrollment {
         .bind(identity.device)
         .execute(&mut *tx)
         .await?;
-        tx.commit().await
+        tx.commit().await?;
+        self.changed(identity.tenant);
+        Ok(())
     }
 
     pub async fn health(

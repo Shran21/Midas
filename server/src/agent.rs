@@ -144,6 +144,9 @@ async fn serve(
     );
     let mut assigned = None;
     let mut policy = None;
+    let mut refreshed = admission
+        .as_ref()
+        .map_or(0, |admitted| admitted.signal.borrow().checks);
     seen(&protocol, identity).await;
     if let (Some(identities), Some(identity)) = (&protocol.identities, identity)
         && identities
@@ -170,6 +173,13 @@ async fn serve(
                     || !send_policy(&mut socket, &protocol, identity, &mut policy).await
                 {
                     break "closed";
+                }
+                if signal.checks != refreshed {
+                    refreshed = signal.checks;
+                    let request = Body::RefreshRequest(midas_protocol::RefreshRequest {});
+                    if send(&mut socket, request, protocol.keepalive).await.is_err() {
+                        break "closed";
+                    }
                 }
                 continue;
             }

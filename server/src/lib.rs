@@ -12,6 +12,7 @@ pub mod authorization;
 pub mod config;
 pub mod connector;
 pub mod database;
+pub mod devices;
 pub mod enrollment;
 pub mod health;
 pub mod inventory;

@@ -55,7 +55,7 @@ Az offline-söprés a szerveren 30 másodpercenként fut, a jelenlétet jelző s
 - Csak e-mail-csatorna van; a Teams- és Slack-végpontok a MIDAS-030 részei.
 - Riasztásonként egy értesítés készül; eszkalálás, ismétlő emlékeztető és csendes időszak még nincs.
 - A címzettek ügyfélszintűek; telephelyre vagy csoportra szűkített címzettlista még nincs.
-- A webpanel riasztásnézete a MIDAS-031 része.
+- A webpanel Riasztások nézete és az eszközoldal mutatja és nyugtázza a riasztásokat ([eszközoldal](eszkozoldal.md)).
 
 ## English
 
@@ -110,4 +110,4 @@ The offline sweep runs on the server every 30 seconds, after the presence sweep.
 - E-mail is the only channel; Teams and Slack endpoints belong to MIDAS-030.
 - One notification per alert; escalation, reminders and quiet hours are not available yet.
 - Recipients are per customer; site- or group-scoped recipient lists are not available yet.
-- The web panel alert view belongs to MIDAS-031.
+- The web panel Alerts view and the device page show and acknowledge alerts ([device pages](eszkozoldal.md#english)).

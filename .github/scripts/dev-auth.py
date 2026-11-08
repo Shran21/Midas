@@ -78,14 +78,24 @@ if not (work / 'credentials.txt').exists():
                    env={**local, 'MIDAS_DATABASE_URL': runtime_url, 'MIDAS_DEV_DIR': str(work), 'MIDAS_AUTH_ORIGIN': origin})
 print(f'Demo credentials: {work / "credentials.txt"}', flush=True)
 print(f'Open {origin}', flush=True)
+subprocess.run(['cargo', 'run', '--locked', '-q', '-p', 'midas-server', '--example', 'dev_fleet', '--', 'ca'], cwd=root, check=True,
+               env={**local, 'MIDAS_DEV_DIR': str(work)})
 server = {**local, 'MIDAS_DATABASE_URL': runtime_url, 'MIDAS_AUTH_ORIGIN': origin, 'MIDAS_AUTH_KEY_FILE': str(work / 'auth.key')}
 panel = {**os.environ, 'MIDAS_DEV_TLS_CERT': str(work / 'tls.pem'), 'MIDAS_DEV_TLS_KEY': str(work / 'tls.key'),
          'MIDAS_DEV_API': 'https://127.0.0.1:7443'}
 processes = [
     subprocess.Popen(['cargo', 'run', '--locked', '-q', '-p', 'midas-server', '--', '--tls-cert', str(work / 'tls.pem'),
-                      '--tls-key', str(work / 'tls.key')], cwd=root, env=server),
+                      '--tls-key', str(work / 'tls.key'), '--agent-bind', '127.0.0.1:7444', '--agent-ca', str(work / 'agent-ca.pem'),
+                      '--agent-ca-key', str(work / 'agent-ca-key.pem')], cwd=root, env=server),
     subprocess.Popen(['pnpm', '--filter', '@midas/web-panel', 'dev'], cwd=root, env=panel, shell=os.name == 'nt'),
 ]
+# Simulated agents for trying the device pages: --fleet N enrolls N devices once and keeps them connected.
+if '--fleet' in sys.argv:
+    size = sys.argv[sys.argv.index('--fleet') + 1]
+    fleet = {**local, 'MIDAS_DEV_DIR': str(work), 'MIDAS_FLEET_SIZE': size,
+             'MIDAS_ADMIN_DATABASE_URL': f"postgresql://midas_dev_admin:{state['admin']}@{base}"}
+    processes.append(subprocess.Popen(['cargo', 'run', '--locked', '-q', '-p', 'midas-server', '--example', 'dev_fleet', '--', 'run'],
+                                      cwd=root, env=fleet))
 try:
     while all(process.poll() is None for process in processes):
         try:

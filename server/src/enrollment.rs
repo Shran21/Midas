@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
+    time::Instant,
 };
 
 use axum::http::StatusCode;
@@ -17,7 +18,7 @@ use rustls::pki_types::{CertificateSigningRequestDer, pem::PemObject};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Postgres, Transaction};
-use tokio::sync::watch;
+use tokio::sync::{broadcast, watch};
 use uuid::Uuid;
 
 use crate::{
@@ -194,6 +195,8 @@ pub struct Signal {
     pub refresh: u64,
     /// Bumped when a policy value or the device's groups may have changed.
     pub policy: u64,
+    /// Bumped when an operator asks for fresh health checks and inventory.
+    pub checks: u64,
 }
 
 type Live = Arc<Mutex<HashMap<Uuid, watch::Sender<Signal>>>>;
@@ -225,6 +228,9 @@ pub struct Enrollment {
     pub(crate) authorizer: Authorizer,
     authority: Authority,
     live: Live,
+    /// Tenants whose device list changed; the panel refetches what the operator may see.
+    changes: broadcast::Sender<Uuid>,
+    pub(crate) refreshed: Mutex<HashMap<Uuid, Instant>>,
 }
 
 impl Enrollment {
@@ -234,7 +240,17 @@ impl Enrollment {
             authorizer: Authorizer::new(database),
             authority,
             live: Arc::default(),
+            changes: broadcast::channel(256).0,
+            refreshed: Mutex::default(),
         }
+    }
+
+    pub fn subscribe(&self) -> broadcast::Receiver<Uuid> {
+        self.changes.subscribe()
+    }
+
+    pub(crate) fn changed(&self, tenant: Uuid) {
+        let _ = self.changes.send(tenant);
     }
 
     pub(crate) async fn tenant_tx(
@@ -431,6 +447,7 @@ impl Enrollment {
         event.device = Some(device);
         audit::append_tenant(&mut tx, &event).await?;
         tx.commit().await?;
+        self.changed(tenant);
         Ok(answer)
     }
 
@@ -525,6 +542,7 @@ impl Enrollment {
         )
         .await?;
         tx.commit().await?;
+        self.changed(tenant);
         Ok(())
     }
 
@@ -545,6 +563,7 @@ impl Enrollment {
         self.decided(&mut tx, Action::EnrollmentReject, &identity, tenant, device)
             .await?;
         tx.commit().await?;
+        self.changed(tenant);
         Ok(())
     }
 
@@ -569,6 +588,7 @@ impl Enrollment {
             .await?;
         tx.commit().await?;
         self.signal(device, |signal| signal.revoked = true);
+        self.changed(tenant);
         Ok(())
     }
 
@@ -622,14 +642,19 @@ impl Enrollment {
             .then_some(admission)
     }
 
-    pub(crate) fn signal(&self, device: Uuid, change: impl FnOnce(&mut Signal)) {
-        if let Some(sender) = self
+    /// Changes the live sessions' signal; false when the device has none.
+    pub(crate) fn signal(&self, device: Uuid, change: impl FnOnce(&mut Signal)) -> bool {
+        match self
             .live
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .get(&device)
         {
-            sender.send_modify(change);
+            Some(sender) => {
+                sender.send_modify(change);
+                true
+            }
+            None => false,
         }
     }
 }

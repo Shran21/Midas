@@ -242,6 +242,8 @@ pub struct Latest {
     pub thresholds: Thresholds,
     /// Runs the checks at once when the policy changes.
     pub wake: Arc<Notify>,
+    /// The next result is sent even if unchanged, because an operator asked for it.
+    forced: bool,
 }
 
 pub type Shared = Arc<Mutex<Latest>>;
@@ -286,9 +288,10 @@ impl Latest {
         let fresh = self
             .published
             .is_some_and(|at| now.saturating_duration_since(at) < REFRESH_EVERY);
-        if self.revision > 0 && fresh && checks == self.checks {
+        if self.revision > 0 && fresh && checks == self.checks && !self.forced {
             return false;
         }
+        self.forced = false;
         self.checks = checks;
         self.revision += 1;
         self.published = Some(now);
@@ -304,6 +307,12 @@ impl Latest {
         self.thresholds = thresholds;
         self.wake.notify_one();
         true
+    }
+
+    /// Runs the checks at once and sends the result even if nothing changed.
+    pub fn refresh(&mut self) {
+        self.forced = true;
+        self.wake.notify_one();
     }
 
     pub fn report(&self, sequence: u64) -> Option<HealthReport> {
@@ -508,6 +517,26 @@ mod tests {
         ));
         assert_eq!(latest.revision, 3);
         assert_eq!(latest.report(9).unwrap().sequence, 9);
+    }
+
+    #[test]
+    fn a_requested_refresh_runs_at_once_and_resends_an_unchanged_result() {
+        let mut latest = Latest::default();
+        let start = Instant::now();
+        let checks = vec![services(&[])];
+        assert!(latest.publish(checks.clone(), start));
+        let woken = latest.wake.clone();
+        let notified = woken.notified();
+        tokio::pin!(notified);
+        assert!(!notified.as_mut().enable());
+        latest.refresh();
+        assert!(notified.as_mut().enable(), "a refresh wakes the checks");
+        assert!(latest.publish(checks.clone(), start + Duration::from_secs(60)));
+        assert!(
+            !latest.publish(checks, start + Duration::from_secs(120)),
+            "only the requested run is forced"
+        );
+        assert_eq!(latest.revision, 2);
     }
 
     #[test]

@@ -491,6 +491,7 @@ impl Enrollment {
         tx.commit().await?;
         if changed {
             self.signal(device, |signal| signal.policy += 1);
+            self.changed(tenant);
         }
         Ok(changed)
     }

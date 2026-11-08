@@ -26,6 +26,16 @@ const paths = {
   shield: "m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z m-4 9 3 3 5-6",
   filter: "M3 4h18l-7 8v7l-4 2v-9L3 4Z",
   info: "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0 M12 11v6 M12 7h.01",
+  more: "M7 12a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0 M13.5 12a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0 M20 12a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0",
+  back: "M19 12H5 m5-5-5 5 5 5",
+  activity: "M3 12h4l3-8 4 16 3-8h4",
+  box: "M21 8 12 3 3 8v8l9 5 9-5V8Z M3 8l9 5 9-5 M12 13v8",
+  terminal: "M4 17l6-5-6-5 M12 19h8",
+  folder: "M3 6h6l2 2h10v11H3z",
+  script:
+    "M8 3h11v15a3 3 0 0 1-3 3H6 M8 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 M10 8h6 M10 12h6",
+  ban: "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0 M5.6 5.6l12.8 12.8",
+  key: "M15 9a3 3 0 1 1-6 0 3 3 0 0 1 6 0 M12 12v9 M12 17h3 M12 20h2",
 } as const;
 
 export type IconName = keyof typeof paths;

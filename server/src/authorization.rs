@@ -1,4 +1,7 @@
-use std::fmt;
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -160,7 +163,12 @@ pub struct TenantSummary {
 pub struct TenantContext {
     pub id: Uuid,
     pub name: String,
+    /// Granted anywhere in the tenant, minus tenant-wide denials.
     pub capabilities: Vec<Permission>,
+    /// Held for the whole tenant, as checked for tenant-wide operations.
+    pub tenant_wide: Vec<Permission>,
+    /// Operations with these permissions need a passkey sign-in from the last five minutes.
+    pub fresh_passkey: Vec<Permission>,
 }
 
 /// A current policy decision, not a signed grant or a substitute for consent and execution-time checks.
@@ -183,6 +191,8 @@ pub enum AccessError {
     Unavailable,
     /// The actor would grant or restore a permission it does not hold tenant-wide.
     Escalation,
+    /// The operation needs a live agent session, and the device has none.
+    Offline,
 }
 impl fmt::Display for AccessError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -194,6 +204,7 @@ impl fmt::Display for AccessError {
             Self::Conflict => "access policy conflict",
             Self::Unavailable => "authorization unavailable",
             Self::Escalation => "permission exceeds the actor's own access",
+            Self::Offline => "the device is offline",
         })
     }
 }
@@ -217,7 +228,23 @@ impl From<sqlx::Error> for AccessError {
     }
 }
 type Result<T> = std::result::Result<T, AccessError>;
-type DeviceRow = (Option<Uuid>, Vec<Uuid>, String, String, bool, bool);
+/// Device properties some permissions depend on, beyond the operator's rules.
+#[derive(Clone, Copy, Debug)]
+struct Traits {
+    server: bool,
+    windows: bool,
+    unattended: bool,
+}
+
+impl Traits {
+    fn eligible(self, permission: Permission) -> bool {
+        match permission {
+            Permission::RemoteUnattended => self.server && self.unattended,
+            Permission::RemoteUacInteract => self.windows,
+            _ => true,
+        }
+    }
+}
 type AssignmentRow = (Uuid, Uuid, Option<Uuid>, Option<Uuid>, Option<Uuid>);
 type OverrideRow = (
     Uuid,
@@ -295,6 +322,8 @@ impl Authorizer {
         let name = name.ok_or(AccessError::Denied)?;
         let granted: Vec<String> = sqlx::query_scalar("WITH rules AS (SELECT p.permission, p.effect, r.enabled, a.site_id, a.group_id, a.device_id FROM midas.role_assignments a JOIN midas.roles r ON r.id = a.role_id JOIN midas.role_permissions p ON p.role_id = r.id WHERE a.tenant_id = $1 AND a.operator_id = $2 UNION ALL SELECT permission, effect, true, site_id, group_id, device_id FROM midas.permission_overrides WHERE tenant_id = $1 AND operator_id = $2) SELECT DISTINCT permission FROM rules WHERE effect = 'allow' AND enabled EXCEPT SELECT permission FROM rules WHERE effect = 'deny' AND site_id IS NULL AND group_id IS NULL AND device_id IS NULL")
             .bind(tenant).bind(identity.operator_id).fetch_all(&mut *tx).await?;
+        let names: Vec<_> = Permission::ALL.iter().map(|p| p.as_str()).collect();
+        let whole = tenant_rules(&mut tx, tenant, identity.operator_id, &names).await?;
         tx.commit().await?;
         Ok(TenantContext {
             id: tenant,
@@ -304,7 +333,45 @@ impl Authorizer {
                 .copied()
                 .filter(|p| granted.iter().any(|g| g == p.as_str()))
                 .collect(),
+            tenant_wide: allowed(&whole),
+            fresh_passkey: Permission::ALL
+                .iter()
+                .copied()
+                .filter(|p| p.requires_fresh_passkey())
+                .collect(),
         })
+    }
+
+    /// Effective permissions per device, with the same rules `authorize` applies to a device target.
+    pub(crate) async fn device_permissions(
+        &self,
+        identity: &SessionInfo,
+        tenant: Uuid,
+        device: Option<Uuid>,
+    ) -> Result<HashMap<Uuid, Vec<Permission>>> {
+        let mut tx = self.tenant_transaction(tenant, true).await?;
+        session_state(&mut tx, identity, tenant).await?;
+        let names: Vec<_> = Permission::ALL.iter().map(|p| p.as_str()).collect();
+        let traits = device_traits(&mut tx, tenant, device).await?;
+        let granted: HashSet<(Uuid, String)> =
+            device_grants(&mut tx, tenant, identity.operator_id, &names, device)
+                .await?
+                .into_iter()
+                .collect();
+        tx.commit().await?;
+        Ok(traits
+            .into_iter()
+            .map(|(id, traits)| {
+                let permissions = Permission::ALL
+                    .iter()
+                    .copied()
+                    .filter(|p| {
+                        traits.eligible(*p) && granted.contains(&(id, p.as_str().to_owned()))
+                    })
+                    .collect();
+                (id, permissions)
+            })
+            .collect())
     }
 
     pub async fn authorize(
@@ -350,26 +417,9 @@ impl Authorizer {
             return Ok(Vec::new());
         }
         let names: Vec<_> = Permission::ALL.iter().map(|p| p.as_str()).collect();
-        let rules = applicable_rules(
-            &mut tx,
-            tenant,
-            identity.operator_id,
-            &names,
-            None,
-            &[],
-            None,
-        )
-        .await?;
+        let rules = tenant_rules(&mut tx, tenant, identity.operator_id, &names).await?;
         tx.commit().await?;
-        Ok(Permission::ALL
-            .iter()
-            .copied()
-            .filter(|p| {
-                rules
-                    .iter()
-                    .any(|(name, allow, deny)| name == p.as_str() && *allow && !*deny)
-            })
-            .collect())
+        Ok(allowed(&rules))
     }
 
     /// Every eligibility decision for an authenticated session is audited; an unaudited allow is never returned.
@@ -449,49 +499,37 @@ impl Authorizer {
         fresh_required: bool,
     ) -> Result<AccessDecision> {
         let mut tx = self.tenant_transaction(target.tenant, true).await?;
-        let (member, fresh): (bool, bool) = sqlx::query_as("SELECT EXISTS (SELECT 1 FROM midas.tenant_memberships m WHERE m.tenant_id = $3 AND m.operator_id = s.operator_id AND m.enabled), s.authentication_method = 'passkey' AND s.authenticated_at >= clock_timestamp() - interval '5 minutes' AND s.authenticated_at <= clock_timestamp() + interval '1 second' FROM midas.browser_sessions s JOIN midas.operators o ON o.id = s.operator_id WHERE s.id = $1 AND s.operator_id = $2 AND o.enabled AND s.credential_version = o.credential_version AND s.expires_at > clock_timestamp() AND s.idle_expires_at > clock_timestamp()")
-            .bind(identity.id).bind(identity.operator_id).bind(target.tenant).fetch_optional(&mut *tx).await?
-            .ok_or(AccessError::Unauthenticated)?;
-        if !member {
-            return Err(AccessError::Denied);
-        }
-        let mut site = None;
-        let mut groups: Vec<Uuid> = Vec::new();
+        let fresh = session_state(&mut tx, identity, target.tenant).await?;
+        let names: Vec<_> = permissions.iter().map(|p| p.as_str()).collect();
         if let Some(device) = target.device {
-            let row: Option<DeviceRow> = sqlx::query_as("SELECT d.site_id, ARRAY(SELECT g.group_id FROM midas.device_group_members g WHERE g.tenant_id = d.tenant_id AND g.device_id = d.id), d.kind, d.platform, d.unattended_enabled, t.unattended_enabled FROM midas.devices d JOIN midas.tenants t ON t.id = d.tenant_id WHERE d.tenant_id = $1 AND d.id = $2")
-                .bind(target.tenant).bind(device).fetch_optional(&mut *tx).await?;
-            let (device_site, device_groups, kind, platform, device_policy, tenant_policy) =
-                row.ok_or(AccessError::Denied)?;
-            site = device_site;
-            groups = device_groups;
-            if permissions.contains(&Permission::RemoteUnattended)
-                && (kind != "server" || !tenant_policy || !device_policy)
+            let traits = device_traits(&mut tx, target.tenant, Some(device)).await?;
+            let (_, traits) = traits.first().ok_or(AccessError::Denied)?;
+            if permissions.iter().any(|p| !traits.eligible(*p)) {
+                return Err(AccessError::Denied);
+            }
+            let granted = device_grants(
+                &mut tx,
+                target.tenant,
+                identity.operator_id,
+                &names,
+                Some(device),
+            )
+            .await?;
+            if names
+                .iter()
+                .any(|name| !granted.iter().any(|(_, permission)| permission == name))
             {
                 return Err(AccessError::Denied);
             }
-            if permissions.contains(&Permission::RemoteUacInteract) && platform != "windows" {
+        } else {
+            if permissions.iter().any(|p| p.requires_device()) {
                 return Err(AccessError::Denied);
             }
-        } else if permissions.iter().any(|p| p.requires_device()) {
-            return Err(AccessError::Denied);
-        }
-        let names: Vec<_> = permissions.iter().map(|p| p.as_str()).collect();
-        let applicable = applicable_rules(
-            &mut tx,
-            target.tenant,
-            identity.operator_id,
-            &names,
-            site,
-            &groups,
-            target.device,
-        )
-        .await?;
-        if names.iter().any(|name| {
-            !applicable
-                .iter()
-                .any(|(permission, allow, deny)| permission == name && *allow && !*deny)
-        }) {
-            return Err(AccessError::Denied);
+            let rules = tenant_rules(&mut tx, target.tenant, identity.operator_id, &names).await?;
+            let held = allowed(&rules);
+            if permissions.iter().any(|p| !held.contains(p)) {
+                return Err(AccessError::Denied);
+            }
         }
         if fresh_required && permissions.iter().any(|p| p.requires_fresh_passkey()) && !fresh {
             return Err(AccessError::FreshPasskeyRequired);
@@ -660,20 +698,99 @@ impl Authorizer {
     }
 }
 
-// Without a device the decision covers the whole tenant, so denials at any narrower scope also apply.
-async fn applicable_rules(
+/// Session validity and membership; the result tells whether the passkey sign-in is fresh.
+async fn session_state(
+    tx: &mut Transaction<'_, Postgres>,
+    identity: &SessionInfo,
+    tenant: Uuid,
+) -> Result<bool> {
+    let (member, fresh): (bool, bool) = sqlx::query_as("SELECT EXISTS (SELECT 1 FROM midas.tenant_memberships m WHERE m.tenant_id = $3 AND m.operator_id = s.operator_id AND m.enabled), s.authentication_method = 'passkey' AND s.authenticated_at >= clock_timestamp() - interval '5 minutes' AND s.authenticated_at <= clock_timestamp() + interval '1 second' FROM midas.browser_sessions s JOIN midas.operators o ON o.id = s.operator_id WHERE s.id = $1 AND s.operator_id = $2 AND o.enabled AND s.credential_version = o.credential_version AND s.expires_at > clock_timestamp() AND s.idle_expires_at > clock_timestamp()")
+        .bind(identity.id).bind(identity.operator_id).bind(tenant).fetch_optional(&mut **tx).await?
+        .ok_or(AccessError::Unauthenticated)?;
+    if !member {
+        return Err(AccessError::Denied);
+    }
+    Ok(fresh)
+}
+
+fn allowed(rules: &[(String, bool, bool)]) -> Vec<Permission> {
+    Permission::ALL
+        .iter()
+        .copied()
+        .filter(|p| {
+            rules
+                .iter()
+                .any(|(name, allow, deny)| name == p.as_str() && *allow && !*deny)
+        })
+        .collect()
+}
+
+macro_rules! rules {
+    () => {
+        "SELECT p.permission, p.effect, a.site_id, a.group_id, a.device_id FROM midas.role_assignments a JOIN midas.roles r ON r.id = a.role_id JOIN midas.role_permissions p ON p.role_id = r.id AND (r.enabled OR p.effect = 'deny') WHERE a.tenant_id = $1 AND a.operator_id = $2 AND p.permission = ANY($3) UNION ALL SELECT permission, effect, site_id, group_id, device_id FROM midas.permission_overrides WHERE tenant_id = $1 AND operator_id = $2 AND permission = ANY($3)"
+    };
+}
+
+// A tenant-wide decision needs a tenant-wide allow, and a denial at any narrower scope also applies.
+async fn tenant_rules(
     tx: &mut Transaction<'_, Postgres>,
     tenant: Uuid,
     operator: Uuid,
     names: &[&str],
-    site: Option<Uuid>,
-    groups: &[Uuid],
-    device: Option<Uuid>,
 ) -> Result<Vec<(String, bool, bool)>> {
-    Ok(sqlx::query_as(
-        "WITH applicable AS (SELECT p.permission, p.effect, a.site_id, a.group_id, a.device_id FROM midas.role_assignments a JOIN midas.roles r ON r.id = a.role_id JOIN midas.role_permissions p ON p.role_id = r.id AND (r.enabled OR p.effect = 'deny') WHERE a.tenant_id = $1 AND a.operator_id = $2 AND p.permission = ANY($3) UNION ALL SELECT permission, effect, site_id, group_id, device_id FROM midas.permission_overrides WHERE tenant_id = $1 AND operator_id = $2 AND permission = ANY($3)) SELECT permission, bool_or(effect = 'allow'), bool_or(effect = 'deny') FROM applicable WHERE (site_id IS NULL AND group_id IS NULL AND device_id IS NULL) OR site_id = $4 OR group_id = ANY($5) OR device_id = $6 OR ($6::uuid IS NULL AND effect = 'deny') GROUP BY permission")
-        .bind(tenant).bind(operator).bind(names).bind(site).bind(groups).bind(device)
-        .fetch_all(&mut **tx).await?)
+    Ok(sqlx::query_as(concat!(
+        "WITH applicable AS (",
+        rules!(),
+        ") SELECT permission, bool_or(effect = 'allow' AND site_id IS NULL AND group_id IS NULL AND device_id IS NULL), bool_or(effect = 'deny') FROM applicable GROUP BY permission"
+    ))
+    .bind(tenant)
+    .bind(operator)
+    .bind(names)
+    .fetch_all(&mut **tx)
+    .await?)
+}
+
+// A rule applies to a device tenant-wide or through its site, one of its groups or the device itself; any applicable denial wins.
+async fn device_grants(
+    tx: &mut Transaction<'_, Postgres>,
+    tenant: Uuid,
+    operator: Uuid,
+    names: &[&str],
+    device: Option<Uuid>,
+) -> Result<Vec<(Uuid, String)>> {
+    Ok(sqlx::query_as(concat!(
+        "WITH applicable AS (",
+        rules!(),
+        "), targets AS (SELECT d.id, d.site_id, ARRAY(SELECT g.group_id FROM midas.device_group_members g WHERE g.tenant_id = d.tenant_id AND g.device_id = d.id) AS groups FROM midas.devices d WHERE d.tenant_id = $1 AND ($4::uuid IS NULL OR d.id = $4)) SELECT t.id, a.permission FROM targets t JOIN applicable a ON (a.site_id IS NULL AND a.group_id IS NULL AND a.device_id IS NULL) OR a.site_id = t.site_id OR a.group_id = ANY(t.groups) OR a.device_id = t.id GROUP BY t.id, a.permission HAVING bool_or(a.effect = 'allow') AND NOT bool_or(a.effect = 'deny')"
+    ))
+    .bind(tenant)
+    .bind(operator)
+    .bind(names)
+    .bind(device)
+    .fetch_all(&mut **tx)
+    .await?)
+}
+
+async fn device_traits(
+    tx: &mut Transaction<'_, Postgres>,
+    tenant: Uuid,
+    device: Option<Uuid>,
+) -> Result<Vec<(Uuid, Traits)>> {
+    let rows: Vec<(Uuid, String, String, bool, bool)> = sqlx::query_as("SELECT d.id, d.kind, d.platform, d.unattended_enabled, t.unattended_enabled FROM midas.devices d JOIN midas.tenants t ON t.id = d.tenant_id WHERE d.tenant_id = $1 AND ($2::uuid IS NULL OR d.id = $2)")
+        .bind(tenant).bind(device).fetch_all(&mut **tx).await?;
+    Ok(rows
+        .into_iter()
+        .map(|(id, kind, platform, device_policy, tenant_policy)| {
+            (
+                id,
+                Traits {
+                    server: kind == "server",
+                    windows: platform == "windows",
+                    unattended: device_policy && tenant_policy,
+                },
+            )
+        })
+        .collect())
 }
 
 fn scoped(

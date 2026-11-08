@@ -52,6 +52,9 @@ Jogosultság nem bővíthető a kezelő saját köre fölé: szerep vagy engedé
 | `PUT /api/tenants/{id}/directory-connector` | `directory.discover`, friss passkey ([címtár-connector](cimtar-connector.md)) |
 | `GET /api/tenants/{id}/directory-connector` | Ügyfélszintű `directory.discover` |
 | `GET /api/tenants/{id}/devices/{device}/inventory`, `…/health`, `…/policy` | `device.read` az eszközre ([leltár](leltar.md), [állapotellenőrzések](allapotellenorzes.md), [szabályzatok](szabalyzatok.md)) |
+| `GET /api/tenants/{id}/devices`, `GET …/devices/{device}` | `device.read` eszközönként; minden eszköz a technikus érvényes jogaival együtt jön ([eszközoldal](eszkozoldal.md)) |
+| `GET /api/tenants/{id}/devices/{device}/metrics`, `…/alerts` | `monitor.read` az eszközre |
+| `POST /api/tenants/{id}/devices/{device}/refresh` | `monitor.read` az eszközre, kapcsolódó agent (offline gépnél 409 `device_offline`) |
 | `GET /api/tenants/{id}/policies` | Ügyfélszintű `policy.manage` |
 | `PUT /api/tenants/{id}/policies/{szint}/{hatókör}/{kulcs}`, `DELETE …` | `policy.manage`, friss passkey |
 | `GET /api/tenants/{id}/groups` | Ügyfélszintű `access.manage` |
@@ -152,6 +155,9 @@ Managers cannot exceed their own access: granting a role or allow, removing a de
 | `PUT /api/tenants/{id}/directory-connector` | `directory.discover`, fresh passkey ([directory connector](cimtar-connector.md#english)) |
 | `GET /api/tenants/{id}/directory-connector` | Tenant-wide `directory.discover` |
 | `GET /api/tenants/{id}/devices/{device}/inventory`, `…/health`, `…/policy` | `device.read` for the device ([inventory](leltar.md#english), [health checks](allapotellenorzes.md#english), [policies](szabalyzatok.md#english)) |
+| `GET /api/tenants/{id}/devices`, `GET …/devices/{device}` | `device.read` per device; each device comes with the operator's effective permissions ([device pages](eszkozoldal.md#english)) |
+| `GET /api/tenants/{id}/devices/{device}/metrics`, `…/alerts` | `monitor.read` for the device |
+| `POST /api/tenants/{id}/devices/{device}/refresh` | `monitor.read` for the device, connected agent (409 `device_offline` otherwise) |
 | `GET /api/tenants/{id}/policies` | Tenant-wide `policy.manage` |
 | `PUT /api/tenants/{id}/policies/{level}/{scope}/{key}`, `DELETE …` | `policy.manage`, fresh passkey |
 | `GET /api/tenants/{id}/groups` | Tenant-wide `access.manage` |
