@@ -26,15 +26,13 @@ use windows::{
     core::{BSTR, HRESULT, PCWSTR},
 };
 use windows_sys::Win32::{
-    Foundation::{ERROR_MORE_DATA, ERROR_SUCCESS, GetLastError},
+    Foundation::{ERROR_MORE_DATA, ERROR_SUCCESS, FreeLibrary, GetLastError},
     System::{
+        LibraryLoader::{GetProcAddress, LOAD_LIBRARY_SEARCH_SYSTEM32, LoadLibraryExW},
         Registry::{
             HKEY, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_64KEY, RegCloseKey, RegOpenKeyExW,
         },
-        SecurityCenter::{
-            WSC_SECURITY_PROVIDER_ANTIVIRUS, WSC_SECURITY_PROVIDER_HEALTH_GOOD,
-            WscGetSecurityProviderHealth,
-        },
+        SecurityCenter::{WSC_SECURITY_PROVIDER_ANTIVIRUS, WSC_SECURITY_PROVIDER_HEALTH_GOOD},
         Services::{
             CloseServiceHandle, ENUM_SERVICE_STATUS_PROCESSW, EnumServicesStatusExW,
             OpenSCManagerW, OpenServiceW, QUERY_SERVICE_CONFIGW, QueryServiceConfig2W,
@@ -544,13 +542,33 @@ fn antivirus(com: bool) -> HealthCheck {
 }
 
 /// Security Center exists on client editions only; elsewhere this is false.
+/// Loaded at run time: Windows Server has no wscapi.dll, and a static import would stop
+/// the agent from starting there.
 fn security_center_protected() -> bool {
-    let mut health = 0;
-    // SAFETY: `health` is a valid out pointer for the duration of the call.
-    let status = unsafe {
-        WscGetSecurityProviderHealth(WSC_SECURITY_PROVIDER_ANTIVIRUS as u32, &mut health)
-    };
-    status == 0 && health == WSC_SECURITY_PROVIDER_HEALTH_GOOD
+    type ProviderHealth = unsafe extern "system" fn(u32, *mut i32) -> i32;
+    let name = wide("wscapi.dll");
+    // SAFETY: `name` is NUL-terminated; the search is limited to System32.
+    let module =
+        unsafe { LoadLibraryExW(name.as_ptr(), ptr::null_mut(), LOAD_LIBRARY_SEARCH_SYSTEM32) };
+    if module.is_null() {
+        return false;
+    }
+    // SAFETY: `module` is loaded and the export name is a NUL-terminated C string.
+    let export = unsafe { GetProcAddress(module, c"WscGetSecurityProviderHealth".as_ptr().cast()) };
+    let protected = export.is_some_and(|export| {
+        // SAFETY: wscapi.h declares this export as `HRESULT (DWORD, WSC_SECURITY_PROVIDER_HEALTH*)`.
+        let provider_health: ProviderHealth = unsafe { std::mem::transmute(export) };
+        let mut health = 0;
+        // SAFETY: `health` is a valid out pointer and the module stays loaded during the call.
+        let status =
+            unsafe { provider_health(WSC_SECURITY_PROVIDER_ANTIVIRUS as u32, &mut health) };
+        status == 0 && health == WSC_SECURITY_PROVIDER_HEALTH_GOOD
+    });
+    // SAFETY: balances the successful LoadLibraryExW above.
+    unsafe {
+        FreeLibrary(module);
+    }
+    protected
 }
 
 #[derive(Debug)]
