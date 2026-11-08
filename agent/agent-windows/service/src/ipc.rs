@@ -26,7 +26,12 @@ pub const TRAY: &str = "midas-tray.exe";
 
 impl Policy {
     pub fn for_program(session: SessionRule, program: PathBuf) -> Self {
-        let tray = program.with_file_name(TRAY);
+        // Split by hand: both separators count on Windows, and the tests also run elsewhere.
+        let text = program.to_string_lossy();
+        let tray = match text.rfind(['\\', '/']) {
+            Some(end) => PathBuf::from(format!("{}{TRAY}", &text[..=end])),
+            None => PathBuf::from(TRAY),
+        };
         Self {
             session,
             images: vec![program, tray],
