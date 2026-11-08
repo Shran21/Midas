@@ -4,7 +4,7 @@
 
 ## Magyar
 
-2026. november 7. · MIDAS-036, MIDAS-037 · AD-01, AD-02, AD-03, AD-04
+2026. november 7., javítva november 8-án · MIDAS-036, MIDAS-037 · AD-01, AD-02, AD-03, AD-04
 
 Ügyfelenként egy kijelölt, beiratkozott agent olvassa az ügyfél Active Directoryját. A címtár nem nyílik ki az internetre: a connector az ügyfél hálózatában fut, és a meglévő, kimenő agentkapcsolaton kapja a feladatát és küldi az eredményét. A felderített gépek jelöltként jelennek meg; agenthez csak az agent saját, ellenőrzött azonosítója kapcsolja őket.
 
@@ -33,6 +33,7 @@
 - Sikeres vizsgálat lezárásakor a szerver a vizsgálatban már nem szereplő gépeket megszűntként jelöli, de csak akkor, ha a vizsgálat minden gépe megérkezett. Hiányos vizsgálat nem töröl. A megszűnt gép még 30 napig látszik.
 - **Felderített, agent nincs** (`candidate`): a címtárban van, de egyetlen agent sem igazolta, hogy ő ez a gép. A címtár-bejegyzés nem élő állapot és nem bizonyítja, hogy a gép megbízható. Csak regisztrált, jóváhagyott agenttel vezérelhető.
 - **Kezelt** (`managed`): pontosan egy aktív eszköz Windows-agentje jelentette a leltárban, hogy ez a gép. Az agent a helyi biztonsági alrendszertől kapja a saját számítógépfiókja `objectGUID`-ját (`GetComputerObjectNameW`, `NameUniqueId`) és a DNS-tartományt. Ez a leltár `directory` fajtájában (`domain`, `object_guid`) érkezik, az agent mTLS-identitásához kötve.
+  - Az `objectGUID` lekérdezéséhez elérhető tartományvezérlő kell. Irodán kívüli laptopon a lekérdezés hibát ad, ilyenkor az agent a helyi beállításból (`NetGetJoinInformation`) tudja, hogy a gép tartományi, és a tartományt továbbra is jelenti. Amíg a tartomány ugyanaz, az utoljára elfogadott `object_guid` megmarad, így az egyezés nem tűnik el a hálózattal együtt. Tartományból kilépett gépnél mindkét adat eltűnik.
 - **Ütközés** (`conflict`): több aktív eszköz állítja ugyanazt az azonosítót; a szerver egyiket sem kapcsolja hozzá.
 - Az egyeztetés az ügyfél adatain belül fut (sorszintű ügyfélszigetelés mellett). Más ügyfél eszköze, akár azonos GUID-dal, nem kapcsolódik össze.
 - Gépnév vagy IP-cím nem identitás. Az azonos nevű, de igazolt azonosító nélküli eszköz csak tippként szerepel (`name_matches`), egyezésként nem.
@@ -56,7 +57,7 @@
   - más ügyfél azonos GUID-ú eszköze nem kapcsolódik;
   - hiányos vizsgálat nem töröl, a teljes vizsgálat megszűntnek jelöli a hiányzó gépet;
   - más ügyfél kezelője és `directory.discover` nélküli technikus nem látja a listát.
-- A Windows-agent valódi gépes tesztje szerint tartományon kívüli gép nem jelent címtár-azonosítót, tartományi gép a tartományt és a GUID-ot jelenti.
+- A Windows-agent valódi gépes tesztje szerint tartományon kívüli gép nem jelent címtár-azonosítót, tartományi gép a tartományt és a GUID-ot jelenti. Elérhetetlen tartományvezérlőnél a tartományi gép a tartományt jelenti, GUID nélkül; ezt a fejlesztői laptop irodán kívül igazolta. Az `agent-core` egységtesztje szerint ilyenkor az utoljára elfogadott GUID megmarad, más tartománynál vagy a tartományból kilépve viszont nem.
 
 ### Ismert korlátok
 
@@ -68,7 +69,7 @@
 
 ## English
 
-November 7, 2026 · MIDAS-036, MIDAS-037 · AD-01, AD-02, AD-03, AD-04
+November 7, 2026, fixed on November 8 · MIDAS-036, MIDAS-037 · AD-01, AD-02, AD-03, AD-04
 
 One designated, enrolled agent per customer reads that customer's Active Directory. The directory is never exposed to the internet: the connector runs inside the customer network and receives its task and returns its result over the existing outbound agent connection. Discovered computers appear as candidates; only the agent's own verified identity links them to an agent.
 
@@ -97,6 +98,7 @@ One designated, enrolled agent per customer reads that customer's Active Directo
 - When a successful scan closes, computers it no longer listed are marked removed, but only if every computer of the scan arrived; an incomplete scan removes nothing. Removed computers stay visible for 30 days.
 - **Discovered, no agent** (`candidate`): the directory has it, but no agent proved to be it. A directory entry is no live status and no proof of trust; only an enrolled, approved agent can control the computer.
 - **Managed** (`managed`): exactly one active device's Windows agent reported in its inventory that it is this computer. The agent learns its own computer account's `objectGUID` (`GetComputerObjectNameW`, `NameUniqueId`) and DNS domain from the local security authority. They arrive in the inventory kind `directory` (`domain`, `object_guid`), bound to the agent's mTLS identity.
+  - Looking up the `objectGUID` needs a reachable domain controller. On a laptop away from the office the lookup fails; the agent then knows from the local configuration (`NetGetJoinInformation`) that the computer is joined and keeps reporting the domain. While the domain stays the same, the last acknowledged `object_guid` is kept, so the match does not disappear with the network. A computer that left the domain drops both.
 - **Conflict** (`conflict`): several active devices claim the same identity; the server links none of them.
 - Matching runs inside the customer's data under row-level tenant isolation. Another customer's device never links, even with the same GUID.
 - A host name or IP address is no identity. A device with the same name but no proven identity is listed only as a hint (`name_matches`), never as a match.
@@ -120,7 +122,7 @@ One designated, enrolled agent per customer reads that customer's Active Directo
   - another customer's device with the same GUID does not link;
   - an incomplete scan removes nothing, and a complete one marks the missing computer removed;
   - another customer's operator and a technician without `directory.discover` cannot see the list.
-- The Windows agent's real-machine test shows that a computer outside a domain reports no directory identity, while a domain member reports the domain and the GUID.
+- The Windows agent's real-machine test shows that a computer outside a domain reports no directory identity, while a domain member reports the domain and the GUID. With no reachable domain controller a domain member reports the domain without the GUID; the development laptop confirmed this away from the office. An `agent-core` unit test shows that the last acknowledged GUID is then kept, but not for another domain or after leaving the domain.
 
 ### Known limits
 

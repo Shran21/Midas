@@ -4,7 +4,8 @@ use midas_agent_core::inventory::{Snapshot, common, insert};
 use windows_sys::Win32::{
     Foundation::{ERROR_NO_MORE_ITEMS, ERROR_SUCCESS, LocalFree},
     NetworkManagement::NetManagement::{
-        LOCALGROUP_MEMBERS_INFO_3, MAX_PREFERRED_LENGTH, NetApiBufferFree, NetLocalGroupGetMembers,
+        LOCALGROUP_MEMBERS_INFO_3, MAX_PREFERRED_LENGTH, NETSETUP_JOIN_STATUS, NetApiBufferFree,
+        NetGetJoinInformation, NetLocalGroupGetMembers, NetSetupDomainName,
     },
     Security::{
         Authentication::Identity::{GetComputerObjectNameW, NameUniqueId},
@@ -37,13 +38,31 @@ pub fn collect() -> Snapshot {
     if let Some((domain, guid)) = directory_identity() {
         insert(&mut snapshot, "directory", "domain", domain);
         insert(&mut snapshot, "directory", "object_guid", guid);
+    } else if let Some(domain) = domain_joined().then(dns_domain).flatten() {
+        // Away from a domain controller the GUID is unknown; the shared inventory logic keeps the
+        // last acknowledged one while the domain stays the same.
+        insert(&mut snapshot, "directory", "domain", domain);
     }
     snapshot
 }
 
-/// The DNS domain and the objectGUID of this computer's own directory account, as the local
-/// security authority knows them. The server matches discovered computers only by this.
-pub fn directory_identity() -> Option<(String, String)> {
+/// Whether the computer is joined to a domain, from its local configuration; it needs no network.
+pub fn domain_joined() -> bool {
+    let mut name: *mut u16 = ptr::null_mut();
+    let mut status: NETSETUP_JOIN_STATUS = 0;
+    // SAFETY: both are valid out pointers; a returned name buffer is freed exactly once below.
+    let result = unsafe { NetGetJoinInformation(ptr::null(), &mut name, &mut status) };
+    if !name.is_null() {
+        // SAFETY: the buffer was allocated by NetGetJoinInformation.
+        unsafe {
+            NetApiBufferFree(name.cast::<c_void>());
+        }
+    }
+    result == 0 && status == NetSetupDomainName
+}
+
+/// The computer's DNS domain from its local configuration, lower-cased.
+fn dns_domain() -> Option<String> {
     let mut size = 256u32;
     let mut domain = vec![0u16; size as usize];
     // SAFETY: `domain` holds `size` UTF-16 units and both pointers are valid for the call.
@@ -51,8 +70,13 @@ pub fn directory_identity() -> Option<(String, String)> {
     if ok == 0 || size == 0 {
         return None;
     }
-    let domain =
-        String::from_utf16_lossy(&domain[..(size as usize).min(domain.len())]).to_lowercase();
+    Some(String::from_utf16_lossy(&domain[..(size as usize).min(domain.len())]).to_lowercase())
+}
+
+/// The DNS domain and the objectGUID of this computer's own directory account, as the local
+/// security authority knows them. The server matches discovered computers only by this.
+pub fn directory_identity() -> Option<(String, String)> {
+    let domain = dns_domain()?;
     let mut size = 64u32;
     let mut name = vec![0u16; size as usize];
     // SAFETY: `name` holds `size` UTF-16 units; the call fails on a computer outside a domain.

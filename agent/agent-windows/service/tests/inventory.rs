@@ -29,19 +29,19 @@ fn the_real_machine_reports_software_administrators_and_os() {
 
 #[test]
 fn a_directory_identity_is_reported_only_when_the_machine_has_one() {
-    let identity = midas_agent_windows::win::inventory::directory_identity();
+    let joined = midas_agent_windows::win::inventory::domain_joined();
     let snapshot = collect();
-    let reported = (
-        snapshot.get(&key("directory", "domain")).cloned(),
-        snapshot.get(&key("directory", "object_guid")).cloned(),
-    );
-    match identity {
-        Some((domain, guid)) => {
-            assert!(domain.contains('.') && domain == domain.to_lowercase());
-            assert_eq!(guid.len(), 36);
-            assert_eq!(reported, (Some(domain), Some(guid)));
-        }
+    let domain = snapshot.get(&key("directory", "domain"));
+    let guid = snapshot.get(&key("directory", "object_guid"));
+    if !joined {
         // A workgroup computer, such as a CI runner, has no directory account.
-        None => assert_eq!(reported, (None, None)),
+        assert_eq!((domain, guid), (None, None));
+        return;
+    }
+    let domain = domain.expect("a joined computer reports its domain even offline");
+    assert!(domain.contains('.') && *domain == domain.to_lowercase());
+    // The GUID needs a reachable domain controller; when it is known, it is well formed.
+    if let Some(guid) = guid {
+        assert_eq!(guid.len(), 36);
     }
 }

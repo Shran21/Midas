@@ -96,6 +96,25 @@ pub fn common() -> Snapshot {
     snapshot
 }
 
+/// The directory objectGUID needs a domain controller, which a laptop away from the office cannot
+/// reach. While the host still reports the same domain, the last acknowledged GUID is kept, so the
+/// server's match to its directory computer does not come and go with the network.
+pub fn keep_directory_identity(previous: &Snapshot, current: &mut Snapshot) {
+    let guid = key("directory", "object_guid");
+    if current.contains_key(&guid) {
+        return;
+    }
+    let domain = key("directory", "domain");
+    if let (Some(now), Some(before), Some(kept)) = (
+        current.get(&domain),
+        previous.get(&domain),
+        previous.get(&guid),
+    ) && now == before
+    {
+        current.insert(guid, kept.clone());
+    }
+}
+
 #[derive(Debug, Default, PartialEq)]
 pub struct Changes {
     pub upserts: Vec<InventoryItem>,
@@ -365,12 +384,15 @@ pub async fn schedule(
             continue;
         }
         let collect = collector.clone();
-        let Ok(current) = tokio::task::spawn_blocking(move || collect()).await else {
+        let Ok(mut current) = tokio::task::spawn_blocking(move || collect()).await else {
             continue;
         };
         let mut generation = [0u8; 8];
         let _ = getrandom::fill(&mut generation);
         let mut pending = lock(&shared);
+        if let Some(state) = pending.state.as_ref() {
+            keep_directory_identity(&state.snapshot, &mut current);
+        }
         if pending.plan.is_none() {
             pending.plan = plan(
                 pending.state.as_ref(),
@@ -400,6 +422,37 @@ mod tests {
             insert(&mut snapshot, kind, name, value);
         }
         snapshot
+    }
+
+    #[test]
+    fn the_directory_guid_survives_an_unreachable_domain_controller() {
+        let acknowledged = snapshot(&[
+            ("directory", "domain", "corp.example"),
+            (
+                "directory",
+                "object_guid",
+                "0b5d4b9e-3c1a-4f7e-9b8a-2d6c1e0f4a37",
+            ),
+        ]);
+        let mut away = snapshot(&[("directory", "domain", "corp.example")]);
+        keep_directory_identity(&acknowledged, &mut away);
+        assert_eq!(away, acknowledged);
+
+        let mut moved = snapshot(&[("directory", "domain", "other.example")]);
+        keep_directory_identity(&acknowledged, &mut moved);
+        assert!(!moved.contains_key(&key("directory", "object_guid")));
+
+        let mut left = snapshot(&[("software", "A", "1")]);
+        keep_directory_identity(&acknowledged, &mut left);
+        assert!(
+            !left.contains_key(&key("directory", "object_guid")),
+            "leaving the domain drops both"
+        );
+
+        let mut fresh = acknowledged.clone();
+        fresh.insert(key("directory", "object_guid"), "new".into());
+        keep_directory_identity(&acknowledged, &mut fresh);
+        assert_eq!(fresh[&key("directory", "object_guid")], "new");
     }
 
     #[test]
