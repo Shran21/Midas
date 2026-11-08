@@ -201,6 +201,16 @@ pub fn router(state: Arc<WebAuth>) -> Router {
             put(set_policy).delete(clear_policy),
         )
         .route("/api/tenants/{id}/groups", get(groups).post(create_group))
+        .route("/api/tenants/{id}/alerts", get(alerts))
+        .route("/api/tenants/{id}/alerts/open", get(open_alerts))
+        .route(
+            "/api/tenants/{id}/alerts/{alert}/acknowledge",
+            post(acknowledge_alert),
+        )
+        .route(
+            "/api/tenants/{id}/alert-recipients",
+            get(alert_recipients).put(set_alert_recipients),
+        )
         .route(
             "/api/tenants/{id}/groups/{group}/devices/{device}",
             put(add_member_device).delete(remove_member_device),
@@ -810,6 +820,65 @@ async fn remove_member_device(
     {
         return Err(Failure(StatusCode::NOT_FOUND, "not_found"));
     }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn alerts(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Vec<crate::alerts::AlertView>>> {
+    Ok(Json(
+        enrollment(&state)?
+            .alerts(&state.sessions, &context.token, id, false)
+            .await?,
+    ))
+}
+
+async fn open_alerts(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Vec<crate::alerts::AlertView>>> {
+    Ok(Json(
+        enrollment(&state)?
+            .alerts(&state.sessions, &context.token, id, true)
+            .await?,
+    ))
+}
+
+async fn acknowledge_alert(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((id, alert)): Path<(Uuid, Uuid)>,
+) -> Result<StatusCode> {
+    enrollment(&state)?
+        .acknowledge(&state.sessions, &context.token, id, alert)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn alert_recipients(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<crate::alerts::Recipients>> {
+    Ok(Json(
+        enrollment(&state)?
+            .alert_recipients(&state.sessions, &context.token, id)
+            .await?,
+    ))
+}
+
+async fn set_alert_recipients(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<crate::alerts::Recipients>,
+) -> Result<StatusCode> {
+    enrollment(&state)?
+        .set_alert_recipients(&state.sessions, &context.token, id, &body)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

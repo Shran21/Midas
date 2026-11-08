@@ -98,6 +98,7 @@ impl Enrollment {
                 .bind(&check.code).bind(&check.summary).bind(&check.subjects)
                 .execute(&mut *tx).await?;
         }
+        crate::alerts::reconcile_health(&mut tx, identity.tenant, identity.device, &checks).await?;
         let ids: Vec<&str> = checks.iter().map(|(check, _)| check.id.as_str()).collect();
         sqlx::query(
             "DELETE FROM midas.device_health WHERE device_id = $1 AND NOT (check_id = ANY($2))",

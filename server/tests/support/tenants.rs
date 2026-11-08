@@ -229,7 +229,12 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
     .await;
     assert_eq!(
         context["capabilities"],
-        json!(["device.read", "monitor.read", "remote.view"])
+        json!([
+            "device.read",
+            "monitor.read",
+            "remote.view",
+            "alert.acknowledge"
+        ])
     );
     for missing in [disabled, foreign, Uuid::new_v4()] {
         let (status, body) = call(

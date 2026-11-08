@@ -61,13 +61,22 @@ pub const SIGNATURE_CRITICAL_DAYS: Setting = Setting {
     default: 7,
 };
 
-pub const SETTINGS: [Setting; 6] = [
+/// Server-side: how long a device may stay offline before an alert opens.
+pub const OFFLINE_ALERT_MINUTES: Setting = Setting {
+    key: "alerts.offline_minutes",
+    minimum: 1,
+    maximum: 1440,
+    default: 5,
+};
+
+pub const SETTINGS: [Setting; 7] = [
     LOW_SPACE_PERCENT,
     CRITICAL_SPACE_PERCENT,
     UPDATE_WARNING_DAYS,
     UPDATE_CRITICAL_DAYS,
     SIGNATURE_WARNING_DAYS,
     SIGNATURE_CRITICAL_DAYS,
+    OFFLINE_ALERT_MINUTES,
 ];
 
 pub fn find(key: &str) -> Option<&'static Setting> {

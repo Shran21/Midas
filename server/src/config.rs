@@ -39,6 +39,20 @@ pub struct Arguments {
     pub session_idle_seconds: u64,
     #[arg(long, env = "MIDAS_SESSION_SOCKET_CAPACITY", default_value_t = 128)]
     pub session_socket_capacity: usize,
+    /// Relay for alert e-mail; without it notifications stay queued.
+    #[arg(long, env = "MIDAS_SMTP_HOST", requires = "smtp_from")]
+    pub smtp_host: Option<String>,
+    #[arg(long, env = "MIDAS_SMTP_PORT", default_value_t = 587)]
+    pub smtp_port: u16,
+    /// `starttls`, `tls`, or `none` for a relay on this machine only.
+    #[arg(long, env = "MIDAS_SMTP_SECURITY", default_value = "starttls", value_parser = ["starttls", "tls", "none"])]
+    pub smtp_security: String,
+    #[arg(long, env = "MIDAS_SMTP_USER", requires = "smtp_password_file")]
+    pub smtp_user: Option<String>,
+    #[arg(long, env = "MIDAS_SMTP_PASSWORD_FILE", requires = "smtp_user")]
+    pub smtp_password_file: Option<PathBuf>,
+    #[arg(long, env = "MIDAS_SMTP_FROM", requires = "smtp_host")]
+    pub smtp_from: Option<String>,
 }
 
 impl Arguments {
@@ -76,6 +90,18 @@ impl Arguments {
                 || contact.contains(':'))
         {
             return Err("ACME contact must be an email address");
+        }
+        if let Some(host) = &self.smtp_host {
+            let local = host == "localhost"
+                || host
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|address| address.is_loopback());
+            if self.smtp_security == "none" && !local {
+                return Err("plain SMTP is only allowed for a relay on this machine");
+            }
+            if self.smtp_security == "none" && self.smtp_user.is_some() {
+                return Err("SMTP credentials require TLS");
+            }
         }
         Ok(())
     }

@@ -42,7 +42,7 @@ impl Columns {
 }
 
 impl Enrollment {
-    async fn tenants(&self) -> Result<Vec<Uuid>, sqlx::Error> {
+    pub(crate) async fn tenants(&self) -> Result<Vec<Uuid>, sqlx::Error> {
         sqlx::query_scalar("SELECT DISTINCT tenant_id FROM midas.agent_credentials")
             .fetch_all(&self.pool)
             .await

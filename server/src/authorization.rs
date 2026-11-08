@@ -43,6 +43,7 @@ permissions! {
     DirectoryDiscover => ("directory.discover", true),
     AccessManage => ("access.manage", true),
     PolicyManage => ("policy.manage", true),
+    AlertAcknowledge => ("alert.acknowledge", false),
     AuditRead => ("audit.read", false),
 }
 

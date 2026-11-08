@@ -42,6 +42,45 @@ async fn main() -> Result<(), TransportError> {
         return Err("the agent listener requires a database and --agent-ca-key".into());
     }
     if let Some(enrollment) = enrollment.clone() {
+        let mailer = match &args.smtp_host {
+            Some(host) => {
+                let credentials = match (&args.smtp_user, &args.smtp_password_file) {
+                    (Some(user), Some(file)) => Some((
+                        user.clone(),
+                        zeroize::Zeroizing::new(
+                            std::fs::read_to_string(file)?.trim_end().to_owned(),
+                        ),
+                    )),
+                    _ => None,
+                };
+                let settings = midas_server::alerts::SmtpSettings {
+                    host: host.clone(),
+                    port: args.smtp_port,
+                    security: match args.smtp_security.as_str() {
+                        "tls" => midas_server::alerts::SmtpSecurity::Tls,
+                        "none" => midas_server::alerts::SmtpSecurity::None,
+                        _ => midas_server::alerts::SmtpSecurity::Starttls,
+                    },
+                    credentials,
+                    from: args.smtp_from.clone().unwrap_or_default(),
+                };
+                midas_server::alerts::Mailer::smtp(&settings)?
+            }
+            None => {
+                tracing::warn!("no SMTP relay configured; alert e-mail stays queued");
+                midas_server::alerts::Mailer::Disabled
+            }
+        };
+        let delivering = enrollment.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(30));
+            loop {
+                tick.tick().await;
+                if let Err(error) = delivering.deliver(&mailer).await {
+                    tracing::error!(%error, "alert delivery failed");
+                }
+            }
+        });
         tokio::spawn(async move {
             let keepalive = AgentProtocol::default().keepalive;
             let mut tick = tokio::time::interval(keepalive);
@@ -50,6 +89,9 @@ async fn main() -> Result<(), TransportError> {
                 tick.tick().await;
                 if let Err(error) = enrollment.sweep(keepalive.saturating_mul(3)).await {
                     tracing::error!(%error, "offline sweep failed");
+                }
+                if let Err(error) = enrollment.alert_sweep().await {
+                    tracing::error!(%error, "alert sweep failed");
                 }
                 if maintained.is_none_or(|at| at.elapsed() >= Duration::from_secs(3600)) {
                     enrollment.maintain().await;

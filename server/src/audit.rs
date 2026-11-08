@@ -50,6 +50,8 @@ names!(Action {
     GroupCreate => "inventory.group_create",
     GroupMemberAdd => "inventory.group_member_add",
     GroupMemberRemove => "inventory.group_member_remove",
+    AlertAcknowledge => "alert.acknowledge",
+    AlertRecipientsSet => "alert.recipients_set",
 });
 names!(Outcome {
     Success => "success",

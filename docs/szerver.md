@@ -42,6 +42,10 @@ cargo run --locked -p midas-server -- --bind 0.0.0.0:443 --acme-domain midas.exa
 
 A példa helykitöltő domainekkel szerepel. A `--acme-accept-terms` a kibocsátó feltételeinek elfogadását jelzi; csak azok áttekintése után használd. Több hosztnévhez ismételd a `--acme-domain` opciót. A tanúsítvány megszerzése és megújítása háttérben történik; cache-elt tanúsítvány újra felhasználható. Az agentfigyelő ugyanazt a megújuló tanúsítványt használja. Sikertelen igényléskor nincs HTTP-visszaesés, és nincs tanúsítványellenőrzést megkerülő út.
 
+### Riasztási e-mail
+
+A riasztási értesítéseket a szerver SMTP-n küldi (`--smtp-host`, `--smtp-port`, `--smtp-security`, `--smtp-from`, választhatóan `--smtp-user` és `--smtp-password-file`). Beállítás nélkül a levelek sorban várnak. Részletek: [riasztások](riasztasok.md).
+
 ### Naplózás és próbák
 
 A JSON-napló a figyelő indulását/leállását, az ACME állapotváltozását, a statikus útvonal nevét, a válaszkódot és a kiszolgálási időt rögzíti. URL-paraméter, kérésbody, fejléc és privát kulcs nem kerül az alkalmazás kérésnaplójába. Az ACME hibák tartalma helyett általános hibaesemény szerepel. Az OpenTelemetry-export külön későbbi integráció.
@@ -55,6 +59,8 @@ A tesztek valódi helyi TLS-kapcsolatot, HTTPS-állapotválaszt, helyes/idegen/h
 Add `--agent-bind` and `--agent-ca` for a separate mandatory-client-certificate listener; `--agent-ca-key` is the agent CA private key that enables enrollment, and the agent listener requires a database and that key. Optional `--agent-crl` loads PEM revocation lists and rejects invalid or expired revocation data. CA/CRL changes require restart. Both listeners share the server certificate, which must cover their hostnames.
 
 HTTPS serves GET `/health/live` and agent enrollment at POST `/agent/enroll` ([enrollment](beiratkozas.md#english)), returning 503 without the CA key. The mTLS listener serves the agent WebSocket at GET `/agent/connect` with version negotiation and keepalive ([agent protocol](agent-protokoll.md#english)); a request without an upgrade receives 426, and only registered, unrevoked device certificates may connect. Neither listener exposes the other's agent route. Certificate authentication does not authorize operations. Enrollment, per-device state, tenant mapping, active-session revocation and application permissions remain subsequent work.
+
+Alert notifications go out over SMTP (`--smtp-host`, `--smtp-port`, `--smtp-security`, `--smtp-from`, optionally `--smtp-user` and `--smtp-password-file`); without it messages stay queued ([alerts](riasztasok.md#english)).
 
 ACME uses TLS-ALPN-01 with Let's Encrypt staging by default. DNS must point to this server and public port 443 must reach the HTTPS listener without a TLS-terminating proxy. Repeat `--acme-domain` for all required names. `--acme-contact`, `--acme-cache` and explicit `--acme-accept-terms` are required; review the issuer's terms before using that flag. `--acme-production` explicitly selects the production issuer. See the command examples above, replacing their placeholder names and paths.
 

@@ -184,6 +184,51 @@ fn software(count: usize) -> midas_agent_core::inventory::Snapshot {
     snapshot
 }
 
+/// A minimal SMTP server that accepts every message, enough for the real client without TLS.
+async fn mail_sink() -> (u16, Arc<std::sync::Mutex<Vec<String>>>) {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let received = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let store = received.clone();
+    tokio::spawn(async move {
+        while let Ok((stream, _)) = listener.accept().await {
+            let store = store.clone();
+            tokio::spawn(async move {
+                let (read, mut write) = stream.into_split();
+                let mut lines = BufReader::new(read).lines();
+                let _ = write.write_all(b"220 sink ESMTP\r\n").await;
+                let mut data: Option<String> = None;
+                while let Ok(Some(line)) = lines.next_line().await {
+                    if let Some(body) = data.as_mut() {
+                        if line == "." {
+                            store.lock().unwrap().push(std::mem::take(body));
+                            data = None;
+                            let _ = write.write_all(b"250 queued\r\n").await;
+                        } else {
+                            body.push_str(&line);
+                            body.push('\n');
+                        }
+                        continue;
+                    }
+                    let command = line.to_ascii_uppercase();
+                    let reply: &[u8] = if command.starts_with("DATA") {
+                        data = Some(String::new());
+                        b"354 go ahead\r\n"
+                    } else if command.starts_with("QUIT") {
+                        let _ = write.write_all(b"221 bye\r\n").await;
+                        break;
+                    } else {
+                        b"250 ok\r\n"
+                    };
+                    let _ = write.write_all(reply).await;
+                }
+            });
+        }
+    });
+    (port, received)
+}
+
 type HealthRow = (String, String, String, Vec<String>, f64);
 
 /// Waits until the stored check results satisfy `ready`.
@@ -1287,6 +1332,190 @@ pub async fn verify(database: &Database, admin: &mut PgConnection) {
             ("policy.set".to_owned(), 3),
         ]
     );
+
+    // Alerts: health problems opened and resolved alerts on their own; an outage opens one
+    // alert and one notification; repeats, a quick flap and the policy delay add nothing more.
+    let health_alerts: Vec<(String, String, bool)> = sqlx::query_as("SELECT kind, severity, resolved_at IS NOT NULL FROM midas.alerts WHERE device_id = $1 ORDER BY kind")
+        .bind(server_device).fetch_all(&mut *admin).await.unwrap();
+    let resolved = |kind: &str, severity: &str| (kind.to_owned(), severity.to_owned(), true);
+    assert_eq!(
+        health_alerts,
+        [
+            resolved("health.services", "critical"),
+            resolved("health.storage", "warning"),
+            resolved("health.updates", "warning"),
+        ]
+    );
+    let recipients = format!("/api/tenants/{tenant}/alert-recipients");
+    let emails = |emails: &[&str]| Some(json!({ "emails": emails }));
+    assert_eq!(
+        api(
+            "PUT",
+            recipients.clone(),
+            &outsider,
+            emails(&["ops@example.test"])
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        api(
+            "PUT",
+            recipients.clone(),
+            &manager,
+            emails(&["not an address"])
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    let both = emails(&["ops@example.test", "ops@example.test"]);
+    assert_eq!(
+        api("PUT", recipients.clone(), &manager, both).await.0,
+        StatusCode::NO_CONTENT
+    );
+    let (_, stored, _) = api("GET", recipients, &manager, None).await;
+    assert_eq!(stored["emails"], json!(["ops@example.test"]));
+
+    let offline = |minutes: i32| {
+        sqlx::query("UPDATE midas.devices SET online = false, last_seen_at = clock_timestamp() - make_interval(mins => $2) WHERE id = $1")
+            .bind(server_device)
+            .bind(minutes)
+    };
+    let open_offline = "SELECT count(*) FROM midas.alerts WHERE device_id = $1 AND kind = 'device.offline' AND resolved_at IS NULL";
+    let delay = format!(
+        "/api/tenants/{tenant}/policies/tenant/{tenant}/{}",
+        midas_protocol::policy::OFFLINE_ALERT_MINUTES.key
+    );
+    assert_eq!(
+        api("PUT", delay.clone(), &manager, Some(json!({"value": 30})))
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    offline(10).execute(&mut *admin).await.unwrap();
+    assert_eq!(
+        enrollment.alert_sweep().await.unwrap().0,
+        0,
+        "the policy delay is 30 minutes"
+    );
+    assert_eq!(
+        api("DELETE", delay, &manager, None).await.0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        enrollment.alert_sweep().await.unwrap().0,
+        1,
+        "the default delay is 5 minutes"
+    );
+    assert_eq!(enrollment.alert_sweep().await.unwrap().0, 0);
+    let open: i64 = sqlx::query_scalar(open_offline)
+        .bind(server_device)
+        .fetch_one(&mut *admin)
+        .await
+        .unwrap();
+    assert_eq!(open, 1);
+
+    let (smtp_port, inbox) = mail_sink().await;
+    let mailer = midas_server::alerts::Mailer::smtp(&midas_server::alerts::SmtpSettings {
+        host: "127.0.0.1".into(),
+        port: smtp_port,
+        security: midas_server::alerts::SmtpSecurity::None,
+        credentials: None,
+        from: "MIDAS <midas@example.test>".into(),
+    })
+    .unwrap();
+    assert_eq!(enrollment.deliver(&mailer).await.unwrap(), 1);
+    assert_eq!(enrollment.deliver(&mailer).await.unwrap(), 0);
+    {
+        let inbox = inbox.lock().unwrap();
+        assert_eq!(inbox.len(), 1);
+        assert!(
+            inbox[0].contains("Subject: [MIDAS] Critical: ") && inbox[0].contains("Device offline")
+        );
+    }
+
+    sqlx::query("UPDATE midas.devices SET online = true WHERE id = $1")
+        .bind(server_device)
+        .execute(&mut *admin)
+        .await
+        .unwrap();
+    assert_eq!(
+        enrollment.alert_sweep().await.unwrap().1,
+        1,
+        "back online resolves it"
+    );
+    offline(10).execute(&mut *admin).await.unwrap();
+    assert_eq!(
+        enrollment.alert_sweep().await.unwrap().0,
+        0,
+        "a quick flap reopens the same alert"
+    );
+    assert_eq!(enrollment.deliver(&mailer).await.unwrap(), 0);
+    assert_eq!(
+        inbox.lock().unwrap().len(),
+        1,
+        "one outage, one notification"
+    );
+
+    let (status, listed, _) = api(
+        "GET",
+        format!("/api/tenants/{tenant}/alerts/open"),
+        &manager,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{listed}");
+    let listed = listed.as_array().unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(
+        (
+            &listed[0]["kind"],
+            &listed[0]["occurrences"],
+            &listed[0]["notifications_sent"]
+        ),
+        (&json!("device.offline"), &json!(2), &json!(1))
+    );
+    let (status, _, _) = api(
+        "GET",
+        format!("/api/tenants/{tenant}/alerts"),
+        &outsider,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let acknowledge = format!(
+        "/api/tenants/{tenant}/alerts/{}/acknowledge",
+        listed[0]["id"].as_str().unwrap()
+    );
+    assert_eq!(
+        api("POST", acknowledge.clone(), &outsider, None).await.0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        api("POST", acknowledge.clone(), &manager, None).await.0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        api("POST", acknowledge, &manager, None).await.0,
+        StatusCode::CONFLICT
+    );
+    let alert_events: Vec<(String, i64)> = sqlx::query_as("SELECT action, count(*) FROM midas.tenant_audit WHERE tenant_id = $1 AND action LIKE 'alert.%' GROUP BY action ORDER BY action")
+        .bind(tenant).fetch_all(&mut *admin).await.unwrap();
+    assert_eq!(
+        alert_events,
+        [
+            ("alert.acknowledge".to_owned(), 1),
+            ("alert.recipients_set".to_owned(), 1)
+        ]
+    );
+    sqlx::query("UPDATE midas.devices SET online = true WHERE id = $1")
+        .bind(server_device)
+        .execute(&mut *admin)
+        .await
+        .unwrap();
+    assert_eq!(enrollment.alert_sweep().await.unwrap().1, 1);
     let connector_sets: i64 = sqlx::query_scalar("SELECT count(*) FROM midas.tenant_audit WHERE tenant_id = $1 AND action = 'directory.connector_set' AND outcome = 'success'")
         .bind(tenant).fetch_one(&mut *admin).await.unwrap();
     assert_eq!(connector_sets, 2);

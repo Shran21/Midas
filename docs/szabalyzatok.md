@@ -27,6 +27,7 @@ A csoportszintű felülírás csak a csoport tagjaira hat. A felülírás törl�
 | `health.update_critical_days` | 1–365 | 60 | Ennyi nap után kritikus; legalább az előző érték |
 | `health.signature_warning_days` | 1–90 | 3 | A Defender-definíciók ennyi napos kora után figyelmeztet |
 | `health.signature_critical_days` | 1–90 | 7 | Ennyi nap után kritikus; legalább az előző érték |
+| `alerts.offline_minutes` | 1–1440 | 5 | Ennyi perc kiesés után nyílik offline riasztás; a szerver alkalmazza ([riasztások](riasztasok.md)) |
 
 A szerver tartományon kívüli vagy ismeretlen kulcsot nem fogad el. Ha az öröklés ellentmondó párt ad (például a kritikus határ magasabb a figyelmeztetőnél), az agent a kritikus határt a figyelmeztetőhöz igazítja. A katalógus a megosztott protokollcsomagban van, így a szerver pontosan azt ellenőrzi, amit az agent ért.
 
@@ -59,7 +60,7 @@ A szerver tartományon kívüli vagy ismeretlen kulcsot nem fogad el. Ha az ör�
 - A szabályzatkezelés ügyfélszintű jogot kér; telephelyre vagy csoportra szűkített szabályzatkezelő szerep még nincs.
 - Csoport átnevezése, prioritásának módosítása és törlése, valamint telephely törlése még nem érhető el.
 - A webpanel szabályzatnézete és az eszközoldal (MIDAS-031) még hátravan; addig az API mutatja az eredetet.
-- Ez a kör az állapotellenőrzési küszöböket tartalmazza; a riasztási, karbantartási és újraindítási beállítások a MIDAS-029 és a MIDAS-063 feladattal bővítik a katalógust.
+- A karbantartási és újraindítási beállítások a MIDAS-063 feladattal bővítik a katalógust.
 
 ## English
 
@@ -86,6 +87,7 @@ A group override reaches only the group's members. Removing an override makes th
 | `health.update_critical_days` | 1–365 | 60 | After this many days it is critical; at least the previous value |
 | `health.signature_warning_days` | 1–90 | 3 | Defender security intelligence this many days old warns |
 | `health.signature_critical_days` | 1–90 | 7 | After this many days it is critical; at least the previous value |
+| `alerts.offline_minutes` | 1–1440 | 5 | Minutes offline before an offline alert opens; applied by the server ([alerts](riasztasok.md#english)) |
 
 The server refuses out-of-range values and unknown keys. If inheritance yields a contradictory pair (for example a critical limit above the warning limit), the agent aligns the critical limit with the warning limit. The catalogue lives in the shared protocol crate, so the server validates exactly what agents understand.
 
@@ -118,4 +120,4 @@ The server refuses out-of-range values and unknown keys. If inheritance yields a
 - Policy administration needs a tenant-wide permission; there is no site- or group-scoped policy administrator role yet.
 - Renaming groups, changing their priority, deleting groups and deleting sites are not available yet.
 - The web panel's policy view and the device page (MIDAS-031) are still to come; until then the API shows the source.
-- This round covers health check thresholds; MIDAS-029 and MIDAS-063 extend the catalogue with alerting, maintenance and restart settings.
+- MIDAS-063 extends the catalogue with maintenance and restart settings.

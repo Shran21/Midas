@@ -126,7 +126,7 @@ type GroupRow = (Uuid, String);
 type ValueRow = (String, Uuid, String, i64);
 
 /// The device's effective settings; `None` for a device outside the transaction's tenant.
-async fn effective(
+pub(crate) async fn effective(
     tx: &mut PgConnection,
     tenant: Uuid,
     device: Uuid,
@@ -179,7 +179,7 @@ async fn effective(
 }
 
 impl Enrollment {
-    async fn policy_operator(
+    pub(crate) async fn policy_operator(
         &self,
         sessions: &Sessions,
         token: &SessionToken,
