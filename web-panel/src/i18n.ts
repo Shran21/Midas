@@ -423,6 +423,13 @@ const hu = {
     "Több gépes (GPO, Intune) token nem lehet előre jóváhagyott: minden gép jóváhagyásra vár, ezek csoportosan jóváhagyhatók.",
   tokenOnce: "A token csak most látható.",
   tokenTitle: "Telepítőtoken",
+  paletteButton: "Keresés",
+  paletteTitle: "Keresés eszközök és műveletek között",
+  palettePlaceholder: "Eszköz, nézet vagy művelet, például „WS-014 frissít”…",
+  paletteSection: "Nézet",
+  paletteEmpty: "Nincs találat azok között, amelyekhez jogod van.",
+  paletteHint:
+    "↑ ↓ választás · Enter megnyitás · Esc bezárás. Csak a hozzáférhető gépek és az indítható műveletek jelennek meg.",
 };
 
 const en: Record<keyof typeof hu, string> = {
@@ -841,6 +848,13 @@ const en: Record<keyof typeof hu, string> = {
     "A token for several devices (GPO, Intune) cannot be preapproved: each device waits for approval, and they can be approved in bulk.",
   tokenOnce: "The token is shown only now.",
   tokenTitle: "Deployment token",
+  paletteButton: "Search",
+  paletteTitle: "Search devices and actions",
+  palettePlaceholder: 'Device, view or action, for example "WS-014 refresh"…',
+  paletteSection: "View",
+  paletteEmpty: "No match among what you are allowed to use.",
+  paletteHint:
+    "↑ ↓ select · Enter open · Esc close. Only accessible devices and runnable actions appear.",
 };
 
 export const translations = { hu, en };

@@ -6,6 +6,7 @@ import {
   deviceActions,
   filtered,
   noFilters,
+  palette,
   percent,
 } from "../src/devices/model.ts";
 
@@ -109,4 +110,44 @@ test("conditions and filters", () => {
   assert.deepEqual(names({ condition: "attention" }), ["SRV-LNX-01"]);
   assert.equal(percent(1, 0), null);
   assert.equal(percent(1, 3), 33);
+});
+
+test("the palette finds only accessible devices and runnable actions", () => {
+  const labels = {
+    open: "Open",
+    refresh: "Refresh status now",
+    monitoring: "Monitoring",
+    inventory: "Inventory",
+    policy: "Policy",
+    remote: "Remote",
+    remoteAdmin: "Admin remote",
+    terminal: "Terminal",
+    files: "Files",
+    scripts: "Scripts",
+    updates: "Updates",
+    revoke: "Revoke device",
+  } as const;
+  const online = device();
+  const offline = device({ id: "d2", name: "WS-OFF-002", online: false });
+  const run = (query: string, tenantWide: string[] = []) =>
+    palette(
+      query,
+      [{ id: "devices", label: "Devices" }],
+      [online, offline],
+      { ...access, tenant_wide: tenantWide },
+      (id) => labels[id],
+      "en",
+    ).map((entry) => entry.label);
+  assert.deepEqual(run(""), ["Devices", "WS-BUD-014", "WS-OFF-002"]);
+  assert.deepEqual(run("bud refresh"), ["WS-BUD-014: Refresh status now"]);
+  assert.deepEqual(run("off refresh"), [], "a blocked action is not offered");
+  assert.deepEqual(run("remote"), [], "a planned action is not offered");
+  assert.deepEqual(
+    run("revoke"),
+    [],
+    "revocation needs tenant-wide device.enroll",
+  );
+  assert.deepEqual(run("bud revoke", ["device.enroll"]), [
+    "WS-BUD-014: Revoke device",
+  ]);
 });

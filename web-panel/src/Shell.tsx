@@ -16,7 +16,8 @@ import {
   watchSession,
 } from "./api";
 import { AlertsView } from "./devices/AlertsView";
-import type { Tab } from "./devices/DeviceMenu";
+import { CommandPalette } from "./devices/CommandPalette";
+import { type Tab, useDeviceActions } from "./devices/DeviceMenu";
 import { DevicePage } from "./devices/DevicePage";
 import { DevicesView } from "./devices/DevicesView";
 import { DiscoveryView } from "./devices/DiscoveryView";
@@ -124,6 +125,7 @@ export function Shell({
   const [device, setDevice] = useState<{ id: string; tab: Tab } | null>(null);
   const [deviceName, setDeviceName] = useState<string | null>(null);
   const [changes, setChanges] = useState(0);
+  const [searching, setSearching] = useState(false);
   const [reload, setReload] = useState(0);
   const heading = useRef<HTMLHeadingElement>(null);
   const firstRender = useRef(true);
@@ -235,6 +237,31 @@ export function Shell({
     setDevice({ id, tab });
   }, []);
   const deviceTitle = device ? (deviceName ?? t.loading) : null;
+  const paletteActions = useDeviceActions({
+    tenant: tenantId ?? "",
+    tenantName: tenantName ?? "",
+    csrf: signedIn.csrf_token,
+    t,
+    fail,
+    onOpen: openDevice,
+    onChanged: () => setChanges((n) => n + 1),
+  });
+  const canSearch = tenantId !== null && context.state === "ready";
+  useEffect(() => {
+    if (!canSearch) return;
+    const shortcut = (event: KeyboardEvent) => {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === "k" &&
+        !document.querySelector("dialog[open]")
+      ) {
+        event.preventDefault();
+        setSearching(true);
+      }
+    };
+    document.addEventListener("keydown", shortcut);
+    return () => document.removeEventListener("keydown", shortcut);
+  }, [canSearch]);
 
   useEffect(() => {
     document.title = ["MIDAS", tenantName, deviceTitle ?? title]
@@ -555,6 +582,17 @@ export function Shell({
               </select>
             </label>
           )}
+          {canSearch && (
+            <button
+              type="button"
+              className="palette-open"
+              onClick={() => setSearching(true)}
+            >
+              <Icon name="search" size={15} />
+              <span>{t.paletteButton}</span>
+              <kbd>Ctrl K</kbd>
+            </button>
+          )}
           <div className="topbar-tools">
             <PreferenceControls {...preferences} />
             <span className="topbar-divider" />
@@ -603,6 +641,27 @@ export function Shell({
           {content}
         </main>
       </div>
+      {searching && canSearch && context.state === "ready" && tenantId && (
+        <CommandPalette
+          tenant={tenantId}
+          tenantName={tenantName ?? ""}
+          access={context.value}
+          t={t}
+          language={language}
+          fail={fail}
+          sections={tenantSections
+            .filter(([target]) => allowed(target))
+            .map(([target]) => ({ id: target, label: t[target] }))}
+          onSection={(target) => {
+            setSection(target as Section);
+            setDevice(null);
+          }}
+          onOpen={openDevice}
+          onAction={(target, action) => void paletteActions.run(target, action)}
+          onClose={() => setSearching(false)}
+        />
+      )}
+      <div className="palette-feedback">{paletteActions.element}</div>
     </div>
   );
 }

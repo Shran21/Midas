@@ -230,3 +230,51 @@ export function scopes(devices: DeviceSummary[]) {
       .sort((a, b) => a.name.localeCompare(b.name));
   return { sites: sorted(sites), groups: sorted(groups) };
 }
+
+export type PaletteEntry =
+  | { kind: "section"; id: string; label: string }
+  | { kind: "device"; device: DeviceSummary; label: string }
+  | { kind: "action"; device: DeviceSummary; action: Action; label: string };
+
+/**
+ * Palette results: every word of the query must occur in the entry's label. Devices come from the
+ * server's permission-filtered list and actions from `deviceActions`, so only accessible devices
+ * and runnable actions can be found.
+ */
+export function palette(
+  query: string,
+  sections: { id: string; label: string }[],
+  devices: DeviceSummary[],
+  access: Access,
+  actionLabel: (id: ActionId) => string,
+  locale: string,
+  limit = 30,
+): PaletteEntry[] {
+  const words = query
+    .trim()
+    .toLocaleLowerCase(locale)
+    .split(/\s+/)
+    .filter(Boolean);
+  const matches = (label: string) => {
+    const text = label.toLocaleLowerCase(locale);
+    return words.every((word) => text.includes(word));
+  };
+  const entries: PaletteEntry[] = sections.map((section) => ({
+    kind: "section",
+    ...section,
+  }));
+  for (const device of devices) {
+    entries.push({ kind: "device", device, label: device.name });
+    if (words.length === 0) continue;
+    for (const action of deviceActions(device, access)) {
+      if (action.blocked !== null || action.id === "open") continue;
+      entries.push({
+        kind: "action",
+        device,
+        action,
+        label: `${device.name}: ${actionLabel(action.id)}`,
+      });
+    }
+  }
+  return entries.filter((entry) => matches(entry.label)).slice(0, limit);
+}

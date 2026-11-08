@@ -63,6 +63,14 @@
   - Egy eszközre 30 másodpercen belül ismételt kérés sikeres, de nem ébreszti fel újra az agentet.
   - A kérés auditált (`device.refresh`).
 
+### Kereső és parancspaletta
+
+- A fejléc **Keresés** gombja vagy a Ctrl+K (macOS-en Cmd+K) nyitja meg. A paletta a kiválasztott ügyfelet is megnevezi.
+- Nézetek, eszközök és eszközműveletek között keres; a lekérdezés minden szavának szerepelnie kell (például „WS-014 frissít”).
+- Csak a technikus számára látható nézetek, a szerver által jogosultság szerint szűrt eszközlista, valamint a `deviceActions` szerint engedélyezett és éppen indítható műveletek jelennek meg. Offline gépen tiltott, későbbi verzióra jelölt vagy ügyfélszintű jog nélküli művelet nem kereshető. A futtatást a szerver itt is önállóan ellenőrzi.
+- A nyilak választanak, az Enter megnyit vagy futtat, az Escape bezár, és a fókusz visszatér oda, ahonnan a paletta megnyílt. A lista kombinált listamezőként (combobox) jelenik meg, a képernyőolvasó a kijelölt találatot is felolvassa.
+- A visszavonáshoz ugyanaz a megerősítő ablak jelenik meg, mint a menüből.
+
 ### API
 
 | Végpont | Jog |
@@ -102,7 +110,6 @@ A **Riasztások** nézet ügyfélszintű `monitor.read` joggal a nyitott riaszt�
 - A távsegítség, a terminál, a fájlkezelő, a szkriptek és a frissítések a menüben letiltva, „Későbbi verzióban” jelzéssel látszanak. A távsegítség a 2. fázisban, a többi a 4. fázisban készül el.
 - A lista legfeljebb 5000 eszközt ad vissza, lapozás nélkül. Nagy flottán a terhelést a MIDAS-035 méri.
 - A függő újraindítás az `updates` ellenőrzés `reboot_pending` okából látszik. Ha ugyanott súlyosabb frissítési hiba is van, az kerül előre, és az újraindítás jelzése elmarad.
-- Kereső és parancspaletta a MIDAS-032 része.
 
 ## English
 
@@ -165,6 +172,14 @@ November 8, 2026 · MIDAS-031 · UI-01, UI-02, UI-03, UI-05, UI-07, SERVER-04
   - A repeat within 30 seconds for the same device succeeds without waking the agent again.
   - Requests are audited (`device.refresh`).
 
+### Search and command palette
+
+- The **Search** button in the header or Ctrl+K (Cmd+K on macOS) opens it. The palette names the selected customer.
+- It searches views, devices and device actions; every word of the query must match (for example "WS-014 refresh").
+- Only views the operator can open, the server's permission-filtered device list and actions that `deviceActions` allows and that can run now appear. Actions blocked offline, planned for later or lacking a tenant-wide permission cannot be found. The server still checks every run on its own.
+- Arrow keys select, Enter opens or runs, Escape closes and focus returns to where the palette was opened. The list is a combobox with listbox semantics, so screen readers announce the selected result.
+- Revocation shows the same confirmation as the menu.
+
 ### API
 
 | Endpoint | Permission |
@@ -204,4 +219,3 @@ With tenant-wide `monitor.read`, **Alerts** shows open alerts and history. For a
 - Remote support, terminal, file manager, scripts and updates appear disabled in the menu, marked "In a later version". Remote support arrives in phase 2, the rest in phase 4.
 - The list returns at most 5000 devices without paging; MIDAS-035 measures load on a large fleet.
 - A pending restart comes from the `updates` check's `reboot_pending` reason. If a more severe update problem is present, it takes precedence and the restart flag is not shown.
-- Search and the command palette belong to MIDAS-032.
