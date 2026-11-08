@@ -1,0 +1,136 @@
+{
+  "hours": 2.885,
+  "sample_seconds": 60,
+  "samples": 169,
+  "agent": {
+    "samples": 169,
+    "cpu_percent_of_core": {
+      "median": 0.05,
+      "p95": 0.23,
+      "max": 0.43
+    },
+    "cpu_seconds_total": 7.4,
+    "working_set_mib": {
+      "median": 27.23,
+      "p95": 27.48,
+      "max": 28.14
+    },
+    "private_mib": {
+      "median": 11.91,
+      "p95": 12.57,
+      "max": 12.66
+    },
+    "handles": {
+      "first": 305,
+      "last": 306,
+      "max": 343
+    },
+    "threads": {
+      "first": 13,
+      "last": 11,
+      "max": 17
+    },
+    "disk_write_mib": 0.03,
+    "disk_read_mib": 0.01
+  },
+  "tray_view_closed": {
+    "samples": 159,
+    "cpu_percent_of_core": {
+      "median": 0.0,
+      "p95": 0.03,
+      "max": 0.03
+    },
+    "cpu_seconds_total": 0.7,
+    "working_set_mib": {
+      "median": 13.37,
+      "p95": 13.37,
+      "max": 13.37
+    },
+    "private_mib": {
+      "median": 1.88,
+      "p95": 1.88,
+      "max": 1.93
+    },
+    "handles": {
+      "first": 135,
+      "last": 161,
+      "max": 161
+    },
+    "threads": {
+      "first": 2,
+      "last": 2,
+      "max": 5
+    },
+    "disk_write_mib": 0.0,
+    "disk_read_mib": 0.0
+  },
+  "tray_view_open": {
+    "samples": 10,
+    "cpu_percent_of_core": {
+      "median": 0.0,
+      "p95": 0.15,
+      "max": 0.15
+    },
+    "cpu_seconds_total": 0.1,
+    "working_set_mib": {
+      "median": 12.95,
+      "p95": 12.98,
+      "max": 12.98
+    },
+    "private_mib": {
+      "median": 1.88,
+      "p95": 1.94,
+      "max": 1.94
+    },
+    "handles": {
+      "first": 136,
+      "last": 161,
+      "max": 163
+    },
+    "threads": {
+      "first": 3,
+      "last": 2,
+      "max": 4
+    },
+    "disk_write_mib": 0.0,
+    "disk_read_mib": 0.0
+  },
+  "webview_samples": 0,
+  "webview": null,
+  "traffic": {
+    "up_bytes": 35697,
+    "down_bytes": 19184,
+    "connections": 1,
+    "up_kib_per_hour": 12.1,
+    "down_kib_per_hour": 6.5
+  },
+  "online_share": 1.0,
+  "mains_share": 0.4911,
+  "device": {
+    "online": true,
+    "capabilities": [
+      "metrics",
+      "inventory",
+      "health.services",
+      "health.updates",
+      "health.antivirus",
+      "health.encryption",
+      "health.storage",
+      "host.desktop"
+    ],
+    "metric_rows": 170,
+    "inventory_rows": 72,
+    "health_rows": 5
+  },
+  "views": [
+    {
+      "opened_at_hour": 1.008,
+      "opened": true,
+      "closed": true
+    }
+  ],
+  "machine": {
+    "cpus": 8,
+    "platform": "win32"
+  }
+}

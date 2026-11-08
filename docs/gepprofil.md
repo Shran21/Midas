@@ -34,6 +34,7 @@ A gépprofil megmondja, hogy egy gépen van-e grafikus asztal. A webpanel ennek 
 
 - Agent-egységtesztek: a négy Windows-telepítéstípus és az ismeretlen érték leképezése, a Linuxos alapcél és kijelzőkezelő kombinációi, valamint a képességlista sorrendje.
 - A Windows-integrációs teszt a valódi gépen kiolvassa az `InstallationType` értéket. A fejlesztői Windows 11-en ez `Client`, a CI Windows Serverén `Server`, és mindkét gépen bekerül a leltárba.
+- A [valódi agent mérése](meresek/agent-profil.md) alatt a szerver a fejlesztői Windows 11-es gépet `host.desktop` képességgel látta.
 - Webes teszt: Server Core-profilnál a távsegítés `headless` okkal tiltott, a gyakori műveletek a terminált és a fájlokat adják, a grafikus képességek „asztal nélkül nem” állapotúak. Desktop Experience-es kiszolgálón, régebbi agentnél és Linuxon a megfelelő állapot jelenik meg.
 
 ### Ismert korlátok
@@ -73,6 +74,7 @@ The host profile tells whether a host has a graphical desktop. The web panel use
 
 - Agent unit tests: mapping of the four Windows installation types and an unknown value, combinations of the Linux default target and display manager, and the order of the capability list.
 - The Windows integration test reads `InstallationType` on the real machine. It is `Client` on the Windows 11 development machine and `Server` on the CI Windows Server, and on both it is part of the inventory.
+- During the [real agent measurement](meresek/agent-profil.md#english) the server saw the Windows 11 development machine with the `host.desktop` capability.
 - Web test: with a Server Core profile, remote support is blocked as `headless`, the common actions are terminal and files, and graphical capabilities are "not without a desktop". A Desktop Experience server, an older agent and Linux show their matching states.
 
 ### Known limits
