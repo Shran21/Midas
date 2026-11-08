@@ -2120,6 +2120,9 @@ dependencies = [
  "getrandom 0.4.3",
  "hex",
  "hmac",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
  "ldap3",
  "ldap3_proto",
  "lettre",
@@ -2146,6 +2149,7 @@ dependencies = [
  "webauthn-authenticator-rs",
  "webauthn-rs",
  "webauthn-rs-proto",
+ "webpki-roots",
  "x509-parser 0.18.1",
  "zeroize",
 ]

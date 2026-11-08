@@ -4,7 +4,7 @@
 
 ## Magyar
 
-2026. november 8. · MIDAS-029 · UI-07
+2026. november 8. · MIDAS-029, MIDAS-030 · UI-07, SEC-01
 
 ### Mikor nyílik riasztás
 
@@ -33,6 +33,19 @@ Az offline-söprés a szerveren 30 másodpercenként fut, a jelenlétet jelző s
   - Az SMTP-kiszolgáló tanúsítványát a beépített Mozilla-gyökérlista ellenőrzi.
   - SMTP nélkül a szerver figyelmeztet, a levelek pedig a sorban várnak.
 
+### Teams és Slack
+
+- Csatorna: `GET`, `POST /api/tenants/{ügyfél}/alert-channels` törzzsel `{"kind": "teams" | "slack", "label": "Üzemeltetés", "url": "https://…"}`, valamint `DELETE …/alert-channels/{csatorna}`. Mindegyikhez ügyfélszintű `policy.manage` kell, a módosításhoz friss passkey. Ügyfelenként legfeljebb 10 csatorna lehet.
+- A webhook URL maga a titok. A szerver XChaCha20-Poly1305-tel, a hitelesítési kulcsból levezetett külön kulccsal, az ügyfélhez és a csatornához kötve lezárva tárolja. Soha nem adja vissza: a lista csak a fajtát, a nevet, a hosztot és a legutóbbi próba eredményét mutatja. Az audit sem rögzíti.
+- Csak a szolgáltatók webhookhosztjai fogadhatók el, HTTPS-en és a 443-as porton, felhasználónév és jelszó nélkül:
+  - Slack: `hooks.slack.com`;
+  - Teams: `*.webhook.office.com`, `*.logic.azure.com` (Workflows) és `*.environment.api.powerplatform.com`.
+
+  Így a szerver nem használható tetszőleges cím elérésére. A kapcsolat a beépített Mozilla-gyökérlistával ellenőrzött TLS, átirányítást nem követ.
+- **Próbariasztás:** `POST …/alert-channels/{csatorna}/test` (`policy.manage`, friss passkey) azonnal egy egyértelműen jelölt próbaüzenetet küld, és rögzíti az eredményt (`ok`, illetve `refused`, `throttled`, `server_error`, `connect`, `tls`, `timeout`).
+- Új riasztásnál minden csatorna egy üzenetet kap, ugyanazzal a kétnyelvű szöveggel, mint az e-mail. A kézbesítés sorból történik, foglalással és visszalépéses újrapróbálással; 4xx-elutasításnál vagy hat próba után `failed` lesz.
+- Auditált műveletek: `alert.channel_add`, `alert.channel_remove`, `alert.channel_test`. Részletként a csatorna azonosítója, fajtája és hosztja szerepel, az URL nem.
+
 ### Kezelés
 
 - `GET /api/tenants/{ügyfél}/alerts`: a legutóbbi 200 riasztás. `GET …/alerts/open`: a nyitottak. Mindkettőhöz ügyfélszintű `monitor.read` kell.
@@ -52,14 +65,14 @@ Az offline-söprés a szerveren 30 másodpercenként fut, a jelenlétet jelző s
 
 ### Ismert korlátok
 
-- Csak e-mail-csatorna van; a Teams- és Slack-végpontok a MIDAS-030 részei.
+- A Teams- és Slack-csatorna ügyfélszintű; telephelyre vagy súlyosságra szűrés még nincs. A webpanelen még nincs csatornakezelő felület; addig az API használható.
 - Riasztásonként egy értesítés készül; eszkalálás, ismétlő emlékeztető és csendes időszak még nincs.
 - A címzettek ügyfélszintűek; telephelyre vagy csoportra szűkített címzettlista még nincs.
 - A webpanel Riasztások nézete és az eszközoldal mutatja és nyugtázza a riasztásokat ([eszközoldal](eszkozoldal.md)).
 
 ## English
 
-November 8, 2026 · MIDAS-029 · UI-07
+November 8, 2026 · MIDAS-029, MIDAS-030 · UI-07, SEC-01
 
 ### When an alert opens
 
@@ -88,6 +101,19 @@ The offline sweep runs on the server every 30 seconds, after the presence sweep.
   - The SMTP server certificate is checked against the built-in Mozilla root list.
   - Without SMTP the server warns and messages wait in the queue.
 
+### Teams and Slack
+
+- Channels: `GET` and `POST /api/tenants/{tenant}/alert-channels` with body `{"kind": "teams" | "slack", "label": "Operations", "url": "https://…"}`, and `DELETE …/alert-channels/{channel}`. All need tenant-wide `policy.manage`, and changes need a fresh passkey. A customer can have at most 10 channels.
+- The webhook URL is the secret. The server stores it sealed with XChaCha20-Poly1305, under a separate key derived from the authentication key and bound to the customer and the channel. It never returns the URL: the list shows only the kind, name, host and latest test result. The audit does not record it either.
+- Only the providers' webhook hosts are accepted, over HTTPS on port 443 and without user name or password:
+  - Slack: `hooks.slack.com`;
+  - Teams: `*.webhook.office.com`, `*.logic.azure.com` (Workflows) and `*.environment.api.powerplatform.com`.
+
+  The server therefore cannot be used to reach arbitrary addresses. The connection uses TLS verified against the built-in Mozilla root list and follows no redirects.
+- **Test alert:** `POST …/alert-channels/{channel}/test` (`policy.manage`, fresh passkey) sends a clearly marked test message at once and records the outcome (`ok`, or `refused`, `throttled`, `server_error`, `connect`, `tls`, `timeout`).
+- Every channel receives one message per new alert, with the same bilingual text as the e-mail. Delivery is queued with leasing and backoff; a 4xx refusal or six failed attempts make it `failed`.
+- Audited actions: `alert.channel_add`, `alert.channel_remove`, `alert.channel_test`. The details carry the channel id, kind and host, never the URL.
+
 ### Handling
 
 - `GET /api/tenants/{tenant}/alerts`: the latest 200 alerts. `GET …/alerts/open`: the open ones. Both need tenant-wide `monitor.read`.
@@ -107,7 +133,7 @@ The offline sweep runs on the server every 30 seconds, after the presence sweep.
 
 ### Known limits
 
-- E-mail is the only channel; Teams and Slack endpoints belong to MIDAS-030.
+- Teams and Slack channels are per customer; filtering by site or severity is not available yet. The web panel has no channel management view yet; until then the API is used.
 - One notification per alert; escalation, reminders and quiet hours are not available yet.
 - Recipients are per customer; site- or group-scoped recipient lists are not available yet.
 - The web panel Alerts view and the device page show and acknowledge alerts ([device pages](eszkozoldal.md#english)).

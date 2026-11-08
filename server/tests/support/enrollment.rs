@@ -415,6 +415,66 @@ async fn live_panel(
     tokio::spawn(async move { next(&mut socket).await })
 }
 
+/// A minimal HTTPS receiver standing in for a Slack or Teams webhook; it keeps each body.
+async fn webhook_sink(
+    config: Arc<rustls::ServerConfig>,
+) -> (u16, Arc<std::sync::Mutex<Vec<String>>>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let received = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let store = received.clone();
+    let acceptor = tokio_rustls::TlsAcceptor::from(config);
+    tokio::spawn(async move {
+        while let Ok((socket, _)) = listener.accept().await {
+            let (acceptor, store) = (acceptor.clone(), store.clone());
+            tokio::spawn(async move {
+                let Ok(mut stream) = acceptor.accept(socket).await else {
+                    return;
+                };
+                let mut data = Vec::new();
+                let mut buffer = [0u8; 4096];
+                loop {
+                    let Ok(read) = stream.read(&mut buffer).await else {
+                        return;
+                    };
+                    if read == 0 {
+                        return;
+                    }
+                    data.extend_from_slice(&buffer[..read]);
+                    let text = String::from_utf8_lossy(&data).to_string();
+                    let Some(end) = text.find("\r\n\r\n") else {
+                        continue;
+                    };
+                    let length = text[..end]
+                        .lines()
+                        .find_map(|line| {
+                            line.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|value| value.trim().parse::<usize>().unwrap_or(0))
+                        })
+                        .unwrap_or(0);
+                    if data.len() >= end + 4 + length {
+                        let body = String::from_utf8_lossy(&data[end + 4..end + 4 + length]);
+                        let message: serde_json::Value =
+                            serde_json::from_str(&body).unwrap_or_default();
+                        store
+                            .lock()
+                            .unwrap()
+                            .push(message["text"].as_str().unwrap_or_default().to_owned());
+                        let _ = stream
+                            .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\nok")
+                            .await;
+                        let _ = stream.shutdown().await;
+                        return;
+                    }
+                }
+            });
+        }
+    });
+    (port, received)
+}
+
 async fn reported_at(admin: &mut PgConnection, device: Uuid) -> f64 {
     sqlx::query_scalar(
         "SELECT extract(epoch FROM health_reported_at)::float8 FROM midas.devices WHERE id = $1",
@@ -2096,6 +2156,122 @@ pub async fn verify(database: &Database, admin: &mut PgConnection) {
     .await
     .unwrap();
     assert_eq!(stored, 0);
+
+    // Teams and Slack: the webhook URL stays sealed, a test reaches the channel, and a new alert
+    // is posted there exactly once.
+    let (hook_port, received) = webhook_sink(server_config(resolver(), None, None).unwrap()).await;
+    enrollment.set_webhooks(Arc::new(midas_server::channels::Webhooks::for_tests(
+        &[9; 32],
+        roots(&server_ca),
+        "127.0.0.1",
+    )));
+    let channels_path = format!("/api/tenants/{tenant}/alert-channels");
+    let secret = "TOP-SECRET-PART";
+    let hook_url = format!("https://127.0.0.1:{hook_port}/hooks/{secret}");
+    for invalid in [
+        json!({ "kind": "slack", "label": "Ops", "url": "http://hooks.slack.com/services/a" }),
+        json!({ "kind": "slack", "label": "Ops", "url": "https://evil.example/hooks" }),
+        json!({ "kind": "slack", "label": " ", "url": hook_url }),
+    ] {
+        let (status, _, _) = call(
+            &app,
+            "POST",
+            &channels_path,
+            Some(&manager),
+            Some(invalid),
+            &[],
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+    let spec_body = json!({ "kind": "slack", "label": "Ops", "url": hook_url });
+    assert_eq!(
+        call(
+            &app,
+            "POST",
+            &channels_path,
+            Some(&outsider),
+            Some(spec_body.clone()),
+            &[]
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    let (status, added, _) = call(
+        &app,
+        "POST",
+        &channels_path,
+        Some(&manager),
+        Some(spec_body),
+        &[],
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{added}");
+    assert!(!added.to_string().contains(secret));
+    let channel = added["id"].as_str().unwrap().to_owned();
+    let (_, listed, _) = call(&app, "GET", &channels_path, Some(&manager), None, &[]).await;
+    assert_eq!(listed.as_array().unwrap().len(), 1);
+    assert_eq!(listed[0]["host"], "127.0.0.1");
+    assert!(
+        !listed.to_string().contains(secret),
+        "the URL is never returned"
+    );
+    let leaks: i64 = sqlx::query_scalar("SELECT (SELECT count(*) FROM midas.alert_channels WHERE position(convert_to($1, 'UTF8') IN sealed) > 0) + (SELECT count(*) FROM midas.tenant_audit WHERE details::text LIKE '%' || $1 || '%')")
+        .bind(secret).fetch_one(&mut *admin).await.unwrap();
+    assert_eq!(
+        leaks, 0,
+        "neither the stored channel nor the audit holds the URL"
+    );
+    let (status, tested, _) = call(
+        &app,
+        "POST",
+        &format!("{channels_path}/{channel}/test"),
+        Some(&manager),
+        None,
+        &[],
+    )
+    .await;
+    assert_eq!(
+        (status, tested["ok"].clone()),
+        (StatusCode::OK, json!(true))
+    );
+    assert!(received.lock().unwrap()[0].contains("Test alert"));
+    sqlx::query("UPDATE midas.devices SET online = false, last_seen_at = clock_timestamp() - interval '10 minutes' WHERE id = $1")
+        .bind(namesake).execute(&mut *admin).await.unwrap();
+    assert!(enrollment.alert_sweep().await.unwrap().0 >= 1);
+    assert_eq!(enrollment.deliver_webhooks().await.unwrap(), 1);
+    assert_eq!(enrollment.deliver_webhooks().await.unwrap(), 0);
+    {
+        let received = received.lock().unwrap();
+        assert_eq!(received.len(), 2);
+        assert!(received[1].contains("PC-02") && received[1].contains("Device offline"));
+    }
+    assert_eq!(
+        call(
+            &app,
+            "DELETE",
+            &format!("{channels_path}/{channel}"),
+            Some(&manager),
+            None,
+            &[]
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    let (_, listed, _) = call(&app, "GET", &channels_path, Some(&manager), None, &[]).await;
+    assert_eq!(listed, json!([]));
+    let channel_events: Vec<(String, i64)> = sqlx::query_as("SELECT action, count(*) FROM midas.tenant_audit WHERE tenant_id = $1 AND action LIKE 'alert.channel%' GROUP BY action ORDER BY action")
+        .bind(tenant).fetch_all(&mut *admin).await.unwrap();
+    assert_eq!(
+        channel_events,
+        [
+            ("alert.channel_add".to_owned(), 1),
+            ("alert.channel_remove".to_owned(), 1),
+            ("alert.channel_test".to_owned(), 1),
+        ]
+    );
 
     let (_, created, _) = create(&manager, tenant, spec.clone()).await;
     sqlx::query("UPDATE midas.enrollment_tokens SET created_at = clock_timestamp() - interval '2 hours', expires_at = clock_timestamp() - interval '1 hour' WHERE id = $1")

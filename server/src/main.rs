@@ -79,6 +79,9 @@ async fn main() -> Result<(), TransportError> {
                 if let Err(error) = delivering.deliver(&mailer).await {
                     tracing::error!(%error, "alert delivery failed");
                 }
+                if let Err(error) = delivering.deliver_webhooks().await {
+                    tracing::error!(%error, "alert webhook delivery failed");
+                }
             }
         });
         tokio::spawn(async move {
@@ -111,6 +114,9 @@ async fn main() -> Result<(), TransportError> {
                 .as_deref()
                 .ok_or("missing authentication key file")?,
         )?;
+        if let Some(enrollment) = &enrollment {
+            enrollment.set_webhooks(Arc::new(midas_server::channels::Webhooks::new(&key)));
+        }
         let mut auth = WebAuth::new(
             database,
             AuthConfig::new(origin.clone(), key),

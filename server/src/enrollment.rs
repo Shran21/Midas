@@ -253,6 +253,8 @@ pub struct Enrollment {
     /// Tenants whose device list changed; the panel refetches what the operator may see.
     changes: broadcast::Sender<Uuid>,
     pub(crate) refreshed: Mutex<HashMap<Uuid, Instant>>,
+    /// Teams and Slack delivery; set once the server key is known.
+    pub(crate) webhooks: std::sync::OnceLock<Arc<crate::channels::Webhooks>>,
 }
 
 impl Enrollment {
@@ -264,7 +266,13 @@ impl Enrollment {
             live: Arc::default(),
             changes: broadcast::channel(256).0,
             refreshed: Mutex::default(),
+            webhooks: std::sync::OnceLock::new(),
         }
+    }
+
+    /// Enables Teams and Slack channels; later calls are ignored.
+    pub fn set_webhooks(&self, webhooks: Arc<crate::channels::Webhooks>) {
+        let _ = self.webhooks.set(webhooks);
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<Uuid> {

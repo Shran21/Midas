@@ -80,6 +80,8 @@ pub(crate) async fn raise(
         .execute(&mut *tx).await?;
     sqlx::query("INSERT INTO midas.alert_notifications (tenant_id, id, alert_id, recipient) SELECT $1, gen_random_uuid(), $2, r FROM midas.alert_recipients, unnest(emails) AS r")
         .bind(tenant).bind(id).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO midas.alert_deliveries (tenant_id, id, alert_id, channel_id) SELECT $1, gen_random_uuid(), $2, id FROM midas.alert_channels")
+        .bind(tenant).bind(id).execute(&mut *tx).await?;
     Ok(Raised::New(id))
 }
 
@@ -172,7 +174,7 @@ type DueRow = (
     String,
 );
 
-fn backoff(attempts: i32) -> f64 {
+pub(crate) fn backoff(attempts: i32) -> f64 {
     match attempts {
         ..=1 => 60.0,
         2 => 300.0,
@@ -196,13 +198,32 @@ fn label(kind: &str) -> (&'static str, &'static str) {
 
 fn message(from: &Mailbox, recipient: &str, row: &DueRow) -> Option<Message> {
     let (_, _, _, kind, severity, summary, opened, device, tenant) = row;
+    let (subject, body) = text(kind, severity, summary, *opened, device, tenant)?;
+    Message::builder()
+        .from(from.clone())
+        .to(recipient.parse().ok()?)
+        .subject(subject)
+        .header(ContentType::TEXT_PLAIN)
+        .body(body)
+        .ok()
+}
+
+/// The subject and the bilingual body of an alert notification, for every channel.
+pub(crate) fn text(
+    kind: &str,
+    severity: &str,
+    summary: &str,
+    opened: i64,
+    device: &str,
+    tenant: &str,
+) -> Option<(String, String)> {
     let (hu, en) = label(kind);
     let (severity_hu, severity_en) = if severity == "critical" {
         ("Kritikus", "Critical")
     } else {
         ("Figyelmeztetés", "Warning")
     };
-    let at = time::OffsetDateTime::from_unix_timestamp(*opened).ok()?;
+    let at = time::OffsetDateTime::from_unix_timestamp(opened).ok()?;
     let opened = format!(
         "{:04}-{:02}-{:02} {:02}:{:02}",
         at.year(),
@@ -217,13 +238,7 @@ fn message(from: &Mailbox, recipient: &str, row: &DueRow) -> Option<Message> {
          {severity_en}: {en}\nCustomer: {tenant}\nDevice: {device}\nDetails: {summary}\nStarted (UTC): {opened}\n\
          Acknowledge the alert in the MIDAS admin panel.\n"
     );
-    Message::builder()
-        .from(from.clone())
-        .to(recipient.parse().ok()?)
-        .subject(format!("[MIDAS] {severity_en}: {device} - {en}"))
-        .header(ContentType::TEXT_PLAIN)
-        .body(body)
-        .ok()
+    Some((format!("[MIDAS] {severity_en}: {device} - {en}"), body))
 }
 
 /// A simple, strict address check; lettre parses it again before sending.

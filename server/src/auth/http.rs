@@ -220,6 +220,18 @@ pub fn router(state: Arc<WebAuth>) -> Router {
             post(acknowledge_alert),
         )
         .route(
+            "/api/tenants/{id}/alert-channels",
+            get(alert_channels).post(add_alert_channel),
+        )
+        .route(
+            "/api/tenants/{id}/alert-channels/{channel}",
+            delete(remove_alert_channel),
+        )
+        .route(
+            "/api/tenants/{id}/alert-channels/{channel}/test",
+            post(test_alert_channel),
+        )
+        .route(
             "/api/tenants/{id}/alert-recipients",
             get(alert_recipients).put(set_alert_recipients),
         )
@@ -932,6 +944,53 @@ async fn acknowledge_alert(
         .acknowledge(&state.sessions, &context.token, id, alert)
         .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn alert_channels(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Vec<crate::channels::ChannelView>>> {
+    Ok(Json(
+        enrollment(&state)?
+            .channels(&state.sessions, &context.token, id)
+            .await?,
+    ))
+}
+
+async fn add_alert_channel(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<crate::channels::ChannelSpec>,
+) -> Result<(StatusCode, Json<crate::channels::ChannelView>)> {
+    let view = enrollment(&state)?
+        .add_channel(&state.sessions, &context.token, id, &body)
+        .await?;
+    Ok((StatusCode::CREATED, Json(view)))
+}
+
+async fn remove_alert_channel(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((id, channel)): Path<(Uuid, Uuid)>,
+) -> Result<StatusCode> {
+    enrollment(&state)?
+        .remove_channel(&state.sessions, &context.token, id, channel)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn test_alert_channel(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((id, channel)): Path<(Uuid, Uuid)>,
+) -> Result<Json<crate::channels::TestResult>> {
+    Ok(Json(
+        enrollment(&state)?
+            .test_channel(&state.sessions, &context.token, id, channel)
+            .await?,
+    ))
 }
 
 async fn alert_recipients(

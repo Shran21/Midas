@@ -53,6 +53,9 @@ names!(Action {
     AlertAcknowledge => "alert.acknowledge",
     AlertRecipientsSet => "alert.recipients_set",
     DeviceRefresh => "device.refresh",
+    AlertChannelAdd => "alert.channel_add",
+    AlertChannelRemove => "alert.channel_remove",
+    AlertChannelTest => "alert.channel_test",
 });
 names!(Outcome {
     Success => "success",

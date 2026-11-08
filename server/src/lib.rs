@@ -9,6 +9,7 @@ pub mod alerts;
 pub mod audit;
 pub mod auth;
 pub mod authorization;
+pub mod channels;
 pub mod config;
 pub mod connector;
 pub mod database;

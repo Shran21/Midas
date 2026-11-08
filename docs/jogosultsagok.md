@@ -64,6 +64,8 @@ Jogosultság nem bővíthető a kezelő saját köre fölé: szerep vagy engedé
 | `POST /api/tenants/{id}/alerts/{riasztás}/acknowledge` | `alert.acknowledge` az eszközre |
 | `GET /api/tenants/{id}/alert-recipients` | Ügyfélszintű `policy.manage` |
 | `PUT /api/tenants/{id}/alert-recipients` | `policy.manage`, friss passkey |
+| `GET /api/tenants/{id}/alert-channels` | Ügyfélszintű `policy.manage` (a webhook URL nélkül) |
+| `POST /api/tenants/{id}/alert-channels`, `DELETE …/{csatorna}`, `POST …/{csatorna}/test` | `policy.manage`, friss passkey |
 
 A webpanel Hozzáférés nézete a tagokat, szerepeket, szabályokat és telephelyeket kezeli; a platformadminisztrátor Ügyfelek nézete új ügyfelet és technikust hoz létre, a kódokat egyszer mutatja meg. A technikus saját passkeyjének regisztrációja az első beállítási folyamattal együtt készül.
 
@@ -168,6 +170,8 @@ Managers cannot exceed their own access: granting a role or allow, removing a de
 | `POST /api/tenants/{id}/alerts/{alert}/acknowledge` | `alert.acknowledge` for the device |
 | `GET /api/tenants/{id}/alert-recipients` | Tenant-wide `policy.manage` |
 | `PUT /api/tenants/{id}/alert-recipients` | `policy.manage`, fresh passkey |
+| `GET /api/tenants/{id}/alert-channels` | Tenant-wide `policy.manage` (without the webhook URL) |
+| `POST /api/tenants/{id}/alert-channels`, `DELETE …/{channel}`, `POST …/{channel}/test` | `policy.manage`, fresh passkey |
 
 The web panel's Access view manages members, roles, rules and sites; the platform administrator's Customers view creates tenants and technicians and shows the codes once. Technicians register their own passkey with the first-run setup flow.
 
