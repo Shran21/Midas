@@ -3,6 +3,7 @@
 pub use midas_agent_core::host::{config, runner};
 
 pub mod ipc;
+pub mod status;
 #[cfg(windows)]
 pub mod win;
 
@@ -16,10 +17,7 @@ pub async fn run_agent(
     let (state, observed) = tokio::sync::watch::channel(runner::State::Starting);
     let status = match std::env::current_exe() {
         Ok(image) => {
-            let policy = ipc::Policy {
-                session: rule,
-                image,
-            };
+            let policy = ipc::Policy::for_program(rule, image);
             Some(tokio::spawn(ipc::serve(
                 pipe,
                 policy,

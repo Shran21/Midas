@@ -11,6 +11,10 @@ publish.workspace = true
 name = "midas-agent"
 path = "src/main.rs"
 
+[[bin]]
+name = "midas-tray"
+path = "src/tray.rs"
+
 # Win32 calls need unsafe code: denied here, allowed only inside the reviewed `win` module.
 [lints.rust]
 unsafe_code = "deny"

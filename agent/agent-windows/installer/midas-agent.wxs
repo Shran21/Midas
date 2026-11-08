@@ -39,6 +39,12 @@
               <ServiceControl Id="AgentServiceControl" Name="MidasAgent" Start="install" Stop="both"
                               Remove="uninstall" Wait="yes" />
             </Component>
+            <!-- The tray runs with the signed-in user's rights and reads the status pipe only. -->
+            <Component Id="Tray" Guid="BE1D9929-081E-4811-9774-076855150F70" Win64="yes">
+              <File Id="TrayExe" Name="midas-tray.exe" Source="$(var.TrayPath)" KeyPath="yes" />
+              <RegistryValue Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Run"
+                             Name="MIDAS Agent" Type="string" Value="&quot;[#TrayExe]&quot;" />
+            </Component>
           </Directory>
         </Directory>
       </Directory>
@@ -60,6 +66,7 @@
 
     <Feature Id="Main" Level="1">
       <ComponentRef Id="Agent" />
+      <ComponentRef Id="Tray" />
     </Feature>
   </Product>
 </Wix>

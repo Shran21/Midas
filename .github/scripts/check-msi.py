@@ -22,14 +22,15 @@ wix = pathlib.Path(os.environ.get('WIX', r'C:\Program Files (x86)\WiX Toolset v3
 if not (wix / 'candle.exe').is_file():
     raise SystemExit(f'WiX Toolset v3 not found at {wix}')
 agent = root / 'target' / 'release' / 'midas-agent.exe'
-if not agent.is_file():
+tray = root / 'target' / 'release' / 'midas-tray.exe'
+if not agent.is_file() or not tray.is_file():
     raise SystemExit('build the release agent first (just release)')
 version = next(line.split('"')[1] for line in (root / 'Cargo.toml').read_text(encoding='utf-8').splitlines()
                if line.startswith('version = '))
 source = root / 'agent' / 'agent-windows' / 'installer' / 'midas-agent.wxs'
 package = work / 'midas-agent.msi'
 subprocess.run([wix / 'candle.exe', '-nologo', '-arch', 'x64', '-ext', 'WixUtilExtension', f'-dVersion={version}',
-                f'-dAgentPath={agent}', '-out', work / 'midas-agent.wixobj', source], check=True)
+                f'-dAgentPath={agent}', f'-dTrayPath={tray}', '-out', work / 'midas-agent.wixobj', source], check=True)
 subprocess.run([wix / 'light.exe', '-nologo', '-ext', 'WixUtilExtension', '-out', package,
                 work / 'midas-agent.wixobj'], check=True)
 print(f'built {package} ({package.stat().st_size // 1024} KiB)')
@@ -71,8 +72,14 @@ lines = subprocess.run(['powershell', '-NoProfile', '-Command',
                         "Get-CimInstance Win32_Process | ForEach-Object { $_.CommandLine }"],
                        capture_output=True, text=True, check=True).stdout
 assert canary not in lines and canary[13:] not in lines, 'the token appeared in a process command line'
+run_key = r'HKLM\Software\Microsoft\Windows\CurrentVersion\Run'
+startup = subprocess.run(['reg', 'query', run_key, '/v', 'MIDAS Agent'], capture_output=True, text=True)
+assert startup.returncode == 0 and 'midas-tray.exe' in startup.stdout, startup.stdout
+installed = pathlib.Path(os.environ['ProgramFiles']) / 'MIDAS' / 'Agent'
+assert (installed / 'midas-tray.exe').is_file() and (installed / 'midas-agent.exe').is_file()
 removal = subprocess.run(['msiexec', '/x', str(package), '/qn', '/l*v', str(work / 'remove.log')])
 assert removal.returncode == 0, removal.returncode
+assert subprocess.run(['reg', 'query', run_key, '/v', 'MIDAS Agent'], capture_output=True).returncode != 0
 # 1060: the service does not exist any more; the data directory is kept on purpose.
 assert subprocess.run(['sc', 'query', 'MidasAgent'], capture_output=True).returncode == 1060
 print('MSI installed with a staged token that stayed out of the log and command lines, then removed')

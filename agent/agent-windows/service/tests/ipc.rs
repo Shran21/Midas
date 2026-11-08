@@ -36,7 +36,7 @@ fn start(session: SessionRule) -> Server {
     let name = format!(r"\\.\pipe\midas-test-{}", uuid::Uuid::new_v4());
     let policy = Policy {
         session,
-        image: std::env::current_exe().unwrap(),
+        images: vec![std::env::current_exe().unwrap()],
     };
     let (_, state) = watch::channel(State::Connected { protocol: 1 });
     let (stop, stopped) = watch::channel(false);
@@ -108,7 +108,7 @@ async fn a_second_owner_of_the_pipe_name_is_refused() {
         server.name.clone(),
         Policy {
             session: SessionRule::Exactly(0),
-            image: std::env::current_exe().unwrap(),
+            images: vec![std::env::current_exe().unwrap()],
         },
         state,
         stopped,

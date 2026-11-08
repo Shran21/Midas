@@ -4,6 +4,7 @@
 pub mod health;
 pub mod inventory;
 pub mod service;
+pub mod tray;
 
 use std::{ffi::c_void, io, os::windows::io::RawHandle, path::PathBuf, ptr};
 

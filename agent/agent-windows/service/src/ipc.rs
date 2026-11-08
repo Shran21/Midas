@@ -16,8 +16,22 @@ pub enum SessionRule {
 #[derive(Clone, Debug)]
 pub struct Policy {
     pub session: SessionRule,
-    /// The only executable allowed to read status; it lives in a folder only administrators can write.
-    pub image: PathBuf,
+    /// The only executables allowed to read status: the agent itself and its tray program next to
+    /// it, in a folder only administrators can write.
+    pub images: Vec<PathBuf>,
+}
+
+/// The tray program's file name; it sits next to the agent executable.
+pub const TRAY: &str = "midas-tray.exe";
+
+impl Policy {
+    pub fn for_program(session: SessionRule, program: PathBuf) -> Self {
+        let tray = program.with_file_name(TRAY);
+        Self {
+            session,
+            images: vec![program, tray],
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -44,7 +58,11 @@ pub fn admitted(policy: &Policy, console: u32, session: u32, image: &Path) -> Re
     if session != allowed || session == u32::MAX {
         return Err(Refusal::OtherSession);
     }
-    if !same_file(image, &policy.image) {
+    if !policy
+        .images
+        .iter()
+        .any(|allowed| same_file(image, allowed))
+    {
         return Err(Refusal::ForeignProcess);
     }
     Ok(())
@@ -149,10 +167,10 @@ mod tests {
 
     #[test]
     fn only_the_installed_program_in_the_allowed_session_is_admitted() {
-        let policy = Policy {
-            session: SessionRule::ActiveConsole,
-            image: PathBuf::from(r"C:\Program Files\MIDAS\agent\midas-agent.exe"),
-        };
+        let policy = Policy::for_program(
+            SessionRule::ActiveConsole,
+            PathBuf::from(r"C:\Program Files\MIDAS\agent\midas-agent.exe"),
+        );
         let installed = Path::new(r"c:\program files\midas\agent\MIDAS-AGENT.EXE");
         assert_eq!(admitted(&policy, 2, 2, installed), Ok(()));
         assert_eq!(
@@ -178,6 +196,25 @@ mod tests {
                 2,
                 2,
                 Path::new(r"C:\Users\x\Downloads\midas-agent.exe")
+            ),
+            Err(Refusal::ForeignProcess)
+        );
+        assert_eq!(
+            admitted(
+                &policy,
+                2,
+                2,
+                Path::new(r"C:\Program Files\MIDAS\agent\midas-tray.exe")
+            ),
+            Ok(()),
+            "the tray program next to the agent may read the status"
+        );
+        assert_eq!(
+            admitted(
+                &policy,
+                2,
+                2,
+                Path::new(r"C:\Users\x\Downloads\midas-tray.exe")
             ),
             Err(Refusal::ForeignProcess)
         );
