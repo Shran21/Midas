@@ -140,8 +140,8 @@ P0: elsőbbséget igénylő alapműködés, biztonság vagy kapu; P1: a fázison
 - **MIDAS-036:** A kijelölt címtár érvényes tanúsítvánnyal, olvasási joggal és OU-határral elérhető, más ügyfélé nem. Követelmény: AD-01, AD-02. Korábbi azonosító: —.
 - **MIDAS-037:** A jelölt különbözik az online agenttől, az objectGUID-alapú egyeztetés nem kapcsol össze más ügyfeleket. Követelmény: AD-03, AD-04. Korábbi azonosító: —.
 - **MIDAS-038:** Az admin látja a jelölteket, kezelt gépeket és regisztrációs döntéseket, a felderítés nem telepít automatikusan. Követelmény: UI-01, AD-03, AD-04. Korábbi azonosító: —.
-- **MIDAS-039:** Külön mérés készül a háttéragentről és megnyitott helyi felületről, a szerverprofil megkülönbözteti a grafikus és háttérképességeket. Legalább 24 órás agentmérés készül, Windows 11-en a kapcsolódó WebView2-folyamatokkal együtt. Az eredmény optimalizálási alap, nincs előírt CPU-, GPU-, memória- vagy adatforgalmi plafon. Követelmény: PERF-01, PERF-02, PERF-03, PERF-04, SERVER-03. Korábbi azonosító: —.
-- **MIDAS-040:** A monitorozás, felderítés, regisztráció és terhelésmérés elfogadva; az összes vállalt feladat ellenőrzött Done, a támogatási mátrix és a következő fázis feltételei rögzítve. Tíz vegyes tesztgép egy hétig jelent; a 24 órás agent- és az egyórás, 1000 szimulált agentes mérés bizonyítéka csatolt. A MIDAS-018, MIDAS-019, MIDAS-023 és MIDAS-024 ellenőrzésének állapota rögzített; Done állapotuk nem feltétele a zárásnak. Követelmény: —. Korábbi azonosító: F1-16.
+- **MIDAS-039:** Külön mérés készül a háttéragentről és megnyitott helyi felületről, a szerverprofil megkülönbözteti a grafikus és háttérképességeket. Legalább 24 órás agentmérés készül, Windows 11-en a kapcsolódó WebView2-folyamatokkal együtt (a projektgazda 2026. november 8-i döntése szerint a 2,9 órás mérés váltja ki, lásd a terjedelemváltozásokat). Az eredmény optimalizálási alap, nincs előírt CPU-, GPU-, memória- vagy adatforgalmi plafon. Követelmény: PERF-01, PERF-02, PERF-03, PERF-04, SERVER-03. Korábbi azonosító: —.
+- **MIDAS-040:** A monitorozás, felderítés, regisztráció és terhelésmérés elfogadva; az összes vállalt feladat ellenőrzött Done, a támogatási mátrix és a következő fázis feltételei rögzítve. Tíz vegyes tesztgép egy hétig jelent; a 24 órás agent- (a projektgazda döntése szerint a 2,9 órás) és az egyórás, 1000 szimulált agentes mérés bizonyítéka csatolt. A MIDAS-018, MIDAS-019, MIDAS-023 és MIDAS-024 ellenőrzésének állapota rögzített; Done állapotuk nem feltétele a zárásnak. Követelmény: —. Korábbi azonosító: F1-16.
 
 ### 2. Távsegítés
 
@@ -332,6 +332,12 @@ Ezek még nem vállalt funkciók, mind Backlogban maradnak. Külön döntés né
 - **Kivett függőségek:** a MIDAS-025, -027, -033, -034, -040, -041, -042, -047 és -078 függése a MIDAS-023-tól; a MIDAS-025, -027, -039, -040 és -078 függése a MIDAS-024-től.
 - **Kockázat és teendő:** sikertelen próbánál az érintett feladatokat és az ezekre épülő munkát újra kell vizsgálni, szükség esetén újra kell nyitni.
 
+**2026. november 8. · A MIDAS-039 24 órás agentmérését rövidebb mérés váltja ki**
+
+- **Döntés és ok:** a projektgazda döntése. A valódi agent és a tálcaprogram 2,9 órás, kimaradás nélküli mérése (169 perces minta) már megmutatta a háttér- és a megnyitott felület terhelését, a stabil leírószámot és memóriát, valamint a forgalmat. A projektgazda szerint ez elegendő, a 24 órás futást nem kell kivárni ([mérés](meresek/agent-profil.md)).
+- **Szabály:** a MIDAS-039 elfogadásánál és a MIDAS-040 kapujánál ez a mérés számít a 24 órás agentmérés bizonyítékának. A többi feltétel nem változik.
+- **Kockázat és teendő:** a 24 óránként futó teljes leltár-újraegyeztetés és a hosszú távú szivárgás ebben a mérésben nem látszik. A mérés ugyanazzal a szkripttel bármikor megismételhető hosszabb futással; a platform- és terhelési regresszió (MIDAS-085) újra méri.
+
 ### Lényeges változások a régi vázlathoz képest
 
 - F2-01: a korai WebRTC-megvalósíthatóság M0 (MIDAS-017), az UAC-próba 2026. november 7. óta M1 (MIDAS-018); a kész vezérlés M2.
@@ -481,8 +487,8 @@ P0: core behavior, security or gates needing precedence; P1: work ordered afterw
 - **MIDAS-036:** A connector reads its designated directory with valid TLS and OU scope and cannot access another tenant's directory. Requirements: AD-01, AD-02. Legacy ID: —.
 - **MIDAS-037:** Candidates remain distinct from live agents and objectGUID matching does not cross tenants. Requirements: AD-03, AD-04. Legacy ID: —.
 - **MIDAS-038:** The admin sees candidates, managed devices and enrollment decisions, while discovery triggers no automatic installation. Requirements: UI-01, AD-03, AD-04. Legacy ID: —.
-- **MIDAS-039:** Separate measurements cover background and open UI, and server profiles distinguish graphical and background capabilities. Run at least a 24-hour agent measurement, including related WebView2 processes on Windows 11. Results guide optimization without preset CPU, GPU, memory or traffic ceilings. Requirements: PERF-01, PERF-02, PERF-03, PERF-04, SERVER-03. Legacy ID: —.
-- **MIDAS-040:** Accept monitoring, discovery, enrollment and load evidence; all committed work is reviewed Done, with a support matrix and next-phase prerequisites recorded. Ten mixed test devices report for one week; attach evidence for the 24-hour agent and one-hour 1000-simulated-agent measurements. Record the verification state of MIDAS-018, MIDAS-019, MIDAS-023 and MIDAS-024; their Done status is not a closure condition. Requirements: —. Legacy ID: F1-16.
+- **MIDAS-039:** Separate measurements cover background and open UI, and server profiles distinguish graphical and background capabilities. Run at least a 24-hour agent measurement, including related WebView2 processes on Windows 11 (replaced by the 2.9-hour measurement by the project owner's decision of November 8, 2026; see the scope changes). Results guide optimization without preset CPU, GPU, memory or traffic ceilings. Requirements: PERF-01, PERF-02, PERF-03, PERF-04, SERVER-03. Legacy ID: —.
+- **MIDAS-040:** Accept monitoring, discovery, enrollment and load evidence; all committed work is reviewed Done, with a support matrix and next-phase prerequisites recorded. Ten mixed test devices report for one week; attach evidence for the 24-hour agent (by the project owner's decision, the 2.9-hour) and one-hour 1000-simulated-agent measurements. Record the verification state of MIDAS-018, MIDAS-019, MIDAS-023 and MIDAS-024; their Done status is not a closure condition. Requirements: —. Legacy ID: F1-16.
 
 ### 2. Remote support
 
@@ -672,6 +678,12 @@ These are uncommitted proposals and remain Backlog. They need a separate decisio
 - **Rule:** the same as for MIDAS-018–020. Both tasks stay In review and may become Done only after the trial; their Done status is not a prerequisite for starting later tasks or phases or for closing phase gates. The exception now covers these five tasks only.
 - **Removed dependencies:** MIDAS-025, -027, -033, -034, -040, -041, -042, -047 and -078 on MIDAS-023; MIDAS-025, -027, -039, -040 and -078 on MIDAS-024.
 - **Risk and follow-up:** if a trial fails, re-check the affected tasks and work built on them, reopening where needed.
+
+**November 8, 2026 · A shorter run replaces MIDAS-039's 24-hour agent measurement**
+
+- **Decision and reason:** decided by the project owner. The 2.9-hour gap-free measurement of the real agent and tray program (169 one-minute samples) already shows the background and open-interface load, stable handles and memory, and the traffic. The owner considers this sufficient; the 24-hour run need not be waited for ([measurement](meresek/agent-profil.md#english)).
+- **Rule:** this measurement counts as the 24-hour agent measurement evidence for accepting MIDAS-039 and at the MIDAS-040 gate. All other conditions stay unchanged.
+- **Risk and follow-up:** the full inventory reconciliation, which runs every 24 hours, and long-term leaks are not visible in this measurement. The same script can repeat the measurement with a longer run at any time; the platform and load regression (MIDAS-085) measures again.
 
 ### Material changes from the earlier drafts
 
