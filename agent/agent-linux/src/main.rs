@@ -1,3 +1,4 @@
+mod health;
 mod inventory;
 
 use std::{path::PathBuf, process::ExitCode, sync::Arc};
@@ -103,7 +104,11 @@ fn main() -> ExitCode {
             runtime.block_on(runner::serve(
                 paths,
                 Platform::Linux,
-                Some(Arc::new(inventory::collect)),
+                runner::Probes {
+                    inventory: Some(Arc::new(inventory::collect)),
+                    health: Some(Arc::new(health::check)),
+                    checks: health::CHECKS.to_vec(),
+                },
                 state,
                 stopped,
             ));

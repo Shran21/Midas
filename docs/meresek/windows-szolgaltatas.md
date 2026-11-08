@@ -30,7 +30,7 @@ Az elfogadási feltétel: a szolgáltatás újraindítás és hálózatkiesés u
    - `sc.exe qfailure MidasAgent` a három újraindítási műveletet mutatja;
    - `icacls C:\ProgramData\MIDAS\agent` csak a SYSTEM és az Administrators bejegyzést mutatja.
 4. **Beiratkozás:** a tokent standard bemeneten add át, ne parancssori argumentumként, így nem kerül a parancselőzménybe: `Read-Host "Token" | & "...\midas-agent.exe" enroll`. Ezután hagyd jóvá az eszközt (`POST /api/tenants/{ügyfél}/devices/{eszköz}/approve`). A szolgáltatás egy percen belül átveszi a tanúsítványt, majd kapcsolódik.
-5. **Állapot a konzolról:** a konzolmunkamenetben futtasd: `& "...\midas-agent.exe" status`. Várt eredmény: `{"state":"connected","protocol":1}`.
+5. **Állapot a konzolról:** a konzolmunkamenetben futtasd: `& "...\midas-agent.exe" status`. Várt eredmény: `{"state":"connected","protocol":1}`. Néhány percen belül a `GET /api/tenants/{ügyfél}/devices/{eszköz}/health` mind az öt ellenőrzést mutatja, és az `encryption` nem `access_denied`, mert a szolgáltatás LocalSystemként fut.
 6. **Hálózatkiesés:** bontsd a hálózatot (kábel, vagy a virtuális gép hálózati adaptere) legalább két percre, majd állítsd vissza. A `status` közben `waiting`, utána két percen belül ismét `connected`. A szervernaplóban új „agent session started” bejegyzés jelenik meg ugyanazzal az eszközzel.
 7. **Újraindítás:** indítsd újra a gépet, de ne jelentkezz be. A szervernaplóban a gép bejelentkezés nélkül is újra kapcsolódik. Bejelentkezés után a `status` ismét `connected`.
 8. **Más munkamenet:** a második felhasználó a saját munkamenetében futtassa: `& "C:\Program Files\MIDAS\agent\midas-agent.exe" status`. Várt eredmény: nincs állapot, a hívás hibával vagy üresen tér vissza; a szolgáltatás naplójában „status client refused” és `OtherSession` szerepel.
@@ -90,7 +90,7 @@ Acceptance: the service recovers on its own after a restart and a network loss, 
    - `sc.exe qfailure MidasAgent` shows the three restart actions;
    - `icacls C:\ProgramData\MIDAS\agent` lists only SYSTEM and Administrators.
 4. **Enroll:** pass the token on standard input, never as an argument, so it stays out of the command history: `Read-Host "Token" | & "...\midas-agent.exe" enroll`. Then approve the device (`POST /api/tenants/{tenant}/devices/{device}/approve`). The service collects the certificate within a minute and connects.
-5. **Status from the console:** in the console session run `& "...\midas-agent.exe" status`. Expected: `{"state":"connected","protocol":1}`.
+5. **Status from the console:** in the console session run `& "...\midas-agent.exe" status`. Expected: `{"state":"connected","protocol":1}`. Within a few minutes `GET /api/tenants/{tenant}/devices/{device}/health` shows all five checks, and `encryption` is not `access_denied` because the service runs as LocalSystem.
 6. **Network loss:** disconnect the network (cable or the virtual machine's adapter) for at least two minutes, then restore it. Meanwhile `status` shows `waiting`, and within two minutes after restoring it shows `connected` again. The server log shows a new "agent session started" for the same device.
 7. **Restart:** restart the machine without signing in. The server log shows the machine reconnecting without any sign-in. After signing in, `status` shows `connected` again.
 8. **Another session:** the second user runs `& "C:\Program Files\MIDAS\agent\midas-agent.exe" status` in their own session. Expected: no status, the call returns an error or nothing; the service log shows "status client refused" with `OtherSession`.

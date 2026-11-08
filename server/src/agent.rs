@@ -9,8 +9,8 @@ use axum::{
     routing::get,
 };
 use midas_protocol::{
-    Body, CONNECT_PATH, Hello, MAX_AGENT_VERSION_BYTES, MAX_MESSAGE_BYTES, MAX_PLATFORM_BYTES,
-    Pong, Reject, RejectReason, VersionRange, Welcome,
+    Body, CONNECT_PATH, Hello, MAX_AGENT_VERSION_BYTES, MAX_CAPABILITIES, MAX_CAPABILITY_BYTES,
+    MAX_MESSAGE_BYTES, MAX_PLATFORM_BYTES, Pong, Reject, RejectReason, VersionRange, Welcome,
 };
 use std::{
     sync::Arc,
@@ -144,6 +144,14 @@ async fn serve(
     );
     let mut assigned = None;
     seen(&protocol, identity).await;
+    if let (Some(identities), Some(identity)) = (&protocol.identities, identity)
+        && identities
+            .record_capabilities(identity, &hello.capabilities)
+            .await
+            .is_err()
+    {
+        tracing::error!("device capabilities could not be recorded");
+    }
     if !assign(&mut socket, &protocol, identity, &mut assigned).await {
         return;
     }
@@ -188,6 +196,21 @@ async fn serve(
                 let ack = Body::InventoryAck(midas_protocol::InventoryAck {
                     sequence: update.sequence,
                     applied,
+                });
+                if send(&mut socket, ack, protocol.keepalive).await.is_err() {
+                    break "closed";
+                }
+            }
+            Ok(Ok(Body::HealthReport(report))) => {
+                let (Some(identities), Some(identity)) = (&protocol.identities, identity) else {
+                    continue;
+                };
+                if identities.apply_health(identity, &report).await.is_err() {
+                    tracing::error!("health report could not be stored; closing the session");
+                    break "store";
+                }
+                let ack = Body::HealthAck(midas_protocol::HealthAck {
+                    sequence: report.sequence,
                 });
                 if send(&mut socket, ack, protocol.keepalive).await.is_err() {
                     break "closed";
@@ -271,11 +294,20 @@ async fn assign(
     .is_ok()
 }
 
+fn valid_capability(name: &str) -> bool {
+    (1..=MAX_CAPABILITY_BYTES).contains(&name.len())
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'_')
+}
+
 fn valid_range(hello: &Hello) -> Option<VersionRange> {
     (hello.agent_version.len() <= MAX_AGENT_VERSION_BYTES
-        && hello.platform.len() <= MAX_PLATFORM_BYTES)
-        .then(|| VersionRange::new(hello.min_version, hello.max_version))
-        .flatten()
+        && hello.platform.len() <= MAX_PLATFORM_BYTES
+        && hello.capabilities.len() <= MAX_CAPABILITIES
+        && hello.capabilities.iter().all(|name| valid_capability(name)))
+    .then(|| VersionRange::new(hello.min_version, hello.max_version))
+    .flatten()
 }
 
 async fn refuse(socket: &mut WebSocket, reason: RejectReason, protocol: &AgentProtocol) {

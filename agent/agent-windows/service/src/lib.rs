@@ -35,7 +35,11 @@ pub async fn run_agent(
     runner::serve(
         paths,
         midas_protocol::enrollment::Platform::Windows,
-        Some(std::sync::Arc::new(win::inventory::collect)),
+        runner::Probes {
+            inventory: Some(std::sync::Arc::new(win::inventory::collect)),
+            health: Some(std::sync::Arc::new(win::health::check)),
+            checks: win::health::CHECKS.to_vec(),
+        },
         state,
         shutdown,
     )

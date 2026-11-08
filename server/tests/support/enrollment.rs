@@ -120,6 +120,31 @@ impl Agent {
         Self { status, stop }
     }
 
+    fn checked(
+        port: u16,
+        tls: Arc<ClientConfig>,
+        health: midas_agent_core::health::Shared,
+        checker: midas_agent_core::health::Checker,
+        capabilities: Vec<String>,
+    ) -> Self {
+        let settings = Settings {
+            health: Some(health.clone()),
+            capabilities,
+            handshake_timeout: Duration::from_secs(3),
+            ..Settings::new("127.0.0.1".into(), port, tls, "windows")
+        };
+        let (status_tx, status) = watch::channel(Status::Connecting { attempt: 0 });
+        let (stop, stop_rx) = watch::channel(false);
+        tokio::spawn(midas_agent_core::health::schedule(
+            checker,
+            health,
+            Duration::ZERO,
+            stop_rx.clone(),
+        ));
+        tokio::spawn(run(settings, status_tx, stop_rx));
+        Self { status, stop }
+    }
+
     async fn reach(&mut self, what: &str, f: impl FnMut(&Status) -> bool) -> Status {
         let outcome = timeout(Duration::from_secs(10), self.status.wait_for(f))
             .await
@@ -157,6 +182,43 @@ fn software(count: usize) -> midas_agent_core::inventory::Snapshot {
         );
     }
     snapshot
+}
+
+type HealthRow = (String, String, String, Vec<String>, f64);
+
+/// Waits until the stored check results satisfy `ready`.
+async fn health_rows(
+    admin: &mut PgConnection,
+    device: Uuid,
+    mut ready: impl FnMut(&[HealthRow]) -> bool,
+) -> Vec<HealthRow> {
+    for _ in 0..150 {
+        let rows: Vec<HealthRow> = sqlx::query_as("SELECT check_id, state, code, subjects, extract(epoch FROM changed_at)::float8 FROM midas.device_health WHERE device_id = $1 ORDER BY check_id")
+            .bind(device).fetch_all(&mut *admin).await.unwrap();
+        if ready(&rows) {
+            return rows;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    panic!("health results never reached the expected state");
+}
+
+fn health_check(
+    id: &str,
+    state: midas_protocol::HealthState,
+    code: &str,
+    subjects: &[&str],
+) -> midas_protocol::HealthCheck {
+    midas_agent_core::health::result(
+        id,
+        state,
+        code,
+        &format!("{id} is {code}"),
+        &subjects
+            .iter()
+            .map(|subject| (*subject).to_owned())
+            .collect::<Vec<_>>(),
+    )
 }
 
 /// Waits until the stored inventory satisfies `ready`; returns generation and reconciliation time.
@@ -930,6 +992,101 @@ pub async fn verify(database: &Database, admin: &mut PgConnection) {
     assert_eq!(status, StatusCode::NOT_FOUND);
     inventoried.stop.send_replace(true);
     let _ = std::fs::remove_file(&store);
+
+    // Health: every result is stored, an unavailable check stays visible, and only a change
+    // of state or reason moves its change time.
+    use midas_protocol::HealthState::{Critical, Ok as Healthy, Unavailable, Warning};
+    let results = Arc::new(std::sync::Mutex::new(vec![
+        health_check(
+            "services",
+            Critical,
+            "stopped",
+            &["Print Spooler (Spooler)"],
+        ),
+        health_check("updates", Warning, "reboot_pending", &[]),
+        health_check("antivirus", Unavailable, "not_supported", &[]),
+        health_check("encryption", Healthy, "encrypted", &[]),
+        health_check("storage", Warning, "low_space", &["/data (8% free)"]),
+    ]));
+    let checker: midas_agent_core::health::Checker = {
+        let results = results.clone();
+        Arc::new(move || results.lock().unwrap().clone())
+    };
+    let health = midas_agent_core::health::shared();
+    let capabilities: Vec<String> = [
+        "metrics",
+        "health.services",
+        "health.updates",
+        "health.encryption",
+        "health.storage",
+    ]
+    .map(String::from)
+    .to_vec();
+    let checked = Agent::checked(
+        proxy_port,
+        tls.clone(),
+        health.clone(),
+        checker,
+        capabilities.clone(),
+    );
+    let first = health_rows(admin, server_device, |rows| rows.len() == 5).await;
+    let stored: Vec<(&str, &str, &str)> = first
+        .iter()
+        .map(|(id, state, code, _, _)| (id.as_str(), state.as_str(), code.as_str()))
+        .collect();
+    assert_eq!(
+        stored,
+        [
+            ("antivirus", "unavailable", "not_supported"),
+            ("encryption", "ok", "encrypted"),
+            ("services", "critical", "stopped"),
+            ("storage", "warning", "low_space"),
+            ("updates", "warning", "reboot_pending"),
+        ]
+    );
+    assert_eq!(first[2].3, ["Print Spooler (Spooler)"]);
+    let path = format!("/api/tenants/{tenant}/devices/{server_device}/health");
+    let (status, view, _) = call(&app, "GET", &path, Some(&manager), None, &[]).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(view["capabilities"], json!(capabilities));
+    assert!(view["reported_at"].as_i64().is_some());
+    assert_eq!(view["checks"][0]["id"], "antivirus");
+    assert_eq!(view["checks"][0]["state"], "unavailable");
+    let (status, _, _) = call(&app, "GET", &path, Some(&outsider), None, &[]).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let changed = vec![
+        health_check("services", Healthy, "running", &[]),
+        health_check("updates", Warning, "reboot_pending", &[]),
+        health_check("antivirus", Unavailable, "not_supported", &[]),
+        health_check("storage", Warning, "low_space", &["/data (7% free)"]),
+    ];
+    *results.lock().unwrap() = changed.clone();
+    midas_agent_core::health::lock(&health).publish(changed, std::time::Instant::now());
+    let second = health_rows(admin, server_device, |rows| {
+        rows.len() == 4 && rows.iter().any(|row| row.0 == "services" && row.1 == "ok")
+    })
+    .await;
+    let time = |rows: &[HealthRow], id: &str| rows.iter().find(|row| row.0 == id).unwrap().4;
+    assert!(
+        time(&second, "services") > time(&first, "services"),
+        "a new state moves the change time"
+    );
+    assert_eq!(
+        time(&second, "storage"),
+        time(&first, "storage"),
+        "a new subject alone does not"
+    );
+    assert_eq!(
+        second.iter().find(|row| row.0 == "storage").unwrap().3,
+        ["/data (7% free)"]
+    );
+    assert!(
+        second.iter().all(|row| row.0 != "encryption"),
+        "a check no longer reported is removed"
+    );
+    checked.stop.send_replace(true);
     let connector_sets: i64 = sqlx::query_scalar("SELECT count(*) FROM midas.tenant_audit WHERE tenant_id = $1 AND action = 'directory.connector_set' AND outcome = 'success'")
         .bind(tenant).fetch_one(&mut *admin).await.unwrap();
     assert_eq!(connector_sets, 2);

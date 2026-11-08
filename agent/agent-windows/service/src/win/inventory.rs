@@ -13,7 +13,7 @@ use windows_sys::Win32::{
     },
 };
 
-use super::wide;
+use super::{from_wide, wide};
 
 const UNINSTALL: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
 /// Built-in Administrators; the group name itself is localized.
@@ -167,24 +167,6 @@ fn software(snapshot: &mut Snapshot) {
                 format!("{version} | {publisher}"),
             );
         }
-    }
-}
-
-/// Reads a NUL-terminated UTF-16 string returned by a Win32 API.
-///
-/// # Safety
-/// `text` must be null or point to a NUL-terminated UTF-16 string.
-unsafe fn from_wide(text: *const u16) -> String {
-    if text.is_null() {
-        return String::new();
-    }
-    let mut length = 0;
-    // SAFETY: the caller guarantees a NUL terminator, so every read stays in bounds.
-    unsafe {
-        while *text.add(length) != 0 {
-            length += 1;
-        }
-        String::from_utf16_lossy(std::slice::from_raw_parts(text, length))
     }
 }
 

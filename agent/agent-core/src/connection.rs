@@ -36,6 +36,10 @@ pub struct Settings {
     pub metrics: Option<crate::metrics::Shared>,
     /// Inventory plan waiting for upload, resumed chunk by chunk after reconnecting.
     pub inventory: Option<crate::inventory::Shared>,
+    /// Latest health result; every session sends it once and then each newer one.
+    pub health: Option<crate::health::Shared>,
+    /// Announced in the handshake so the server knows what this agent can do.
+    pub capabilities: Vec<String>,
 }
 
 impl Settings {
@@ -53,6 +57,8 @@ impl Settings {
             directory: None,
             metrics: None,
             inventory: None,
+            health: None,
+            capabilities: Vec::new(),
         }
     }
 }
@@ -138,6 +144,7 @@ async fn session(
         max_version: settings.supported.max,
         agent_version: settings.agent_version.clone(),
         platform: settings.platform.clone(),
+        capabilities: settings.capabilities.clone(),
     });
     let handshake = async {
         send(&mut socket, hello, settings.handshake_timeout).await?;
@@ -181,11 +188,16 @@ async fn session(
     let mut queued: Option<midas_protocol::DirectoryAssignment> = None;
     let mut upload = Upload::default();
     let mut inventory = InventoryUpload::default();
+    let mut health = HealthUpload::default();
     if upload
         .offer(&mut socket, settings, keepalive)
         .await
         .is_err()
         || inventory
+            .offer(&mut socket, settings, keepalive)
+            .await
+            .is_err()
+        || health
             .offer(&mut socket, settings, keepalive)
             .await
             .is_err()
@@ -216,6 +228,7 @@ async fn session(
                 pending = Some(nonce);
                 if upload.offer(&mut socket, settings, keepalive).await.is_err()
                     || inventory.offer(&mut socket, settings, keepalive).await.is_err()
+                    || health.offer(&mut socket, settings, keepalive).await.is_err()
                 {
                     return Outcome::Ended { connected };
                 }
@@ -230,6 +243,12 @@ async fn session(
                 Ok(Body::InventoryAck(ack)) => {
                     inventory.acknowledged(&ack, settings);
                     if inventory.offer(&mut socket, settings, keepalive).await.is_err() {
+                        return Outcome::Ended { connected };
+                    }
+                }
+                Ok(Body::HealthAck(ack)) => {
+                    health.acknowledged(&ack);
+                    if health.offer(&mut socket, settings, keepalive).await.is_err() {
                         return Outcome::Ended { connected };
                     }
                 }
@@ -374,6 +393,52 @@ impl InventoryUpload {
             && self.in_flight == Some(ack.sequence)
         {
             crate::inventory::lock(shared).acknowledged(ack.applied, crate::inventory::unix_now());
+            self.in_flight = None;
+        }
+    }
+}
+
+/// The newest health result not yet acknowledged in this session, one at a time.
+#[derive(Default)]
+struct HealthUpload {
+    sequence: u64,
+    in_flight: Option<(u64, u64)>,
+    acknowledged: u64,
+}
+
+impl HealthUpload {
+    async fn offer(
+        &mut self,
+        socket: &mut Socket,
+        settings: &Settings,
+        limit: Duration,
+    ) -> Result<(), ()> {
+        let Some(shared) = &settings.health else {
+            return Ok(());
+        };
+        if self.in_flight.is_some() {
+            return Ok(());
+        }
+        let (revision, report) = {
+            let latest = crate::health::lock(shared);
+            (
+                latest.revision,
+                latest.report(self.sequence.wrapping_add(1)),
+            )
+        };
+        let Some(report) = report.filter(|_| revision > self.acknowledged) else {
+            return Ok(());
+        };
+        self.sequence = report.sequence;
+        self.in_flight = Some((report.sequence, revision));
+        send(socket, Body::HealthReport(report), limit).await
+    }
+
+    fn acknowledged(&mut self, ack: &midas_protocol::HealthAck) {
+        if let Some((sequence, revision)) = self.in_flight
+            && sequence == ack.sequence
+        {
+            self.acknowledged = revision;
             self.in_flight = None;
         }
     }

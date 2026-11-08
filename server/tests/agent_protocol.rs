@@ -274,12 +274,28 @@ async fn invalid_hellos_are_refused_and_closed() {
             max_version: 1,
             agent_version: "test".into(),
             platform: "test".into(),
+            capabilities: Vec::new(),
         }),
         Body::Hello(Hello {
             min_version: 1,
             max_version: 1,
             agent_version: "x".repeat(65),
             platform: "test".into(),
+            capabilities: Vec::new(),
+        }),
+        Body::Hello(Hello {
+            min_version: 1,
+            max_version: 1,
+            agent_version: "test".into(),
+            platform: "test".into(),
+            capabilities: vec!["Health Check".into()],
+        }),
+        Body::Hello(Hello {
+            min_version: 1,
+            max_version: 1,
+            agent_version: "test".into(),
+            platform: "test".into(),
+            capabilities: (0..33).map(|i| format!("feature{i}")).collect(),
         }),
     ];
     for first in invalid {
@@ -307,6 +323,7 @@ async fn silent_sessions_are_dropped_after_three_keepalives() {
         max_version: 1,
         agent_version: "test".into(),
         platform: "test".into(),
+        capabilities: Vec::new(),
     });
     socket
         .send(Message::Binary(midas_protocol::encode(hello).into()))

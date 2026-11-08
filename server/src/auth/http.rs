@@ -188,6 +188,10 @@ pub fn router(state: Arc<WebAuth>) -> Router {
             get(device_inventory),
         )
         .route(
+            "/api/tenants/{id}/devices/{device}/health",
+            get(device_health),
+        )
+        .route(
             "/api/tenants/{id}/directory-connector",
             get(directory_connector).put(set_directory_connector),
         )
@@ -674,6 +678,18 @@ async fn device_inventory(
     Ok(Json(
         enrollment(&state)?
             .inventory(&state.sessions, &context.token, id, device)
+            .await?,
+    ))
+}
+
+async fn device_health(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((id, device)): Path<(Uuid, Uuid)>,
+) -> Result<Json<crate::health::HealthView>> {
+    Ok(Json(
+        enrollment(&state)?
+            .health(&state.sessions, &context.token, id, device)
             .await?,
     ))
 }

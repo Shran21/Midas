@@ -33,6 +33,7 @@ uuid.workspace = true
 zeroize.workspace = true
 
 [target.'cfg(windows)'.dependencies]
+windows.workspace = true
 windows-service.workspace = true
 windows-sys.workspace = true
 

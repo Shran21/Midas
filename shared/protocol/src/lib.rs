@@ -43,7 +43,7 @@ impl VersionRange {
 
 #[derive(Clone, PartialEq, Message)]
 pub struct Envelope {
-    #[prost(oneof = "Body", tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11")]
+    #[prost(oneof = "Body", tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13")]
     pub body: Option<Body>,
 }
 
@@ -71,6 +71,10 @@ pub enum Body {
     InventoryUpdate(InventoryUpdate),
     #[prost(message, tag = "11")]
     InventoryAck(InventoryAck),
+    #[prost(message, tag = "12")]
+    HealthReport(HealthReport),
+    #[prost(message, tag = "13")]
+    HealthAck(HealthAck),
 }
 
 /// First message from the agent.
@@ -84,7 +88,13 @@ pub struct Hello {
     pub agent_version: String,
     #[prost(string, tag = "4")]
     pub platform: String,
+    /// Features this agent build offers on its platform, such as `inventory` or `health.encryption`.
+    #[prost(string, repeated, tag = "5")]
+    pub capabilities: Vec<String>,
 }
+
+pub const MAX_CAPABILITIES: usize = 32;
+pub const MAX_CAPABILITY_BYTES: usize = 48;
 
 /// Accepted handshake; `version` applies for the rest of the session.
 #[derive(Clone, PartialEq, Message)]
@@ -251,6 +261,55 @@ pub struct InventoryAck {
     pub applied: bool,
 }
 
+pub const MAX_HEALTH_CHECKS: usize = 16;
+pub const MAX_HEALTH_SUBJECTS: usize = 16;
+/// Characters in a summary or subject.
+pub const MAX_HEALTH_TEXT: usize = 256;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
+#[repr(i32)]
+pub enum HealthState {
+    Unspecified = 0,
+    Ok = 1,
+    Warning = 2,
+    Critical = 3,
+    /// The check cannot run here: not on this platform, edition or with these rights.
+    Unavailable = 4,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct HealthCheck {
+    /// `services`, `updates`, `antivirus`, `encryption` or `storage`.
+    #[prost(string, tag = "1")]
+    pub id: String,
+    #[prost(enumeration = "HealthState", tag = "2")]
+    pub state: i32,
+    /// Stable reason such as `stopped`, `reboot_pending` or `access_denied`; the panel translates it.
+    #[prost(string, tag = "3")]
+    pub code: String,
+    /// English fallback text for logs and older panels.
+    #[prost(string, tag = "4")]
+    pub summary: String,
+    /// What the reason refers to: service names, volumes, disks or a day count.
+    #[prost(string, repeated, tag = "5")]
+    pub subjects: Vec<String>,
+}
+
+/// The latest result of every check; each report replaces the previous one.
+#[derive(Clone, PartialEq, Message)]
+pub struct HealthReport {
+    #[prost(uint64, tag = "1")]
+    pub sequence: u64,
+    #[prost(message, repeated, tag = "2")]
+    pub checks: Vec<HealthCheck>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct HealthAck {
+    #[prost(uint64, tag = "1")]
+    pub sequence: u64,
+}
+
 #[derive(Debug)]
 pub enum DecodeError {
     TooLarge,
@@ -313,6 +372,7 @@ mod tests {
             max_version: 2,
             agent_version: "0.1.0".into(),
             platform: "windows".into(),
+            capabilities: vec!["inventory".into()],
         });
         assert_eq!(decode(&encode(hello.clone())).unwrap(), Some(hello));
         let reject = Body::Reject(Reject {

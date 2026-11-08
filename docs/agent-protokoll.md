@@ -16,13 +16,14 @@ Az agent egy tartós, kimenő, hitelesített kapcsolattal csatlakozik a szerverh
 
 | Üzenet | Irány | Tartalom |
 | --- | --- | --- |
-| `Hello` | agent → szerver | támogatott verziótartomány, agentverzió (legfeljebb 64 bájt), platform (legfeljebb 32 bájt) |
+| `Hello` | agent → szerver | támogatott verziótartomány, agentverzió (legfeljebb 64 bájt), platform (legfeljebb 32 bájt), platformképességek (legfeljebb 32, [állapotellenőrzések](allapotellenorzes.md)) |
 | `Welcome` | szerver → agent | egyeztetett verzió, keepalive-időköz másodpercben, szerververzió |
 | `Reject` | szerver → agent | ok (`UNSUPPORTED_VERSION`, `INVALID_HELLO`) és a szerver által támogatott tartomány; utána a szerver bont |
 | `Ping` / `Pong` | mindkét irány | élőség-ellenőrzés véletlen azonosítóval |
 | `DirectoryAssignment` / `DirectoryReport` | szerver → kijelölt connector, illetve vissza | címtár-olvasási feladat és eredménye ([címtár-connector](cimtar-connector.md)) |
 | `MetricsBatch` / `MetricsAck` | agent → szerver, illetve vissza | legfeljebb 60 perces minta és a tárolás utáni nyugta ([metrikák](metrikak.md)) |
 | `InventoryUpdate` / `InventoryAck` | agent → szerver, illetve vissza | teljes leltár vagy változáscsomag darabja és a nyugta ([leltár](leltar.md)) |
+| `HealthReport` / `HealthAck` | agent → szerver, illetve vissza | az ellenőrzések legutóbbi eredménye és a tárolás utáni nyugta ([állapotellenőrzések](allapotellenorzes.md)) |
 
 ### Verziók és kompatibilitás
 
@@ -72,13 +73,14 @@ The agent connects to the server over one persistent, outbound, authenticated co
 
 | Message | Direction | Content |
 | --- | --- | --- |
-| `Hello` | agent → server | supported version range, agent version (at most 64 bytes), platform (at most 32 bytes) |
+| `Hello` | agent → server | supported version range, agent version (at most 64 bytes), platform (at most 32 bytes), platform capabilities (at most 32, [health checks](allapotellenorzes.md#english)) |
 | `Welcome` | server → agent | negotiated version, keepalive interval in seconds, server version |
 | `Reject` | server → agent | reason (`UNSUPPORTED_VERSION`, `INVALID_HELLO`) and the server's supported range; the server then closes |
 | `Ping` / `Pong` | both directions | liveness check with a random identifier |
 | `DirectoryAssignment` / `DirectoryReport` | server → designated connector and back | directory read task and its result ([directory connector](cimtar-connector.md#english)) |
 | `MetricsBatch` / `MetricsAck` | agent → server and back | up to 60 minute samples and the acknowledgement after storage ([metrics](metrikak.md#english)) |
 | `InventoryUpdate` / `InventoryAck` | agent → server and back | a chunk of a full inventory or change set and its acknowledgement ([inventory](leltar.md#english)) |
+| `HealthReport` / `HealthAck` | agent → server and back | the latest check results and the acknowledgement after storage ([health checks](allapotellenorzes.md#english)) |
 
 ### Versions and compatibility
 

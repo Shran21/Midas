@@ -1,6 +1,7 @@
 #![allow(unsafe_code)]
 //! Reviewed Win32 calls. Each unsafe block states why its pointers and handles are valid.
 
+pub mod health;
 pub mod inventory;
 pub mod service;
 
@@ -24,6 +25,24 @@ use windows_sys::Win32::{
 
 pub fn wide(text: &str) -> Vec<u16> {
     text.encode_utf16().chain(Some(0)).collect()
+}
+
+/// Reads a NUL-terminated UTF-16 string returned by a Win32 API.
+///
+/// # Safety
+/// `text` must be null or point to a NUL-terminated UTF-16 string.
+pub unsafe fn from_wide(text: *const u16) -> String {
+    if text.is_null() {
+        return String::new();
+    }
+    let mut length = 0;
+    // SAFETY: the caller guarantees a NUL terminator, so every read stays in bounds.
+    unsafe {
+        while *text.add(length) != 0 {
+            length += 1;
+        }
+        String::from_utf16_lossy(std::slice::from_raw_parts(text, length))
+    }
 }
 
 /// Security attributes built from SDDL, freed on drop.

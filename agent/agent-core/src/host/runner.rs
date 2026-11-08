@@ -218,10 +218,32 @@ async fn collect(paths: &Paths, config: &Config, state: &watch::Sender<State>) {
 }
 
 /// Keeps the agent enrolled and connected until `shutdown` becomes true.
+/// What a platform adds to the shared agent logic.
+#[derive(Clone, Default)]
+pub struct Probes {
+    pub inventory: Option<crate::inventory::Collector>,
+    pub health: Option<crate::health::Checker>,
+    /// Health check ids the platform implements; each becomes a `health.<id>` capability.
+    pub checks: Vec<&'static str>,
+}
+
+impl Probes {
+    pub fn capabilities(&self) -> Vec<String> {
+        let mut capabilities = vec!["metrics".to_owned()];
+        if self.inventory.is_some() {
+            capabilities.push("inventory".into());
+        }
+        if self.health.is_some() {
+            capabilities.extend(self.checks.iter().map(|check| format!("health.{check}")));
+        }
+        capabilities
+    }
+}
+
 pub async fn serve(
     paths: Paths,
     platform: Platform,
-    collector: Option<crate::inventory::Collector>,
+    probes: Probes,
     state: watch::Sender<State>,
     mut shutdown: watch::Receiver<bool>,
 ) {
@@ -251,10 +273,21 @@ pub async fn serve(
         Some(paths.metrics()),
         shutdown.clone(),
     ));
-    let inventory = collector.map(|collector| {
+    let capabilities = probes.capabilities();
+    let inventory = probes.inventory.map(|collector| {
         let shared = crate::inventory::shared(paths.inventory());
         let schedule = tokio::spawn(crate::inventory::schedule(
             collector,
+            shared.clone(),
+            crate::inventory::staggered(),
+            shutdown.clone(),
+        ));
+        (shared, schedule)
+    });
+    let health = probes.health.map(|checker| {
+        let shared = crate::health::shared();
+        let schedule = tokio::spawn(crate::health::schedule(
+            checker,
             shared.clone(),
             crate::inventory::staggered(),
             shutdown.clone(),
@@ -265,6 +298,8 @@ pub async fn serve(
         directory,
         metrics: Some(buffer),
         inventory: inventory.as_ref().map(|(shared, _)| shared.clone()),
+        health: health.as_ref().map(|(shared, _)| shared.clone()),
+        capabilities,
         ..Settings::new(config.server.clone(), config.port, tls, platform.as_str())
     };
     let (status_tx, mut status) = watch::channel(Status::Connecting { attempt: 0 });
@@ -277,12 +312,29 @@ pub async fn serve(
     if let Some((_, schedule)) = inventory {
         let _ = schedule.await;
     }
+    if let Some((_, schedule)) = health {
+        let _ = schedule.await;
+    }
     state.send_replace(State::Stopped);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn capabilities_follow_the_platform_probes() {
+        assert_eq!(Probes::default().capabilities(), ["metrics"]);
+        let probes = Probes {
+            inventory: Some(Arc::new(crate::inventory::Snapshot::new)),
+            health: Some(Arc::new(Vec::new)),
+            checks: vec![crate::health::SERVICES, crate::health::STORAGE],
+        };
+        assert_eq!(
+            probes.capabilities(),
+            ["metrics", "inventory", "health.services", "health.storage"]
+        );
+    }
 
     #[test]
     fn status_is_reported_without_secrets() {
