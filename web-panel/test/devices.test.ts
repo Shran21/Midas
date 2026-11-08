@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { DeviceSummary } from "../src/api.ts";
 import {
+  commonActionIds,
   condition,
+  desktop,
   deviceActions,
   filtered,
+  hostCapabilities,
   noFilters,
   palette,
   percent,
@@ -79,6 +82,87 @@ test("an offline device keeps stored data and blocks what needs the agent", () =
   );
   assert.equal(revoked.find((a) => a.id === "refresh")?.blocked, "revoked");
   assert.ok(!revoked.some((a) => a.id === "revoke"));
+});
+
+test("the host profile separates graphical and background capabilities", () => {
+  const core = device({
+    kind: "server",
+    capabilities: [
+      "metrics",
+      "inventory",
+      "health.services",
+      "host.headless",
+      "host.server",
+    ],
+    permissions: ["device.read", "remote.control", "terminal.execute"],
+  });
+  assert.equal(desktop(core), false);
+  const blocked = Object.fromEntries(
+    deviceActions(core, access).map((action) => [action.id, action.blocked]),
+  );
+  assert.equal(
+    blocked.remote,
+    "headless",
+    "no graphical support without a desktop",
+  );
+  assert.equal(blocked.terminal, "planned");
+  assert.deepEqual(commonActionIds(core), [
+    "refresh",
+    "terminal",
+    "files",
+    "revoke",
+  ]);
+  const profile = hostCapabilities(core);
+  assert.ok(profile.graphical.every((item) => item.state === "headless"));
+  assert.deepEqual(
+    profile.background.slice(0, 3).map((item) => item.state),
+    ["available", "available", "available"],
+  );
+
+  const desktopServer = device({
+    kind: "server",
+    capabilities: ["metrics", "host.desktop", "host.server"],
+  });
+  assert.equal(desktop(desktopServer), true);
+  assert.equal(
+    deviceActions(desktopServer, access).find((a) => a.id === "remote")
+      ?.blocked,
+    "planned",
+  );
+  assert.deepEqual(commonActionIds(desktopServer), [
+    "refresh",
+    "remote",
+    "remoteAdmin",
+    "revoke",
+  ]);
+  assert.ok(
+    hostCapabilities(desktopServer).graphical.every(
+      (item) => item.state === "planned",
+    ),
+  );
+  assert.equal(
+    hostCapabilities(desktopServer).background.find(
+      (item) => item.id === "inventory",
+    )?.state,
+    "notReported",
+  );
+
+  assert.equal(
+    desktop(device()),
+    null,
+    "an older agent does not report its desktop",
+  );
+  assert.ok(
+    hostCapabilities(device()).graphical.every(
+      (item) => item.state === "unknown",
+    ),
+  );
+  const linux = device({ platform: "linux", capabilities: ["host.desktop"] });
+  assert.ok(
+    hostCapabilities(linux).graphical.every(
+      (item) => item.state === "linuxLater",
+    ),
+  );
 });
 
 test("conditions and filters", () => {

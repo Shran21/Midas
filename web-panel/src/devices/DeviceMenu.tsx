@@ -51,6 +51,8 @@ export function blockedText(action: Action, t: Copy) {
       return t.blockedRevoked;
     case "planned":
       return t.blockedPlanned;
+    case "headless":
+      return t.blockedHeadless;
     default:
       return action.fresh ? t.needsFreshPasskey : null;
   }

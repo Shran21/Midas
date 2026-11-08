@@ -38,7 +38,15 @@ import {
   settingNames,
   since,
 } from "./labels";
-import { type Action, deviceActions } from "./model";
+import {
+  type Action,
+  type Capability,
+  type CapabilityState,
+  commonActionIds,
+  desktop,
+  deviceActions,
+  hostCapabilities,
+} from "./model";
 import { useLive } from "./useLive";
 
 type Props = {
@@ -112,8 +120,9 @@ export function DevicePage(props: Props) {
     (tab) => tab === "overview" || offered.some((action) => action.id === tab),
   );
   const tab = allowedTabs.includes(props.tab) ? props.tab : "overview";
-  const common = offered.filter((action) =>
-    ["refresh", "remote", "remoteAdmin", "revoke"].includes(action.id),
+  const quick = commonActionIds(device);
+  const common = quick.flatMap(
+    (id) => offered.find((action) => action.id === id) ?? [],
   );
   const tabKeys = (event: KeyboardEvent) => {
     const index = allowedTabs.indexOf(tab);
@@ -411,8 +420,9 @@ function Overview({
       t.inventoryReconciled,
       moment(device.inventory_reconciled_at, language) ?? "—",
     ],
-    [t.agentCapabilities, device.capabilities.join(", ") || "—"],
+    [t.desktopFact, desktopText(device, t)],
   ];
+  const capabilities = hostCapabilities(device);
   return (
     <div className="device-overview">
       <section className="panel">
@@ -489,8 +499,82 @@ function Overview({
           {!device.online && <p className="muted">{t.metricsOffline}</p>}
         </div>
       </section>
+      <section className="panel capability-panel">
+        <div className="panel-heading">
+          <div className="panel-title">
+            <Icon name={device.kind === "server" ? "server" : "monitor"} />
+            <h2>{t.hostCapabilities}</h2>
+          </div>
+        </div>
+        <p className="panel-description">
+          {desktop(device) === false ? t.headlessNote : t.capabilitiesNote}
+        </p>
+        <div className="capability-columns">
+          {(
+            [
+              [t.graphicalCapabilities, capabilities.graphical],
+              [t.backgroundCapabilities, capabilities.background],
+            ] as const
+          ).map(([title, list]) => (
+            <div key={title}>
+              <h3>{title}</h3>
+              <ul className="capability-list">
+                {list.map((item) => (
+                  <li key={item.id}>
+                    <span>{capabilityLabel(item.id, t)}</span>
+                    <span
+                      className={
+                        item.state === "available"
+                          ? "check-state ok"
+                          : "check-state"
+                      }
+                    >
+                      {capabilityStateText(item.state, t)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
+}
+
+function desktopText(device: DeviceSummary, t: Copy) {
+  const value = desktop(device);
+  return value === null
+    ? t.desktopUnknown
+    : value
+      ? t.desktopGraphical
+      : t.desktopHeadless;
+}
+
+function capabilityLabel(id: Capability["id"], t: Copy) {
+  return {
+    remote: t.normalSupport,
+    remoteAdmin: t.adminSupport,
+    signIn: t.capabilitySignIn,
+    metrics: t.capabilityMetrics,
+    inventory: t.capabilityInventory,
+    health: t.healthTitle,
+    terminal: t.actionTerminal,
+    files: t.actionFiles,
+    scripts: t.actionScripts,
+    updates: t.actionUpdates,
+  }[id];
+}
+
+function capabilityStateText(state: CapabilityState, t: Copy) {
+  return {
+    available: t.capabilityAvailable,
+    planned: t.blockedPlanned,
+    headless: t.capabilityHeadless,
+    linuxLater: t.capabilityLinuxLater,
+    unknown: t.capabilityUnknown,
+    notReported: t.capabilityNotReported,
+  }[state];
 }
 
 function Sparkline({ values, label }: { values: number[]; label: string }) {

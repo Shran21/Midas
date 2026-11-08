@@ -4,13 +4,14 @@
 
 ## Magyar
 
-2026. november 8. · MIDAS-034 · UI-06, UI-08, PERF-04
+2026. november 8. · MIDAS-034, MIDAS-039 · UI-06, UI-08, PERF-04
 
 ### Felépítés
 
 - A `midas-tray.exe` a bejelentkezett felhasználó jogával futó, kis natív Windows-program: tálcaikon, menü és üzenetablak, WebView nélkül, így állandóan futva is csak minimális erőforrást használ.
 - Az MSI a `midas-agent.exe` mellé, a csak rendszergazdák által írható `%ProgramFiles%\MIDAS\Agent` mappába telepíti. A gépre vonatkozó indítási bejegyzés (`HKLM\...\Run`, „MIDAS Agent”) miatt minden felhasználó bejelentkezésekor elindul. Felhasználói munkamenetenként egy példány fut.
 - Az állapotot ötmásodpercenként a szolgáltatás védett állapotcsövéből olvassa. A cső csak a konzolmunkamenetből és csak a telepített `midas-agent.exe`-nek vagy a mellette lévő `midas-tray.exe`-nek válaszol. Más mappából indított, azonos nevű program nem kap választ. Az állapot kulcsot, tokent vagy más titkot nem tartalmaz.
+- A tálcaprogram csak szolgáltatásként (0-s munkamenetben) futó szervertől fogad állapotot. Más szervert azonnal bont; a csövet ehhez előbb ellenőrzi, és csak utána adja át az aszinkron olvasásnak. Így az elutasított lekérdezések sem halmoznak fel leírót. A 24 órás mérés első próbája ötmásodpercenként egy elveszett leírót mutatott; a javítást integrációs teszt őrzi.
 - A felület nyelve a Windows felhasználói nyelvét követi (magyar vagy angol).
 
 ### Amit a felhasználó lát
@@ -54,13 +55,14 @@ A [Windows-szolgáltatás próbája](meresek/windows-szolgaltatas.md) után, MSI
 
 ## English
 
-November 8, 2026 · MIDAS-034 · UI-06, UI-08, PERF-04
+November 8, 2026 · MIDAS-034, MIDAS-039 · UI-06, UI-08, PERF-04
 
 ### Design
 
 - `midas-tray.exe` is a small native Windows program running with the signed-in user's rights: tray icon, menu and message box, no WebView, so staying resident costs very little.
 - The MSI installs it next to `midas-agent.exe` in `%ProgramFiles%\MIDAS\Agent`, which only administrators can write. A machine-wide startup entry (`HKLM\...\Run`, "MIDAS Agent") starts it at every user sign-in; one instance runs per user session.
 - Every five seconds it reads the status from the service's protected status pipe. The pipe answers only the console session and only the installed `midas-agent.exe` or the `midas-tray.exe` next to it; a program with the same name started from another folder gets no answer. The status carries no keys, tokens or other secrets.
+- The tray accepts status only from a server running as a service (session 0) and drops any other server at once. It checks the pipe first and only then hands it to asynchronous reading, so refused queries do not pile up handles either. The first trial of the 24-hour measurement showed one lost handle every five seconds; an integration test guards the fix.
 - The interface follows the user's Windows display language (Hungarian or English).
 
 ### What the user sees

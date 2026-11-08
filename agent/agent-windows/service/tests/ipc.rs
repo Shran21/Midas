@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use midas_agent_windows::{
-    ipc::{Policy, SessionRule, serve},
+    ipc::{Policy, SessionRule, query, serve},
     runner::State,
     win,
 };
@@ -119,4 +119,52 @@ async fn a_second_owner_of_the_pipe_name_is_refused() {
         "the name must not be shared with a second server"
     );
     server.stop().await;
+}
+
+fn handle_count() -> i64 {
+    let output = std::process::Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            &format!("(Get-Process -Id {}).HandleCount", std::process::id()),
+        ])
+        .output()
+        .unwrap();
+    String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse()
+        .unwrap()
+}
+
+/// The tray polls every five seconds; a refused poll must not keep its pipe handle open.
+#[test]
+fn refused_status_queries_leave_no_handles_behind() {
+    let server_runtime = tokio::runtime::Runtime::new().unwrap();
+    let server = server_runtime
+        .block_on(async { start(SessionRule::Exactly(win::current_session().unwrap())) });
+    let client = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    client.block_on(read(&server.name));
+    let before = handle_count();
+    for _ in 0..200 {
+        // This test process is not a service, so the client refuses the server every time. A
+        // query faster than the server's next instance finds the pipe busy and tries again.
+        let refused = (0..100)
+            .map(|_| client.block_on(query(&server.name)).unwrap_err())
+            .find(|error| {
+                let busy = error.kind() != std::io::ErrorKind::PermissionDenied;
+                if busy {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                !busy
+            });
+        assert!(refused.is_some(), "the server never answered");
+    }
+    std::thread::sleep(Duration::from_millis(500));
+    let grown = handle_count() - before;
+    assert!(grown < 20, "{grown} handles kept after 200 refused queries");
+    server_runtime.block_on(server.stop());
 }

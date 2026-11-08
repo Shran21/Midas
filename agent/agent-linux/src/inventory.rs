@@ -1,4 +1,7 @@
-use midas_agent_core::inventory::{Snapshot, common, insert};
+use midas_agent_core::{
+    inventory::{Snapshot, common, insert},
+    profile::Profile,
+};
 
 const DPKG_STATUS: &str = "/var/lib/dpkg/status";
 const GROUPS: &str = "/etc/group";
@@ -19,6 +22,24 @@ pub fn collect() -> Snapshot {
         insert(&mut snapshot, "admin", &user, "");
     }
     snapshot
+}
+
+/// The systemd default target and display manager link, as configured on disk.
+pub fn profile() -> Profile {
+    let target = [
+        "/etc/systemd/system/default.target",
+        "/lib/systemd/system/default.target",
+        "/usr/lib/systemd/system/default.target",
+    ]
+    .iter()
+    .find_map(|path| std::fs::read_link(path).ok())
+    .and_then(|link| {
+        link.file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+    });
+    let display_manager =
+        std::path::Path::new("/etc/systemd/system/display-manager.service").exists();
+    Profile::linux(target.as_deref(), display_manager)
 }
 
 /// Installed packages from a dpkg status file, as (name, "version architecture").

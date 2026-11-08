@@ -22,6 +22,8 @@ type Definition = {
   needsAgent: boolean;
   /** Not built yet; listed so operators see what is coming and what it will need. */
   planned?: boolean;
+  /** Needs a graphical desktop on the host; Server Core and other headless hosts lack one. */
+  graphical?: boolean;
   destructive?: boolean;
 };
 
@@ -57,6 +59,7 @@ const catalogue: Definition[] = [
     scope: "device",
     needsAgent: true,
     planned: true,
+    graphical: true,
   },
   {
     id: "remoteAdmin",
@@ -64,6 +67,7 @@ const catalogue: Definition[] = [
     scope: "device",
     needsAgent: true,
     planned: true,
+    graphical: true,
   },
   {
     id: "terminal",
@@ -102,7 +106,7 @@ const catalogue: Definition[] = [
   },
 ];
 
-export type Blocked = "offline" | "revoked" | "planned";
+export type Blocked = "offline" | "revoked" | "planned" | "headless";
 
 export type Action = {
   id: ActionId;
@@ -133,16 +137,106 @@ export function deviceActions(device: DeviceSummary, access: Access): Action[] {
     .map((definition) => ({
       id: definition.id,
       permission: definition.permission,
-      blocked: definition.planned
-        ? "planned"
-        : definition.needsAgent && device.enrollment === "revoked"
-          ? "revoked"
-          : definition.needsAgent && !device.online
-            ? "offline"
-            : null,
+      blocked:
+        definition.graphical && desktop(device) === false
+          ? "headless"
+          : definition.planned
+            ? "planned"
+            : definition.needsAgent && device.enrollment === "revoked"
+              ? "revoked"
+              : definition.needsAgent && !device.online
+                ? "offline"
+                : null,
       fresh: access.fresh_passkey.includes(definition.permission),
       destructive: definition.destructive ?? false,
     }));
+}
+
+/**
+ * Whether the host has a graphical desktop, as its agent reports it; `null` for agents that do
+ * not report it yet.
+ */
+export function desktop(device: DeviceSummary): boolean | null {
+  if (device.capabilities.includes("host.desktop")) return true;
+  if (device.capabilities.includes("host.headless")) return false;
+  return null;
+}
+
+/** The quick actions of the device page: graphical support, or terminal and files without it. */
+export function commonActionIds(device: DeviceSummary): ActionId[] {
+  return desktop(device) === false
+    ? ["refresh", "terminal", "files", "revoke"]
+    : ["refresh", "remote", "remoteAdmin", "revoke"];
+}
+
+export type CapabilityState =
+  | "available"
+  | "planned"
+  | "headless"
+  | "linuxLater"
+  | "unknown"
+  | "notReported";
+
+export type Capability = {
+  id:
+    | "remote"
+    | "remoteAdmin"
+    | "signIn"
+    | "metrics"
+    | "inventory"
+    | "health"
+    | "terminal"
+    | "files"
+    | "scripts"
+    | "updates";
+  state: CapabilityState;
+};
+
+/**
+ * What the host can offer, split into graphical and background capabilities. It describes the
+ * host; whether the operator may use a capability is still decided by `deviceActions`.
+ */
+export function hostCapabilities(device: DeviceSummary): {
+  graphical: Capability[];
+  background: Capability[];
+} {
+  const hasDesktop = desktop(device);
+  const graphicalState: CapabilityState =
+    hasDesktop === false
+      ? "headless"
+      : device.platform === "linux"
+        ? "linuxLater"
+        : hasDesktop === null
+          ? "unknown"
+          : "planned";
+  const reported = (present: boolean): CapabilityState =>
+    present ? "available" : "notReported";
+  return {
+    graphical: (["remote", "remoteAdmin", "signIn"] as const).map((id) => ({
+      id,
+      state: graphicalState,
+    })),
+    background: [
+      {
+        id: "metrics",
+        state: reported(device.capabilities.includes("metrics")),
+      },
+      {
+        id: "inventory",
+        state: reported(device.capabilities.includes("inventory")),
+      },
+      {
+        id: "health",
+        state: reported(
+          device.capabilities.some((name) => name.startsWith("health.")),
+        ),
+      },
+      ...(["terminal", "files", "scripts", "updates"] as const).map((id) => ({
+        id,
+        state: "planned" as const,
+      })),
+    ],
+  };
 }
 
 export type Condition = "online" | "attention" | "offline" | "revoked";

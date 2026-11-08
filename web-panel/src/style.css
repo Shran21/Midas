@@ -2522,8 +2522,38 @@ h1[tabindex="-1"]:focus {
   gap: 16px;
   align-items: start;
 }
-.device-monitoring .device-alerts {
+.device-monitoring .device-alerts,
+.capability-panel {
   grid-column: 1 / -1;
+}
+.capability-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 28px;
+  padding: 0 18px;
+}
+.capability-columns h3 {
+  margin: 4px 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.capability-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.capability-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+}
+.capability-list li:last-child {
+  border-bottom: 0;
 }
 .device-panel .panel {
   padding-bottom: 16px;
@@ -2744,6 +2774,11 @@ h1[tabindex="-1"]:focus {
   .device-overview,
   .device-monitoring,
   .device-policy {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .capability-columns {
     grid-template-columns: minmax(0, 1fr);
   }
 }

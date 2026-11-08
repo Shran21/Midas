@@ -42,7 +42,7 @@
 - A célazonosító sáv görgetéskor is látható. Mutatja az ügyfelet, a gép nevét, az OS-t, a típust, a telephelyet és az állapotot. A morzsamenü és a lap címe is a kiválasztott gépet nevezi meg.
 - **Offline gépnél** egy magyarázat mondja el, mi tekinthető meg: a legutóbbi állapot, a leltár, a riasztások és a szabályzat, a legutóbbi kapcsolat idején érvényes adatokkal. Azt is leírja, hogy az agentet igénylő műveletek csak online gépen indulnak. Visszavont gépnél külön figyelmeztetés látszik.
 - A **gyakori műveletek** a fülek felett vannak; a részletek a fülekben nyílnak. Fülek:
-  - **Áttekintés:** adatok, ellenőrzések és aktuális terhelés.
+  - **Áttekintés:** adatok, ellenőrzések, aktuális terhelés és a [gépprofil](gepprofil.md): a grafikus és a háttérképességek külön listában.
   - **Monitorozás és riasztások:** minden ellenőrzés a hatással érintett elemekkel és a változás idejével; az elmúlt óra CPU-, memória- és lemezgrafikonja; az eszköz riasztásai nyugtázással, ha van `alert.acknowledge` jog.
   - **Hardver és szoftverleltár:** hardver, OS, kötetek, helyi rendszergazdák és kereshető szoftverlista.
   - **Szabályzat és csoportok:** az érvényes beállítások értékkel, alapértékkel és forrással, valamint a csoporttagság. Ügyfélszintű `access.manage` joggal a csoporttagság módosítható.
@@ -151,7 +151,7 @@ November 8, 2026 · MIDAS-031 · UI-01, UI-02, UI-03, UI-05, UI-07, SERVER-04
 - The target bar stays visible while scrolling. It shows the customer, device name, OS, kind, site and condition, and the breadcrumbs and page title also name the selected device.
 - **On an offline device** a note explains what can be viewed: the latest status, inventory, alerts and policy, as of the last connection. It also says that actions needing the agent start only on an online device. A revoked device has its own warning.
 - **Common actions** sit above the tabs; details open in the tabs:
-  - **Overview:** details, checks and current load.
+  - **Overview:** details, checks, current load and the [host profile](gepprofil.md#english), with graphical and background capabilities listed separately.
   - **Monitoring and alerts:** every check with its affected items and change time; last-hour CPU, memory and disk charts; the device's alerts, which can be acknowledged with `alert.acknowledge`.
   - **Hardware and software inventory:** hardware, OS, volumes, local administrators and a searchable software list.
   - **Policy and groups:** effective settings with value, default and source, and group membership. Membership can be changed with tenant-wide `access.manage`.

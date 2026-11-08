@@ -37,6 +37,9 @@ pub async fn run_agent(
             inventory: Some(std::sync::Arc::new(win::inventory::collect)),
             health: Some(std::sync::Arc::new(win::health::check)),
             checks: win::health::CHECKS.to_vec(),
+            profile: midas_agent_core::profile::Profile::windows(
+                win::inventory::installation_type().as_deref(),
+            ),
         },
         state,
         shutdown,

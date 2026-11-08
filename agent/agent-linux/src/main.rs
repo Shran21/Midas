@@ -108,6 +108,7 @@ fn main() -> ExitCode {
                     inventory: Some(Arc::new(inventory::collect)),
                     health: Some(Arc::new(health::check)),
                     checks: health::CHECKS.to_vec(),
+                    profile: inventory::profile(),
                 },
                 state,
                 stopped,

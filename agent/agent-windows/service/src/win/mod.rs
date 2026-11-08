@@ -14,6 +14,7 @@ use windows_sys::Win32::{
         Authorization::{ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1},
         PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES,
     },
+    Storage::FileSystem::{FILE_FLAG_OVERLAPPED, SECURITY_IDENTIFICATION},
     System::{
         Pipes::{GetNamedPipeClientProcessId, GetNamedPipeServerProcessId},
         RemoteDesktop::{ProcessIdToSessionId, WTSGetActiveConsoleSessionId},
@@ -108,6 +109,30 @@ pub fn create_pipe(
     // SAFETY: `attributes` points to a SECURITY_ATTRIBUTES with a valid descriptor and stays
     // alive until the call returns; Windows copies the descriptor into the new pipe.
     unsafe { options.create_with_security_attributes_raw(name, attributes.as_mut_ptr()) }
+}
+
+/// Opens the client end of a status pipe without registering it with tokio. A refused pipe is then
+/// closed at once; a registered one would wait for the next reactor turn, which a tray that is
+/// always refused never runs. The server may only identify the client, as with tokio's defaults.
+pub fn open_pipe(name: &str) -> io::Result<std::fs::File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_OVERLAPPED)
+        .security_qos_flags(SECURITY_IDENTIFICATION)
+        .open(name)
+}
+
+/// Hands a checked pipe from [`open_pipe`] to tokio; it must run inside a runtime.
+pub fn into_pipe_client(
+    pipe: std::fs::File,
+) -> io::Result<tokio::net::windows::named_pipe::NamedPipeClient> {
+    use std::os::windows::io::IntoRawHandle;
+    // SAFETY: `pipe` gives up the handle, which it opened for overlapped I/O, so tokio becomes
+    // its only owner.
+    unsafe {
+        tokio::net::windows::named_pipe::NamedPipeClient::from_raw_handle(pipe.into_raw_handle())
+    }
 }
 
 fn session_of(pid: u32) -> io::Result<u32> {

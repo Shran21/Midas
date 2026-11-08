@@ -82,7 +82,7 @@ mod server {
 
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
-        net::windows::named_pipe::{ClientOptions, NamedPipeServer, ServerOptions},
+        net::windows::named_pipe::{NamedPipeServer, ServerOptions},
         sync::watch,
     };
 
@@ -151,13 +151,14 @@ mod server {
 
     /// Reads the status, accepting only a server that runs as a service (session 0).
     pub async fn query(name: &str) -> io::Result<String> {
-        let mut pipe = ClientOptions::new().read(true).write(false).open(name)?;
+        let pipe = win::open_pipe(name)?;
         if win::pipe_server_session(pipe.as_raw_handle())? != 0 {
             return Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
                 "the status pipe is not served by a Windows service",
             ));
         }
+        let mut pipe = win::into_pipe_client(pipe)?;
         let mut text = String::new();
         tokio::time::timeout(Duration::from_secs(5), pipe.read_to_string(&mut text))
             .await

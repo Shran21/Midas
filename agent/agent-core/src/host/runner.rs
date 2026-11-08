@@ -287,6 +287,7 @@ pub struct Probes {
     pub health: Option<crate::health::Checker>,
     /// Health check ids the platform implements; each becomes a `health.<id>` capability.
     pub checks: Vec<&'static str>,
+    pub profile: crate::profile::Profile,
 }
 
 impl Probes {
@@ -298,6 +299,7 @@ impl Probes {
         if self.health.is_some() {
             capabilities.extend(self.checks.iter().map(|check| format!("health.{check}")));
         }
+        capabilities.extend(self.profile.capabilities());
         capabilities
     }
 }
@@ -392,10 +394,18 @@ mod tests {
             inventory: Some(Arc::new(crate::inventory::Snapshot::new)),
             health: Some(Arc::new(|_: &crate::health::Thresholds| Vec::new())),
             checks: vec![crate::health::SERVICES, crate::health::STORAGE],
+            profile: crate::profile::Profile::windows(Some("Server Core")),
         };
         assert_eq!(
             probes.capabilities(),
-            ["metrics", "inventory", "health.services", "health.storage"]
+            [
+                "metrics",
+                "inventory",
+                "health.services",
+                "health.storage",
+                "host.headless",
+                "host.server"
+            ]
         );
     }
 

@@ -13,7 +13,7 @@ A leltár (fajta, kulcs, érték) elemekből áll, értékenként legfeljebb 256
 | Fajta | Tartalom |
 | --- | --- |
 | `hardware` | gépnév, processzor, logikai processzorok száma, memória |
-| `os` | operációs rendszer neve, verziója, hosszú neve, kernel |
+| `os` | operációs rendszer neve, verziója, hosszú neve, kernel; Windowson a telepítés típusa (`installation`: `Client`, `Server`, `Server Core`), lásd [gépprofil](gepprofil.md) |
 | `disk` | a nem cserélhető kötetek mérete és fájlrendszere |
 | `software` | Windowson a registry Uninstall kulcsai (64 és 32 bites nézet, rendszerkomponensek nélkül), név → „verzió \| kiadó”; Linuxon a dpkg- vagy rpm-csomagok, név → „verzió architektúra” |
 | `admin` | Windowson a beépített Administrators csoport tagjai (a csoportot a jól ismert SID azonosítja, a lokalizált név miatt); Linuxon a root és a sudo, wheel, admin csoport tagjai |
@@ -57,7 +57,7 @@ The inventory consists of (kind, key, value) items, each value at most 256 chara
 | Kind | Content |
 | --- | --- |
 | `hardware` | host name, processor, logical processor count, memory |
-| `os` | operating system name, version, long name, kernel |
+| `os` | operating system name, version, long name, kernel; on Windows the installation type (`installation`: `Client`, `Server`, `Server Core`), see [host profile](gepprofil.md#english) |
 | `disk` | size and file system of non-removable volumes |
 | `software` | on Windows the registry Uninstall keys (64- and 32-bit views, without system components), name → "version \| publisher"; on Linux dpkg or rpm packages, name → "version architecture" |
 | `admin` | on Windows the members of the built-in Administrators group (identified by its well-known SID because the name is localized); on Linux root plus members of sudo, wheel and admin |

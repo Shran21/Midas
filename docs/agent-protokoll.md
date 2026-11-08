@@ -16,7 +16,7 @@ Az agent egy tartós, kimenő, hitelesített kapcsolattal csatlakozik a szerverh
 
 | Üzenet | Irány | Tartalom |
 | --- | --- | --- |
-| `Hello` | agent → szerver | támogatott verziótartomány, agentverzió (legfeljebb 64 bájt), platform (legfeljebb 32 bájt), platformképességek (legfeljebb 32, [állapotellenőrzések](allapotellenorzes.md)) |
+| `Hello` | agent → szerver | támogatott verziótartomány, agentverzió (legfeljebb 64 bájt), platform (legfeljebb 32 bájt), platformképességek (legfeljebb 32, [állapotellenőrzések](allapotellenorzes.md), [gépprofil](gepprofil.md)) |
 | `Welcome` | szerver → agent | egyeztetett verzió, keepalive-időköz másodpercben, szerververzió |
 | `Reject` | szerver → agent | ok (`UNSUPPORTED_VERSION`, `INVALID_HELLO`) és a szerver által támogatott tartomány; utána a szerver bont |
 | `Ping` / `Pong` | mindkét irány | élőség-ellenőrzés véletlen azonosítóval |
@@ -76,7 +76,7 @@ The agent connects to the server over one persistent, outbound, authenticated co
 
 | Message | Direction | Content |
 | --- | --- | --- |
-| `Hello` | agent → server | supported version range, agent version (at most 64 bytes), platform (at most 32 bytes), platform capabilities (at most 32, [health checks](allapotellenorzes.md#english)) |
+| `Hello` | agent → server | supported version range, agent version (at most 64 bytes), platform (at most 32 bytes), platform capabilities (at most 32, [health checks](allapotellenorzes.md#english), [host profile](gepprofil.md#english)) |
 | `Welcome` | server → agent | negotiated version, keepalive interval in seconds, server version |
 | `Reject` | server → agent | reason (`UNSUPPORTED_VERSION`, `INVALID_HELLO`) and the server's supported range; the server then closes |
 | `Ping` / `Pong` | both directions | liveness check with a random identifier |

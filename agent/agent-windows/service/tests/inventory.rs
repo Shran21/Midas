@@ -10,6 +10,16 @@ fn the_real_machine_reports_software_administrators_and_os() {
     assert!(count("software") > 0, "no installed software found");
     assert!(count("admin") > 0, "no local administrators found");
     assert!(snapshot.contains_key(&key("os", "name")));
+    // Desktop editions report Client; the hosted runners run Windows Server with a desktop.
+    let installation = midas_agent_windows::win::inventory::installation_type();
+    assert!(
+        matches!(installation.as_deref(), Some("Client" | "Server")),
+        "{installation:?}"
+    );
+    assert_eq!(
+        snapshot.get(&key("os", "installation")),
+        installation.as_ref()
+    );
     assert!(
         snapshot
             .values()

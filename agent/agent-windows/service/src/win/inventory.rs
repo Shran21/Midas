@@ -21,6 +21,7 @@ use windows_sys::Win32::{
 use super::{from_wide, wide};
 
 const UNINSTALL: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
+const CURRENT_VERSION: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion";
 /// Built-in Administrators; the group name itself is localized.
 const ADMINISTRATORS: &str = "S-1-5-32-544";
 
@@ -28,6 +29,9 @@ const ADMINISTRATORS: &str = "S-1-5-32-544";
 /// directory identity.
 pub fn collect() -> Snapshot {
     let mut snapshot = common();
+    if let Some(installation) = installation_type() {
+        insert(&mut snapshot, "os", "installation", installation);
+    }
     software(&mut snapshot);
     administrators(&mut snapshot);
     if let Some((domain, guid)) = directory_identity() {
@@ -65,6 +69,12 @@ pub fn directory_identity() -> Option<(String, String)> {
     valid.then_some((domain, guid))
 }
 
+/// Client, Server, Server Core or Nano Server; it tells whether the host has a desktop.
+pub fn installation_type() -> Option<String> {
+    let key = open(CURRENT_VERSION, KEY_WOW64_64KEY)?;
+    string(&key, &[0], "InstallationType")
+}
+
 struct Key(HKEY);
 
 impl Drop for Key {
@@ -76,8 +86,8 @@ impl Drop for Key {
     }
 }
 
-fn open(view: REG_SAM_FLAGS) -> Option<Key> {
-    let path = wide(UNINSTALL);
+fn open(path: &str, view: REG_SAM_FLAGS) -> Option<Key> {
+    let path = wide(path);
     let mut key: HKEY = ptr::null_mut();
     // SAFETY: `path` is NUL-terminated and outlives the call; `key` is a valid out pointer.
     let status = unsafe {
@@ -186,7 +196,7 @@ fn dword(key: &Key, subkey: &[u16], value: &str) -> Option<u32> {
 
 fn software(snapshot: &mut Snapshot) {
     for view in [KEY_WOW64_64KEY, KEY_WOW64_32KEY] {
-        let Some(key) = open(view) else {
+        let Some(key) = open(UNINSTALL, view) else {
             continue;
         };
         for subkey in subkeys(&key) {
