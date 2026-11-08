@@ -185,6 +185,7 @@ pub fn router(state: Arc<WebAuth>) -> Router {
         )
         .route("/api/tenants/{id}/devices", get(devices))
         .route("/api/tenants/{id}/devices/pending", get(pending_devices))
+        .route("/api/tenants/{id}/devices/decisions", get(device_decisions))
         .route("/api/tenants/{id}/devices/{device}", get(device))
         .route(
             "/api/tenants/{id}/devices/{device}/metrics",
@@ -753,6 +754,18 @@ async fn device_alerts(
     Ok(Json(
         enrollment(&state)?
             .device_alerts(&state.sessions, &context.token, id, device)
+            .await?,
+    ))
+}
+
+async fn device_decisions(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Vec<crate::enrollment::Decision>>> {
+    Ok(Json(
+        enrollment(&state)?
+            .decisions(&state.sessions, &context.token, id)
             .await?,
     ))
 }

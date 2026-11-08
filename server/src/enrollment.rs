@@ -167,6 +167,20 @@ pub struct PendingDevice {
     pub requested_at: i64,
 }
 
+/// A finished enrollment decision; `decided_by` is empty when a preapproved token issued at once.
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct Decision {
+    pub id: Uuid,
+    pub name: String,
+    pub platform: String,
+    pub kind: String,
+    pub site_id: Option<Uuid>,
+    pub enrollment: String,
+    pub requested_at: Option<i64>,
+    pub decided_at: Option<i64>,
+    pub decided_by: Option<String>,
+}
+
 /// Agent-facing refusal; the reason stays in the audit trail, not in the response.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Refusal {
@@ -511,6 +525,21 @@ impl Enrollment {
             .fetch_all(&mut *tx).await?;
         tx.commit().await?;
         Ok(devices)
+    }
+
+    /// The latest approvals, rejections and revocations, newest first.
+    pub async fn decisions(
+        &self,
+        sessions: &Sessions,
+        token: &SessionToken,
+        tenant: Uuid,
+    ) -> Result<Vec<Decision>, AccessError> {
+        self.operator(sessions, token, tenant, false).await?;
+        let mut tx = self.tenant_tx(tenant).await?;
+        let decisions = sqlx::query_as("SELECT d.id, d.name, d.platform, d.kind, d.site_id, d.enrollment, extract(epoch FROM d.requested_at)::bigint AS requested_at, extract(epoch FROM d.decided_at)::bigint AS decided_at, o.display_name AS decided_by FROM midas.devices d LEFT JOIN midas.operators o ON o.id = d.decided_by WHERE d.enrollment <> 'pending' AND d.decided_at IS NOT NULL ORDER BY d.decided_at DESC, d.id LIMIT 100")
+            .fetch_all(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(decisions)
     }
 
     pub async fn approve(

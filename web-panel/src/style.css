@@ -2772,3 +2772,125 @@ h1[tabindex="-1"]:focus {
     width: 100%;
   }
 }
+.discovery {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.discovery .panel {
+  padding-bottom: 14px;
+}
+.discovery-note {
+  line-height: 1.6;
+}
+.bulk-actions,
+.row-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.outcome-list {
+  list-style: none;
+  margin: 0 18px 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--surface-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+}
+.outcome-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.outcome-list li.ok {
+  color: var(--positive);
+}
+.outcome-list li.failed {
+  color: var(--critical);
+}
+.token-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 16px;
+  padding: 0 18px;
+}
+.token-form .field {
+  min-width: 150px;
+}
+.token-form input[type="number"] {
+  width: 110px;
+}
+.check-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 320px;
+  font-size: 13px;
+}
+.check-field > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.check-field small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.token-result {
+  margin: 14px 18px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--warning);
+  border-radius: 7px;
+  background: var(--warning-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 12.5px;
+}
+.token-result code {
+  padding: 8px 10px;
+  border-radius: 5px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.affected-list {
+  margin: 0 0 14px;
+  padding: 10px 14px 10px 30px;
+  max-height: 220px;
+  overflow-y: auto;
+  border-radius: 7px;
+  background: var(--surface-subtle);
+  font-size: 13px;
+}
+.discovery-status {
+  display: inline-block;
+  padding: 3px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 550;
+  background: var(--hover);
+  color: var(--muted);
+}
+.discovery-status.managed {
+  background: var(--positive-soft);
+  color: var(--positive);
+}
+.discovery-status.conflict {
+  background: var(--critical-soft);
+  color: var(--critical);
+}
+.removed-row {
+  opacity: 0.6;
+}
+.cell-secondary.dn {
+  max-width: 360px;
+  overflow-wrap: anywhere;
+}
+.cell-secondary.hint {
+  color: var(--warning);
+}

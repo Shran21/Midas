@@ -40,7 +40,7 @@
 
 ### Lekérdezés
 
-- `GET /api/tenants/{ügyfél}/directory/computers` (ügyfélszintű `directory.discover`): a gépek adataikkal, állapotukkal (`candidate`, `managed`, `conflict`), az igazolt eszközzel és a névtippekkel. Előbb a meglévők, utána az elmúlt 30 napban megszűntek, legfeljebb 20 000 tétel. A webpanel nézete a MIDAS-038 része.
+- `GET /api/tenants/{ügyfél}/directory/computers` (ügyfélszintű `directory.discover`): a gépek adataikkal, állapotukkal (`candidate`, `managed`, `conflict`), az igazolt eszközzel és a névtippekkel. Előbb a meglévők, utána az elmúlt 30 napban megszűntek, legfeljebb 20 000 tétel. A webpanel a Felderítés és regisztráció nézetben mutatja ([beiratkozás](beiratkozas.md)).
 
 ### Ellenőrzés
 
@@ -104,7 +104,7 @@ One designated, enrolled agent per customer reads that customer's Active Directo
 
 ### Query
 
-- `GET /api/tenants/{tenant}/directory/computers` (tenant-wide `directory.discover`): computers with their data, status (`candidate`, `managed`, `conflict`), the proven device and name hints. Present computers come first, then those removed in the last 30 days, at most 20,000 items. The web panel view belongs to MIDAS-038.
+- `GET /api/tenants/{tenant}/directory/computers` (tenant-wide `directory.discover`): computers with their data, status (`candidate`, `managed`, `conflict`), the proven device and name hints. Present computers come first, then those removed in the last 30 days, at most 20,000 items. The web panel shows them in the Discovery and enrollment view ([enrollment](beiratkozas.md#english)).
 
 ### Verification
 

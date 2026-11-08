@@ -156,6 +156,64 @@ export type AlertView = {
   notifications_failed: number;
 };
 export type Group = { id: string; name: string; priority: number };
+export type PendingDevice = {
+  id: string;
+  name: string;
+  platform: "windows" | "linux";
+  kind: "workstation" | "server";
+  site_id: string | null;
+  requested_at: number;
+};
+export type Decision = {
+  id: string;
+  name: string;
+  platform: "windows" | "linux";
+  kind: "workstation" | "server";
+  site_id: string | null;
+  enrollment: "active" | "rejected" | "revoked";
+  requested_at: number | null;
+  decided_at: number | null;
+  decided_by: string | null;
+};
+export type TokenSpec = {
+  site_id: string | null;
+  platform: "windows" | "linux";
+  kind: "workstation" | "server";
+  preapproved: boolean;
+  lifetime_hours: number;
+};
+export type CreatedToken = { id: string; token: string; expires_at: number };
+export type ConnectorView = {
+  device_id: string;
+  domain: string;
+  url: string;
+  base_dns: string[];
+  revision: number;
+  last_check: {
+    at: number;
+    revision: number;
+    ok: boolean;
+    objects: number;
+    error: string | null;
+  } | null;
+};
+export type DiscoveredComputer = {
+  domain: string;
+  object_guid: string;
+  name: string;
+  dns_host_name: string;
+  distinguished_name: string;
+  operating_system: string;
+  operating_system_version: string;
+  last_logon_at: number | null;
+  disabled: boolean;
+  first_seen_at: number;
+  last_seen_at: number;
+  removed_at: number | null;
+  status: "candidate" | "managed" | "conflict";
+  devices: Named[];
+  name_matches: Named[];
+};
 
 export class ApiError extends Error {
   constructor(
@@ -372,6 +430,30 @@ export const api = {
       { method: "POST", csrf },
     ),
   groups: (tenant: string) => request<Group[]>(`${tenantPath(tenant)}/groups`),
+  pendingDevices: (tenant: string) =>
+    request<PendingDevice[]>(`${tenantPath(tenant)}/devices/pending`),
+  decisions: (tenant: string) =>
+    request<Decision[]>(`${tenantPath(tenant)}/devices/decisions`),
+  decide: (
+    tenant: string,
+    device: string,
+    decision: "approve" | "reject",
+    csrf: string,
+  ) =>
+    request<void>(`${devicePath(tenant, device)}/${decision}`, {
+      method: "POST",
+      csrf,
+    }),
+  createToken: (tenant: string, spec: TokenSpec, csrf: string) =>
+    request<CreatedToken>(`${tenantPath(tenant)}/enrollment-tokens`, {
+      method: "POST",
+      body: spec,
+      csrf,
+    }),
+  connector: (tenant: string) =>
+    request<ConnectorView>(`${tenantPath(tenant)}/directory-connector`),
+  discovered: (tenant: string) =>
+    request<DiscoveredComputer[]>(`${tenantPath(tenant)}/directory/computers`),
   setGroupMember: (
     tenant: string,
     group: string,

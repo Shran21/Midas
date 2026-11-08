@@ -1782,6 +1782,42 @@ pub async fn verify(database: &Database, admin: &mut PgConnection) {
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 
+    let decisions_path = format!("/api/tenants/{tenant}/devices/decisions");
+    let (status, decisions, _) =
+        call(&app, "GET", &decisions_path, Some(&manager), None, &[]).await;
+    assert_eq!(status, StatusCode::OK, "{decisions}");
+    let decided = |target: Uuid| {
+        decisions
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| id_of(item) == target)
+            .map(|item| {
+                (
+                    item["enrollment"].as_str().unwrap().to_owned(),
+                    item["decided_by"].is_null(),
+                )
+            })
+    };
+    assert_eq!(decided(device), Some(("revoked".to_owned(), false)));
+    assert_eq!(
+        decided(rejected_device),
+        Some(("rejected".to_owned(), false))
+    );
+    assert_eq!(
+        decided(server_device),
+        Some(("active".to_owned(), true)),
+        "a preapproved token issues without an operator decision"
+    );
+    for client in [&outsider, &technician] {
+        assert_eq!(
+            call(&app, "GET", &decisions_path, Some(client), None, &[])
+                .await
+                .0,
+            StatusCode::NOT_FOUND
+        );
+    }
+
     let mut changes = enrollment.subscribe();
     let panel = live_panel(&app, &manager, tenant, other).await;
     let watched = Agent::checked(

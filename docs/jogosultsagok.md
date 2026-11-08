@@ -48,7 +48,7 @@ Jogosultság nem bővíthető a kezelő saját köre fölé: szerep vagy engedé
 | `POST /api/tenants/{id}/overrides`, `DELETE …/overrides/{id}` | `access.manage`, friss passkey, eszkalációvédelem |
 | `POST /api/tenants/{id}/sites` | `access.manage`, friss passkey |
 | `POST /api/tenants/{id}/enrollment-tokens`, `POST …/devices/{id}/approve`, `…/reject`, `…/revoke` | `device.enroll`, friss passkey ([beiratkozás](beiratkozas.md)) |
-| `GET /api/tenants/{id}/devices/pending` | Ügyfélszintű `device.enroll` |
+| `GET /api/tenants/{id}/devices/pending`, `GET …/devices/decisions` | Ügyfélszintű `device.enroll` |
 | `PUT /api/tenants/{id}/directory-connector` | `directory.discover`, friss passkey ([címtár-connector](cimtar-connector.md)) |
 | `GET /api/tenants/{id}/directory-connector` | Ügyfélszintű `directory.discover` |
 | `GET /api/tenants/{id}/directory/computers` | Ügyfélszintű `directory.discover` (felderített gépek és egyeztetésük) |
@@ -152,7 +152,7 @@ Managers cannot exceed their own access: granting a role or allow, removing a de
 | `POST /api/tenants/{id}/overrides`, `DELETE …/overrides/{id}` | `access.manage`, fresh passkey, escalation guard |
 | `POST /api/tenants/{id}/sites` | `access.manage`, fresh passkey |
 | `POST /api/tenants/{id}/enrollment-tokens`, `POST …/devices/{id}/approve`, `…/reject`, `…/revoke` | `device.enroll`, fresh passkey ([enrollment](beiratkozas.md#english)) |
-| `GET /api/tenants/{id}/devices/pending` | Tenant-wide `device.enroll` |
+| `GET /api/tenants/{id}/devices/pending`, `GET …/devices/decisions` | Tenant-wide `device.enroll` |
 | `PUT /api/tenants/{id}/directory-connector` | `directory.discover`, fresh passkey ([directory connector](cimtar-connector.md#english)) |
 | `GET /api/tenants/{id}/directory-connector` | Tenant-wide `directory.discover` |
 | `GET /api/tenants/{id}/directory/computers` | Tenant-wide `directory.discover` (discovered computers and their matching) |

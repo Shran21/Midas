@@ -19,6 +19,16 @@ Az új agent helyben P-256 kulcspárt készít, és a szervert hitelesítő HTTP
 
 Minden token-kiadás, sikeres beiratkozási kérelem, jóváhagyás, elutasítás és visszavonás auditált, akárcsak az ismert tokenhez köthető elutasítás. Ismeretlen vagy hibás formátumú tokenre a szerver csak naplóbejegyzést ír, így hitelesítés nélküli kérések nem növelhetik az auditot. A token és a kérelemtitok nem kerül az auditba.
 
+### Webpanel: Felderítés és regisztráció
+
+A **Felderítés és regisztráció** menüpont ügyfélszintű `device.enroll` vagy `directory.discover` joggal látszik. A nézet elején figyelmeztetés áll: a felderítés nem telepít agentet, nem léptet tartományba és nem módosít címtárat; agent telepítőcsomaggal, GPO-val, Intune-nal vagy jóváhagyott telepítési feladattal kerül a gépre.
+
+- **Jóváhagyásra váró regisztrációk** (`device.enroll`): a kérelmek géppel, rendszerrel, típussal és a kérés idejével. Jóváhagyás és elutasítás egyenként vagy kijelöléssel csoportosan. A csoportos döntés előtt a megerősítő ablak megnevezi az ügyfelet és felsorolja az érintett gépeket, utána a nézet gépenként mutatja az eredményt, az esetleges hibával (például friss passkey hiánya) együtt.
+- **Telepítőtoken** (`device.enroll`): telephely (ha a technikus látja a telephelyeket), rendszer, géptípus, érvényesség (1–720 óra) és az előre jóváhagyás választása. A token csak egyszer, a létrehozás után látszik, másolható és elrejthető. A nézet figyelmeztet, hogy a token telepítőcsomagban vagy védett fájlban menjen, ne URL-ben, parancssorban vagy e-mailben.
+- **Címtárban felderített gépek** (`directory.discover`): a connector tartománya és utolsó vizsgálata, majd a gépek keresővel és állapotszűrővel (felderített, agent nincs; kezelt; ütközés; megszűnt). Kezelt gépnél az igazolt eszköz neve az eszközoldalra visz; az azonos nevű, de nem igazolt eszköz csak figyelmeztető tippként szerepel ([címtár-connector](cimtar-connector.md)).
+- **Regisztrációs döntések** (`device.enroll`): a legutóbbi 100 jóváhagyás, elutasítás és visszavonás a döntéshozóval; az előre jóváhagyott token döntés nélküli kiadásként látszik. API: `GET /api/tenants/{ügyfél}/devices/decisions` (ügyfélszintű `device.enroll`).
+- A nézet a munkamenet-csatorna változásértesítésére frissül ([eszközoldal](eszkozoldal.md)).
+
 ### Üzemeltetés
 
 A beiratkozáshoz adatbázis és az agent-CA privát kulcsa kell: `--agent-ca agent-ca.pem --agent-ca-key agent-ca-key.pem`. A kulcsfájl csak a szolgáltatásfiók számára olvasható, kis méretű, szabályos fájl lehet. Agentfigyelő (`--agent-bind`) csak adatbázissal és CA-kulccsal indul. Az adminisztrációs végpontok a böngészős hitelesítéssel (`--auth-origin`) érhetők el.
@@ -32,7 +42,6 @@ A beiratkozáshoz adatbázis és az agent-CA privát kulcsa kell: `--agent-ca ag
 
 - A tanúsítvány megújítása még nincs megvalósítva; a kiadott tanúsítvány 365 napig érvényes. A megújításnak újra kell ellenőriznie az eszköz állapotát.
 - A kulcs és a tanúsítvány védett helyi tárolása a Windows-szolgáltatás (MIDAS-023) és a Linux-csomag (MIDAS-024), a telepítőcsomag védett tokenátadása a MIDAS-033 része.
-- A függő eszközök és döntések webes felülete a MIDAS-038 része; addig az API használható.
 - A TLS-réteg CRL-je induláskor töltődik be; a visszavonás azonnali hatását az alkalmazásszintű ujjlenyomat-ellenőrzés adja.
 
 ## English
@@ -52,6 +61,16 @@ A new agent creates a P-256 key pair locally and requests a client certificate o
 
 Token issuance, accepted enrollment requests, approvals, rejections and revocations are audited, as are refusals tied to a known token. Unknown or malformed tokens are only logged, so unauthenticated requests cannot grow the audit trail. Tokens and request secrets never reach the audit trail.
 
+### Web panel: Discovery and enrollment
+
+The **Discovery and enrollment** section appears with tenant-wide `device.enroll` or `directory.discover`. It opens with a reminder: discovery never installs agents, joins domains or changes the directory; agents are deployed with a package, GPO, Intune or an approved deployment job.
+
+- **Enrollments waiting for approval** (`device.enroll`): requests with device, system, kind and request time. Approve or reject one by one or several selected at once. Before a bulk decision the confirmation names the customer and lists the affected devices; afterwards the view shows each device's result, including any error (such as a missing fresh passkey).
+- **Deployment token** (`device.enroll`): site (when the operator can list sites), system, kind, lifetime (1–720 hours) and preapproval. The token is shown only once, right after creation, and can be copied or hidden. The view warns to hand it over in an installer package or a protected file, never in a URL, command line or e-mail.
+- **Computers discovered in the directory** (`directory.discover`): the connector's domain and last scan, then computers with search and a status filter (discovered, no agent; managed; conflict; removed). For a managed computer the proven device name leads to its device page; a device with the same name but no proof appears only as a warning hint ([directory connector](cimtar-connector.md#english)).
+- **Enrollment decisions** (`device.enroll`): the latest 100 approvals, rejections and revocations with who decided; a preapproved token shows as issued without a decision. API: `GET /api/tenants/{tenant}/devices/decisions` (tenant-wide `device.enroll`).
+- The view refreshes on change notices from the session channel ([device pages](eszkozoldal.md#english)).
+
 ### Operations
 
 Enrollment needs a database and the agent CA private key: `--agent-ca agent-ca.pem --agent-ca-key agent-ca-key.pem`. The key must be a small regular file readable only by the service account. The agent listener (`--agent-bind`) starts only with a database and the CA key. The administration routes require browser authentication (`--auth-origin`).
@@ -65,5 +84,4 @@ Enrollment needs a database and the agent CA private key: `--agent-ca agent-ca.p
 
 - Certificate renewal is not implemented yet; issued certificates last 365 days. Renewal must recheck device state.
 - Protected local storage of the key and certificate belongs to the Windows service (MIDAS-023) and Linux package (MIDAS-024); protected token delivery in installer packages to MIDAS-033.
-- The web view for pending devices and decisions is MIDAS-038; until then the API is available.
 - The TLS-layer CRL loads at startup; the application-level fingerprint check makes revocation effective immediately.

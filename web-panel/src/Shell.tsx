@@ -19,6 +19,7 @@ import { AlertsView } from "./devices/AlertsView";
 import type { Tab } from "./devices/DeviceMenu";
 import { DevicePage } from "./devices/DevicePage";
 import { DevicesView } from "./devices/DevicesView";
+import { DiscoveryView } from "./devices/DiscoveryView";
 import { Icon, type IconName } from "./Icon";
 import { type Copy, type Language, translations } from "./i18n";
 import { permissionNames } from "./permissions";
@@ -30,6 +31,7 @@ export type SignOutReason = "ended" | "signed-out";
 type Section =
   | "overview"
   | "devices"
+  | "discovery"
   | "alerts"
   | "automation"
   | "access"
@@ -40,6 +42,7 @@ type Section =
 const requirements: Record<Section, string[]> = {
   overview: [],
   devices: ["device.read"],
+  discovery: ["device.enroll", "directory.discover"],
   alerts: ["monitor.read"],
   automation: ["script.execute", "updates.manage"],
   access: ["access.manage"],
@@ -50,6 +53,7 @@ const requirements: Record<Section, string[]> = {
 const tenantSections: [Section, IconName][] = [
   ["overview", "overview"],
   ["devices", "monitor"],
+  ["discovery", "search"],
   ["alerts", "alert"],
   ["automation", "bolt"],
   ["access", "shield"],
@@ -275,6 +279,7 @@ export function Shell({
   const description: Record<Section, string> = {
     overview: t.signedOverviewDescription,
     devices: t.devicesDescription,
+    discovery: t.discoveryDescription,
     alerts: t.alertsDescription,
     automation: t.automationDescription,
     access: t.accessDescription,
@@ -423,6 +428,21 @@ export function Shell({
       />
     ) : (
       <DevicesView
+        key={tenantId}
+        tenant={tenantId}
+        tenantName={tenantName ?? ""}
+        access={context.value}
+        t={t}
+        language={language}
+        csrf={signedIn.csrf_token}
+        fail={fail}
+        changes={changes}
+        onOpen={openDevice}
+      />
+    );
+  } else if (section === "discovery" && tenantId && context.state === "ready") {
+    content = (
+      <DiscoveryView
         key={tenantId}
         tenant={tenantId}
         tenantName={tenantName ?? ""}
