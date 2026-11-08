@@ -56,7 +56,7 @@
   - állapotjelentés és leltár;
   - riasztás nyílása, megszűnése és nyugtázása;
   - beiratkozási döntés, visszavonás és csoporttagság.
-- A webpanel ilyenkor újra lekéri azt, amit a technikus láthat. Ezen felül a látható oldal percenként, az eszközoldal 30 másodpercenként frissít, mert a mérések percenként érkeznek.
+- A webpanel ilyenkor újra lekéri azt, amit a technikus láthat, de értesítés miatt legfeljebb hárommásodpercenként, így egy forgalmas flotta sem kér folyamatosan teljes listát ([flottaterhelés](meresek/flotta-terheles.md)). Ezen felül a látható oldal percenként, az eszközoldal 30 másodpercenként frissít, mert a mérések percenként érkeznek.
 - A tagságot a szerver 15 másodpercenként újraellenőrzi; a tagság megszűnése után nem küld értesítést.
 - Az **Állapot frissítése most** (`POST …/devices/{eszköz}/refresh`, `monitor.read`) a kapcsolódó agentnek `RefreshRequest` üzenetet küld. Az agent ekkor azonnal lefuttatja az ellenőrzéseket, akkor is elküldi az eredményt, ha az nem változott, és összegyűjti a leltárváltozást.
   - Offline gépnél a válasz 409 `device_offline`.
@@ -165,7 +165,7 @@ November 8, 2026 · MIDAS-031 · UI-01, UI-02, UI-03, UI-05, UI-07, SERVER-04
   - health reports and inventory;
   - alerts opening, resolving and being acknowledged;
   - enrollment decisions, revocation and group membership.
-- The panel then refetches what the operator may see. The visible page also refreshes every minute, and the device page every 30 seconds, because samples arrive each minute.
+- The panel then refetches what the operator may see, but at most every three seconds for notices, so a busy fleet does not keep refetching whole lists ([fleet load](meresek/flotta-terheles.md#english)). The visible page also refreshes every minute, and the device page every 30 seconds, because samples arrive each minute.
 - The server rechecks membership every 15 seconds and sends no more notices after it ends.
 - **Refresh status now** (`POST …/devices/{device}/refresh`, `monitor.read`) sends the connected agent a `RefreshRequest`. The agent then runs its checks at once, sends the result even if unchanged, and collects its inventory changes.
   - An offline device answers 409 `device_offline`.

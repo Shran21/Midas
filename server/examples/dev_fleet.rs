@@ -106,9 +106,26 @@ async fn fleet(directory: &Path) -> Result<(), Error> {
         tls: verifying,
         timeout: Duration::from_secs(10),
     };
+    // A share of the fleet can go to the first tenant, so one customer has a large device list.
+    let first_share: usize = std::env::var("MIDAS_FLEET_FIRST_SHARE")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(0)
+        .min(100);
+    let quiet = size > 50;
+    let mut placed = vec![0usize; tenants.len()];
     let mut handles = Vec::new();
     for index in 0..size {
-        let (tenant, tenant_name, site) = &tenants[index % tenants.len()];
+        let owner = if first_share > 0 && tenants.len() > 1 {
+            if index % 100 < first_share {
+                0
+            } else {
+                1 + index % (tenants.len() - 1)
+            }
+        } else {
+            index % tenants.len()
+        };
+        let (tenant, tenant_name, site) = &tenants[owner];
         let prefix: String = tenant_name
             .chars()
             .map(|c| match c.to_ascii_lowercase() {
@@ -123,7 +140,8 @@ async fn fleet(directory: &Path) -> Result<(), Error> {
             .take(4)
             .collect::<String>()
             .to_uppercase();
-        let slot = index / tenants.len();
+        let slot = placed[owner];
+        placed[owner] += 1;
         let (platform, kind, role) = match slot % 6 {
             1 => (Platform::Windows, Kind::Server, "SRV"),
             3 => (Platform::Linux, Kind::Server, "LNX"),
@@ -137,7 +155,7 @@ async fn fleet(directory: &Path) -> Result<(), Error> {
             platform,
             kind,
             index: slot,
-            leaves: index + 1 == size && size > 2,
+            leaves: index + 1 == size && size > 2 && !quiet,
         };
         let (identity, certificate) = match enrolled(&state, &profile, &mut admin, &server).await {
             Ok(pair) => pair,
@@ -147,7 +165,13 @@ async fn fleet(directory: &Path) -> Result<(), Error> {
             }
         };
         let tls = identity.client_config(roots.clone(), &certificate)?;
-        handles.push(tokio::spawn(simulate(profile, tls, agent, state.clone())));
+        handles.push(tokio::spawn(simulate(
+            profile,
+            tls,
+            agent,
+            state.clone(),
+            quiet,
+        )));
     }
     println!(
         "{} simulated agents running; stop with Ctrl+C",
@@ -430,7 +454,13 @@ fn checker(profile: &Profile) -> Checker {
     })
 }
 
-async fn simulate(profile: Profile, tls: Arc<ClientConfig>, port: u16, state: PathBuf) {
+async fn simulate(
+    profile: Profile,
+    tls: Arc<ClientConfig>,
+    port: u16,
+    state: PathBuf,
+    quiet: bool,
+) {
     let mut noise = Noise(profile.name.bytes().fold(17, |seed, byte| {
         seed.wrapping_mul(31).wrapping_add(u64::from(byte))
     }));
@@ -483,7 +513,7 @@ async fn simulate(profile: Profile, tls: Arc<ClientConfig>, port: u16, state: Pa
     let name = profile.name.clone();
     tokio::spawn(async move {
         while watched.changed().await.is_ok() {
-            if let Status::Connected { .. } = *watched.borrow() {
+            if !quiet && matches!(*watched.borrow(), Status::Connected { .. }) {
                 println!("{name}: connected");
             }
         }

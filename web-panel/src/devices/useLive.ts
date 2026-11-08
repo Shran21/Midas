@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+/** Change notices reload at most this often, so a busy fleet does not refetch continuously. */
+const NOTICE_GAP = 3_000;
+
 export type Live<T> = {
   value: T | undefined;
   error: unknown;
@@ -25,8 +28,10 @@ export function useLive<T>(
     loadedAt: null,
   });
   const generation = useRef(0);
+  const last = useRef(0);
   const reload = useCallback(async () => {
     const current = ++generation.current;
+    last.current = Date.now();
     setState((previous) => ({ ...previous, loading: true }));
     try {
       const value = await load();
@@ -44,7 +49,9 @@ export function useLive<T>(
   }, [load, fail]);
 
   useEffect(() => {
-    const timer = setTimeout(() => void reload(), changes === 0 ? 0 : 250);
+    const wait =
+      changes === 0 ? 0 : Math.max(250, last.current + NOTICE_GAP - Date.now());
+    const timer = setTimeout(() => void reload(), wait);
     return () => clearTimeout(timer);
   }, [reload, changes]);
 
