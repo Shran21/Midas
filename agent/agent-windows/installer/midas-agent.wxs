@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- WiX Toolset v3. The enrollment token is passed as a file path, never as a property value. -->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+  <Product Id="*" Name="MIDAS Agent" Language="1033" Version="$(var.Version)" Manufacturer="MIDAS"
+           UpgradeCode="C6C24014-452F-4B41-B57F-CB24C0AE7F71">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64"
+             Description="MIDAS monitoring and remote support agent" />
+    <MajorUpgrade DowngradeErrorMessage="A newer MIDAS agent is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Property Id="MIDAS_SERVER" Secure="yes" />
+    <Property Id="MIDAS_PORT" Value="8444" Secure="yes" />
+    <Property Id="MIDAS_ENROLLMENT_PORT" Value="443" Secure="yes" />
+    <Property Id="MIDAS_SERVER_CA" Secure="yes" />
+    <Property Id="MIDAS_KIND" Value="workstation" Secure="yes" />
+    <Property Id="MIDAS_TOKEN_FILE" Secure="yes" />
+
+    <Condition Message="Set MIDAS_SERVER and MIDAS_SERVER_CA (a PEM file path).">
+      <![CDATA[Installed OR REMOVE OR (MIDAS_SERVER AND MIDAS_SERVER_CA)]]>
+    </Condition>
+    <Condition Message="MIDAS_KIND must be workstation or server.">
+      <![CDATA[Installed OR REMOVE OR MIDAS_KIND = "workstation" OR MIDAS_KIND = "server"]]>
+    </Condition>
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="VendorFolder" Name="MIDAS">
+          <Directory Id="INSTALLFOLDER" Name="Agent">
+            <Component Id="Agent" Guid="49BF2720-4E25-4509-96E4-8DB51F6163D9" Win64="yes">
+              <File Id="AgentExe" Name="midas-agent.exe" Source="$(var.AgentPath)" KeyPath="yes" />
+              <ServiceInstall Id="AgentService" Name="MidasAgent" DisplayName="MIDAS agent"
+                              Description="MIDAS monitoring and remote support agent" Type="ownProcess"
+                              Start="auto" ErrorControl="normal" Account="LocalSystem" Arguments="service">
+                <util:ServiceConfig FirstFailureActionType="restart" SecondFailureActionType="restart"
+                                    ThirdFailureActionType="restart" RestartServiceDelayInSeconds="30"
+                                    ResetPeriodInDays="1" />
+              </ServiceInstall>
+              <ServiceControl Id="AgentServiceControl" Name="MidasAgent" Start="install" Stop="both"
+                              Remove="uninstall" Wait="yes" />
+            </Component>
+          </Directory>
+        </Directory>
+      </Directory>
+    </Directory>
+
+    <!-- The command line carries only paths; the agent reads the token file and stages it in its protected data directory. -->
+    <CustomAction Id="SetConfigureWithToken" Property="ConfigureAgent"
+                  Value="&quot;[#AgentExe]&quot; configure --server &quot;[MIDAS_SERVER]&quot; --port [MIDAS_PORT] --enrollment-port [MIDAS_ENROLLMENT_PORT] --server-ca &quot;[MIDAS_SERVER_CA]&quot; --kind [MIDAS_KIND] --token-file &quot;[MIDAS_TOKEN_FILE]&quot;" />
+    <CustomAction Id="SetConfigure" Property="ConfigureAgent"
+                  Value="&quot;[#AgentExe]&quot; configure --server &quot;[MIDAS_SERVER]&quot; --port [MIDAS_PORT] --enrollment-port [MIDAS_ENROLLMENT_PORT] --server-ca &quot;[MIDAS_SERVER_CA]&quot; --kind [MIDAS_KIND]" />
+    <CustomAction Id="ConfigureAgent" BinaryKey="WixCA" DllEntry="WixQuietExec64" Execute="deferred"
+                  Impersonate="no" Return="check" />
+
+    <InstallExecuteSequence>
+      <Custom Action="SetConfigureWithToken" Before="ConfigureAgent"><![CDATA[NOT REMOVE AND MIDAS_TOKEN_FILE]]></Custom>
+      <Custom Action="SetConfigure" Before="ConfigureAgent"><![CDATA[NOT REMOVE AND NOT MIDAS_TOKEN_FILE]]></Custom>
+      <Custom Action="ConfigureAgent" After="InstallFiles"><![CDATA[NOT REMOVE]]></Custom>
+    </InstallExecuteSequence>
+
+    <Feature Id="Main" Level="1">
+      <ComponentRef Id="Agent" />
+    </Feature>
+  </Product>
+</Wix>

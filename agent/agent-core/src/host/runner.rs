@@ -93,12 +93,46 @@ pub fn load_config(paths: &Paths) -> Result<Config, String> {
     Ok(config)
 }
 
-/// One-time enrollment; the token comes from stdin and is never stored.
+/// Why an enrollment did not finish; a refusal is final, anything else may be retried.
+#[derive(Debug)]
+pub enum Failure {
+    Refused(EnrollError),
+    Failed(String),
+}
+
+impl std::fmt::Display for Failure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Refused(error) => write!(f, "enrollment refused: {error:?}"),
+            Self::Failed(message) => f.write_str(message),
+        }
+    }
+}
+
+impl From<String> for Failure {
+    fn from(message: String) -> Self {
+        Self::Failed(message)
+    }
+}
+
+impl From<&str> for Failure {
+    fn from(message: &str) -> Self {
+        Self::Failed(message.to_owned())
+    }
+}
+
+/// One-time enrollment; the token is never stored by this call.
 pub async fn enroll_with(
     paths: &Paths,
     platform: Platform,
     token: &str,
 ) -> Result<&'static str, String> {
+    submit(paths, platform, token)
+        .await
+        .map_err(|failure| failure.to_string())
+}
+
+async fn submit(paths: &Paths, platform: Platform, token: &str) -> Result<&'static str, Failure> {
     let config = load_config(paths)?;
     if paths.certificate().exists() {
         return Err("this agent is already enrolled".into());
@@ -113,7 +147,10 @@ pub async fn enroll_with(
     };
     let answer = enroll(&enrollment_server(&config)?, &request)
         .await
-        .map_err(|error| format!("enrollment refused: {error:?}"))?;
+        .map_err(|error| match error {
+            EnrollError::Rejected | EnrollError::Invalid => Failure::Refused(error),
+            other => Failure::Failed(format!("enrollment unavailable: {other:?}")),
+        })?;
     write_atomic(&paths.key(), identity.key_pem().as_bytes()).map_err(|e| e.to_string())?;
     match answer {
         EnrollAnswer::Issued(issued) => {
@@ -143,13 +180,38 @@ async fn pause(shutdown: &mut watch::Receiver<bool>, period: Duration) -> bool {
     }
 }
 
+/// Enrolls with a token an installer staged; it is deleted once the server decided.
+async fn enroll_staged(paths: &Paths, platform: Platform, state: &watch::Sender<State>) {
+    let Ok(token) = std::fs::read_to_string(paths.token()).map(Zeroizing::new) else {
+        return;
+    };
+    match submit(paths, platform, token.trim()).await {
+        Ok(outcome) => {
+            tracing::info!(outcome, "enrollment with the staged token answered");
+            let _ = std::fs::remove_file(paths.token());
+        }
+        Err(Failure::Refused(error)) => {
+            tracing::warn!(?error, "the staged enrollment token was refused");
+            let _ = std::fs::remove_file(paths.token());
+            state.send_replace(State::Rejected);
+        }
+        Err(Failure::Failed(error)) => {
+            tracing::warn!(error, "enrollment with the staged token will be retried");
+        }
+    }
+}
+
 /// Waits until the agent holds a certificate, polling a pending request.
 async fn credentials(
     paths: &Paths,
+    platform: Platform,
     state: &watch::Sender<State>,
     shutdown: &mut watch::Receiver<bool>,
 ) -> Option<(Config, Identity, String)> {
     loop {
+        if !paths.key().exists() {
+            enroll_staged(paths, platform, state).await;
+        }
         if let Some(found) = attempt(paths, state).await {
             return Some(found);
         }
@@ -247,7 +309,8 @@ pub async fn serve(
     state: watch::Sender<State>,
     mut shutdown: watch::Receiver<bool>,
 ) {
-    let Some((config, identity, certificate)) = credentials(&paths, &state, &mut shutdown).await
+    let Some((config, identity, certificate)) =
+        credentials(&paths, platform, &state, &mut shutdown).await
     else {
         state.send_replace(State::Stopped);
         return;

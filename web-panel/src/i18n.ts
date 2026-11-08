@@ -414,10 +414,13 @@ const hu = {
   selectAll: "Mind kijelölése",
   tokenExpires: "Lejár",
   tokenHandling:
-    "A tokent telepítőcsomagban vagy védett fájlban add át. Ne tedd URL-be, parancssorba vagy e-mailbe. A token egyszer használható.",
+    "A tokent telepítőcsomagban vagy védett fájlban add át. Ne tedd URL-be, parancssorba vagy e-mailbe. Egygépes token egyszer használható.",
   tokenHint:
     "Egyszer használható, ügyfélhez, telephelyhez, rendszerhez és géptípushoz kötött token egy új agent regisztrációjához.",
   tokenHours: "Érvényesség (óra)",
+  tokenUses: "Gépek száma",
+  sharedTokenHint:
+    "Több gépes (GPO, Intune) token nem lehet előre jóváhagyott: minden gép jóváhagyásra vár, ezek csoportosan jóváhagyhatók.",
   tokenOnce: "A token csak most látható.",
   tokenTitle: "Telepítőtoken",
 };
@@ -829,10 +832,13 @@ const en: Record<keyof typeof hu, string> = {
   selectAll: "Select all",
   tokenExpires: "Expires",
   tokenHandling:
-    "Hand the token over in an installer package or a protected file. Never put it in a URL, a command line or an e-mail. The token works once.",
+    "Hand the token over in an installer package or a protected file. Never put it in a URL, a command line or an e-mail. A single-device token works once.",
   tokenHint:
     "A single-use token bound to the customer, site, system and device kind, for enrolling one new agent.",
   tokenHours: "Lifetime (hours)",
+  tokenUses: "Number of devices",
+  sharedTokenHint:
+    "A token for several devices (GPO, Intune) cannot be preapproved: each device waits for approval, and they can be approved in bulk.",
   tokenOnce: "The token is shown only now.",
   tokenTitle: "Deployment token",
 };

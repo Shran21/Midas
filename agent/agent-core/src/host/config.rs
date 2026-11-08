@@ -6,6 +6,7 @@ use std::{
 use midas_protocol::enrollment::Kind;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use zeroize::Zeroizing;
 
 /// State files live in a directory only the agent (and administrators) can read.
 #[derive(Clone, Debug)]
@@ -35,6 +36,10 @@ impl Paths {
     }
     pub fn pending(&self) -> PathBuf {
         self.root.join("pending.json")
+    }
+    /// A token handed over by an installer; the agent enrolls with it and then deletes it.
+    pub fn token(&self) -> PathBuf {
+        self.root.join("enrollment-token")
     }
     pub fn inventory(&self) -> PathBuf {
         self.root.join("inventory.pb")
@@ -110,6 +115,23 @@ pub fn read_json<T: for<'a> Deserialize<'a>>(path: &Path) -> io::Result<Option<T
     }
 }
 
+/// Reads a token handed over in a file, so it never appears in a command line or installer log.
+pub fn token_from_file(path: &Path) -> Result<Zeroizing<String>, String> {
+    let text = Zeroizing::new(
+        std::fs::read_to_string(path).map_err(|e| format!("cannot read the token file: {e}"))?,
+    );
+    let token = text.trim();
+    let valid = token.starts_with("midas-enroll-")
+        && token.len() <= 128
+        && token
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-');
+    if !valid {
+        return Err("the token file does not hold an enrollment token".into());
+    }
+    Ok(Zeroizing::new(token.to_owned()))
+}
+
 /// Writes through a temporary file so a crash never leaves a half-written state file.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let temporary = path.with_extension("tmp");
@@ -120,6 +142,29 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_token_file_holds_exactly_one_token() {
+        let file = std::env::temp_dir().join(format!("midas-token-{}", Uuid::new_v4()));
+        let token = format!("midas-enroll-{}", "a1".repeat(32));
+        std::fs::write(&file, format!("{token}\r\n")).unwrap();
+        assert_eq!(token_from_file(&file).unwrap().as_str(), token);
+        for invalid in [
+            "".to_owned(),
+            "secret".to_owned(),
+            format!("{token} {token}"),
+            format!("midas-enroll-{}", "a".repeat(200)),
+        ] {
+            std::fs::write(&file, invalid).unwrap();
+            let error = token_from_file(&file).unwrap_err();
+            assert!(
+                !error.contains("midas-enroll"),
+                "the error never echoes the token"
+            );
+        }
+        std::fs::remove_file(&file).unwrap();
+        assert!(token_from_file(&file).is_err());
+    }
 
     fn config() -> Config {
         Config {

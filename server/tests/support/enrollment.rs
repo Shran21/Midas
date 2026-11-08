@@ -2117,6 +2117,47 @@ pub async fn verify(database: &Database, admin: &mut PgConnection) {
         "an expired token must be refused"
     );
 
+    // Managed deployment: a shared token enrolls up to its limit, every device waits for review,
+    // and a shared token cannot be preapproved.
+    let (status, _, _) = create(
+        &manager,
+        tenant,
+        json!({ "site_id": site, "platform": "windows", "kind": "workstation", "preapproved": true, "lifetime_hours": 24, "uses": 2 }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "a shared token is never preapproved"
+    );
+    let (status, shared, _) = create(
+        &manager,
+        tenant,
+        json!({ "site_id": site, "platform": "windows", "kind": "workstation", "preapproved": false, "lifetime_hours": 24, "uses": 2 }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{shared}");
+    let shared = shared["token"].as_str().unwrap().to_owned();
+    for _ in 0..2 {
+        assert!(matches!(
+            enroll(
+                &server,
+                &request(&shared, Platform::Windows, Kind::Workstation)
+            )
+            .await,
+            Ok(EnrollAnswer::Pending { .. })
+        ));
+    }
+    assert_eq!(
+        enroll(
+            &server,
+            &request(&shared, Platform::Windows, Kind::Workstation)
+        )
+        .await,
+        Err(EnrollError::Rejected),
+        "the third use exceeds the limit"
+    );
+
     let actions: Vec<(String, String, i64)> = sqlx::query_as("SELECT action, outcome, count(*) FROM midas.tenant_audit WHERE tenant_id = $1 AND action LIKE 'device.%' GROUP BY action, outcome ORDER BY action, outcome")
         .bind(tenant).fetch_all(&mut *admin).await.unwrap();
     let count = |action: &str, outcome: &str| {
@@ -2125,9 +2166,9 @@ pub async fn verify(database: &Database, admin: &mut PgConnection) {
             .find(|(a, o, _)| a == action && o == outcome)
             .map_or(0, |(_, _, n)| *n)
     };
-    assert_eq!(count("device.enroll_token_create", "success"), 4);
-    assert_eq!(count("device.enroll_request", "success"), 3);
-    assert_eq!(count("device.enroll_request", "denied"), 4);
+    assert_eq!(count("device.enroll_token_create", "success"), 5);
+    assert_eq!(count("device.enroll_request", "success"), 5);
+    assert_eq!(count("device.enroll_request", "denied"), 5);
     assert_eq!(count("device.enroll_approve", "success"), 1);
     assert_eq!(count("device.enroll_reject", "success"), 1);
     assert_eq!(count("device.revoke", "success"), 1);

@@ -15,7 +15,7 @@ mod windows {
 
     use clap::{Parser, Subcommand, ValueEnum};
     use midas_agent_windows::{
-        config::{Config, Paths},
+        config::{self, Config, Paths},
         ipc::{self, SessionRule},
         run_agent, runner,
         win::service,
@@ -35,30 +35,47 @@ mod windows {
         Server,
     }
 
+    #[derive(clap::Args)]
+    struct Target {
+        #[arg(long)]
+        server: String,
+        #[arg(long, default_value_t = 8444)]
+        port: u16,
+        #[arg(long, default_value_t = 443)]
+        enrollment_port: u16,
+        /// PEM file with the server certificate authority.
+        #[arg(long)]
+        server_ca: PathBuf,
+        #[arg(long, value_enum, default_value = "workstation")]
+        kind: DeviceKind,
+        #[arg(long)]
+        name: Option<String>,
+        /// File holding the enrollment token; the token itself never goes on the command line.
+        #[arg(long)]
+        token_file: Option<PathBuf>,
+    }
+
     #[derive(Subcommand)]
     enum Command {
         /// Registers and starts the service (administrator, from %ProgramFiles%).
         Install {
-            #[arg(long)]
-            server: String,
-            #[arg(long, default_value_t = 8444)]
-            port: u16,
-            #[arg(long, default_value_t = 443)]
-            enrollment_port: u16,
-            /// PEM file with the server certificate authority.
-            #[arg(long)]
-            server_ca: PathBuf,
-            #[arg(long, value_enum, default_value = "workstation")]
-            kind: DeviceKind,
-            #[arg(long)]
-            name: Option<String>,
+            #[command(flatten)]
+            target: Target,
+        },
+        /// Writes the configuration and stages the token; the installer registers the service.
+        #[command(hide = true)]
+        Configure {
+            #[command(flatten)]
+            target: Target,
         },
         /// Stops and removes the service; the data directory is kept.
         Uninstall,
-        /// Enrolls with a token read from standard input.
+        /// Enrolls with a token read from standard input or from `--token-file`.
         Enroll {
             #[arg(long, hide = true)]
             data: Option<PathBuf>,
+            #[arg(long)]
+            token_file: Option<PathBuf>,
         },
         /// Prints the agent status from the service.
         Status,
@@ -72,6 +89,32 @@ mod windows {
         /// Entry point used by the service control manager.
         #[command(hide = true)]
         Service,
+    }
+
+    type Prepared = (Config, Option<zeroize::Zeroizing<String>>);
+
+    fn prepare(target: Target) -> Result<Prepared, String> {
+        let config = Config {
+            server: target.server,
+            port: target.port,
+            enrollment_port: target.enrollment_port,
+            server_ca: std::fs::read_to_string(&target.server_ca)
+                .map_err(|e| format!("cannot read {}: {e}", target.server_ca.display()))?,
+            kind: match target.kind {
+                DeviceKind::Workstation => Kind::Workstation,
+                DeviceKind::Server => Kind::Server,
+            },
+            name: target
+                .name
+                .or_else(|| std::env::var("COMPUTERNAME").ok())
+                .ok_or("name is required")?,
+        };
+        let token = target
+            .token_file
+            .as_deref()
+            .map(config::token_from_file)
+            .transpose()?;
+        Ok((config, token))
     }
 
     fn data(path: Option<PathBuf>) -> Paths {
@@ -105,37 +148,38 @@ mod windows {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(error) => report(Err(error.to_string())),
             },
-            Command::Install {
-                server,
-                port,
-                enrollment_port,
-                server_ca,
-                kind,
-                name,
-            } => report((|| {
-                let config = Config {
-                    server,
-                    port,
-                    enrollment_port,
-                    server_ca: std::fs::read_to_string(&server_ca)
-                        .map_err(|e| format!("cannot read {}: {e}", server_ca.display()))?,
-                    kind: match kind {
-                        DeviceKind::Workstation => Kind::Workstation,
-                        DeviceKind::Server => Kind::Server,
-                    },
-                    name: name
-                        .or_else(|| std::env::var("COMPUTERNAME").ok())
-                        .ok_or("name is required")?,
-                };
-                service::install(&config)?;
+            Command::Install { target } => report((|| {
+                let (config, token) = prepare(target)?;
+                service::install(&config, token.as_deref().map(String::as_str))?;
                 Ok("service installed and started".to_owned())
             })()),
+            Command::Configure { target } => report((|| {
+                let (config, token) = prepare(target)?;
+                service::configure(&config, token.as_deref().map(String::as_str))?;
+                Ok("agent configured".to_owned())
+            })()),
             Command::Uninstall => report(service::uninstall().map(|()| "service removed".into())),
-            Command::Enroll { data: path } => {
-                let mut token = String::new();
-                if std::io::stdin().read_line(&mut token).is_err() || token.trim().is_empty() {
-                    return report(Err("provide the enrollment token on standard input".into()));
-                }
+            Command::Enroll {
+                data: path,
+                token_file,
+            } => {
+                let token = match token_file {
+                    Some(file) => match config::token_from_file(&file) {
+                        Ok(token) => token.to_string(),
+                        Err(error) => return report(Err(error)),
+                    },
+                    None => {
+                        let mut token = String::new();
+                        if std::io::stdin().read_line(&mut token).is_err()
+                            || token.trim().is_empty()
+                        {
+                            return report(Err(
+                                "provide the enrollment token on standard input".into()
+                            ));
+                        }
+                        token
+                    }
+                };
                 let paths = data(path);
                 report(
                     runtime()

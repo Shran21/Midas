@@ -181,6 +181,7 @@ export type TokenSpec = {
   kind: "workstation" | "server";
   preapproved: boolean;
   lifetime_hours: number;
+  uses: number;
 };
 export type CreatedToken = { id: string; token: string; expires_at: number };
 export type ConnectorView = {

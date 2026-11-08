@@ -10,7 +10,7 @@ Az új agent helyben P-256 kulcspárt készít, és a szervert hitelesítő HTTP
 
 ### Folyamat
 
-1. **Token:** a `device.enroll` joggal rendelkező kezelő (friss passkey-belépéssel) tokent kér a `POST /api/tenants/{ügyfél}/enrollment-tokens` végponton. A token ügyfélhez, opcionálisan telephelyhez, platformhoz (`windows`, `linux`) és géptípushoz (`workstation`, `server`) kötött, legfeljebb 720 órán át érvényes, és csak egyszer jelenik meg. A szerver csak a kivonatát tárolja. Az előre jóváhagyott (`preapproved`) token ellenőrzött telepítési identitásnak számít, például egy gépenként kiadott telepítőcsomagban.
+1. **Token:** a `device.enroll` joggal rendelkező kezelő (friss passkey-belépéssel) tokent kér a `POST /api/tenants/{ügyfél}/enrollment-tokens` végponton. A token ügyfélhez, opcionálisan telephelyhez, platformhoz (`windows`, `linux`) és géptípushoz (`workstation`, `server`) kötött, legfeljebb 720 órán át érvényes, és csak egyszer jelenik meg. A szerver csak a kivonatát tárolja. Az előre jóváhagyott (`preapproved`) token ellenőrzött telepítési identitásnak számít, például egy gépenként kiadott telepítőcsomagban. Központi telepítéshez (GPO, Intune) a token legfeljebb 1000 gépre adható ki (`uses`); az ilyen token nem lehet előre jóváhagyott, minden gép jóváhagyásra vár, és a webpanelen csoportosan jóváhagyható.
 2. **Kérelem:** az agent a `POST /agent/enroll` végpontra küldi a tokent, a PKCS#10 tanúsítványkérelmet, a platformot, a géptípust és a gépnevet. A szerver ellenőrzi a kérelem aláírását, vagyis a kulcs birtoklását; csak P-256 kulcsot fogad el. Rossz platform vagy géptípus esetén elutasít, a tokent viszont nem használja el. Felhasznált, lejárt vagy ismeretlen tokenre ugyanazt az elutasítást adja, az okot csak az audit rögzíti.
 3. **Jóváhagyás:** előre jóváhagyott tokennél a válasz azonnal a tanúsítvány. Egyébként az eszköz függő állapotba kerül, és az agent egy egyszer megjelenő kérelemazonosítót és titkot kap. Ezekkel a `POST /agent/enroll/{azonosító}` végponton kérdezi le az állapotot, legfeljebb 30 napig. A kezelő a `GET /api/tenants/{ügyfél}/devices/pending` listából, amely csak a még érvényes kérelmeket mutatja, a `…/devices/{eszköz}/approve` vagy `…/reject` végponton dönt.
 4. **Tanúsítvány:** a szerver saját profilt használ, a kérelemből csak a nyilvános kulcsot veszi át. A tanúsítvány tartalma: közös név az eszköz azonosítója, URI-név `urn:midas:device:{ügyfél}:{eszköz}`, csak kliens-hitelesítési kulcshasználat, nem CA, 365 napos érvényesség, véletlen sorozatszám. A szerver a tanúsítvány SHA-256 ujjlenyomatát tárolja.
@@ -18,6 +18,28 @@ Az új agent helyben P-256 kulcspárt készít, és a szervert hitelesítő HTTP
 6. **Visszavonás:** a `…/devices/{eszköz}/revoke` végpont az eszköz minden hitelesítő adatát visszavonja, és a szerver az élő agentkapcsolatot azonnal bontja. Új kapcsolat a visszavont tanúsítvánnyal nem jön létre.
 
 Minden token-kiadás, sikeres beiratkozási kérelem, jóváhagyás, elutasítás és visszavonás auditált, akárcsak az ismert tokenhez köthető elutasítás. Ismeretlen vagy hibás formátumú tokenre a szerver csak naplóbejegyzést ír, így hitelesítés nélküli kérések nem növelhetik az auditot. A token és a kérelemtitok nem kerül az auditba.
+
+### Windows-telepítőcsomag (MSI)
+
+A `agent/agent-windows/installer/midas-agent.wxs` (WiX Toolset v3) a `%ProgramFiles%\MIDAS\Agent` mappába telepíti az agentet, és natívan regisztrálja az automatikusan induló, hibánál újrainduló `MidasAgent` szolgáltatást. Felépítés: `python .github/scripts/check-msi.py` (`just release` után).
+
+| MSI-tulajdonság | Jelentés |
+| --- | --- |
+| `MIDAS_SERVER` | a szerver gépneve (kötelező) |
+| `MIDAS_SERVER_CA` | a szerver CA-ját tartalmazó PEM-fájl útvonala (kötelező) |
+| `MIDAS_PORT`, `MIDAS_ENROLLMENT_PORT` | agent- és beiratkozási port (alapból 8444 és 443) |
+| `MIDAS_KIND` | `workstation` vagy `server` |
+| `MIDAS_TOKEN_FILE` | a beiratkozási tokent tartalmazó fájl útvonala |
+
+- A token soha nem MSI-tulajdonság-érték és nem parancssori argumentum: az MSI csak a fájl útvonalát adja át. Telepítéskor az agent `configure` parancsa (rendszerjogon, a fájlok másolása után) beolvassa a tokent, és a csak SYSTEM és Administrators számára hozzáférhető adatkönyvtárba (`%ProgramData%\MIDAS\agent\enrollment-token`) helyezi.
+- A szolgáltatás indításkor ezzel iratkozik be. Ha a szerver dönt (kiadta a tanúsítványt, jóváhagyásra vár vagy elutasította), a tokent törli; elérhetetlen szervernél megtartja és később újrapróbál. Már beiratkozott gép újratelepítése vagy frissítése nem használja fel újra a tokent.
+- **Kézi telepítés:** egygépes tokent egy csak a rendszergazda által olvasható fájlba írva: `msiexec /i midas-agent.msi MIDAS_SERVER=midas.example MIDAS_SERVER_CA=C:\Telepites\ca.pem MIDAS_TOKEN_FILE=C:\Telepites\token.txt`. Utána a fájl törölhető.
+- **Központi telepítés (GPO, Intune):** többgépes (`uses`) token egy olyan helyen, amelyet csak a célgépek számítógépfiókja olvashat (például korlátozott megosztás vagy az Intune Win32-alkalmazás csomagja); a gépek jóváhagyásra várnak, és a webpanelen csoportosan jóváhagyhatók.
+- A CI a Windows-futón felépíti és ténylegesen telepíti az MSI-t egy próbatokennel, és ellenőrzi:
+  - a token nincs benne az MSI részletes naplójában és egyetlen folyamat parancssorában sem;
+  - a token a védett adatkönyvtárban van, felhasználói hozzáférés nélkül;
+  - a szolgáltatás fut;
+  - eltávolításkor a szolgáltatás megszűnik.
 
 ### Webpanel: Felderítés és regisztráció
 
@@ -41,7 +63,8 @@ A beiratkozáshoz adatbázis és az agent-CA privát kulcsa kell: `--agent-ca ag
 ### Ismert korlátok
 
 - A tanúsítvány megújítása még nincs megvalósítva; a kiadott tanúsítvány 365 napig érvényes. A megújításnak újra kell ellenőriznie az eszköz állapotát.
-- A kulcs és a tanúsítvány védett helyi tárolása a Windows-szolgáltatás (MIDAS-023) és a Linux-csomag (MIDAS-024), a telepítőcsomag védett tokenátadása a MIDAS-033 része.
+- A kulcs és a tanúsítvány védett helyi tárolása a Windows-szolgáltatás (MIDAS-023) és a Linux-csomag (MIDAS-024) része.
+- Az MSI kódaláírása még nincs; éles terjesztés előtt aláírt csomag kell. Valódi tartományi GPO- és Intune-telepítést a felhasználó saját próbája igazol.
 - A TLS-réteg CRL-je induláskor töltődik be; a visszavonás azonnali hatását az alkalmazásszintű ujjlenyomat-ellenőrzés adja.
 
 ## English
@@ -52,7 +75,7 @@ A new agent creates a P-256 key pair locally and requests a client certificate o
 
 ### Flow
 
-1. **Token:** an operator holding `device.enroll` (with a fresh passkey sign-in) requests a token at `POST /api/tenants/{tenant}/enrollment-tokens`. The token is bound to the customer, optionally a site, a platform (`windows`, `linux`) and a device kind (`workstation`, `server`), lasts at most 720 hours and is shown once. The server stores only its digest. A `preapproved` token counts as a verified deployment identity, for example inside a per-device installer package.
+1. **Token:** an operator holding `device.enroll` (with a fresh passkey sign-in) requests a token at `POST /api/tenants/{tenant}/enrollment-tokens`. The token is bound to the customer, optionally a site, a platform (`windows`, `linux`) and a device kind (`workstation`, `server`), lasts at most 720 hours and is shown once. The server stores only its digest. A `preapproved` token counts as a verified deployment identity, for example inside a per-device installer package. For managed deployment (GPO, Intune) a token may cover up to 1000 devices (`uses`); such a token cannot be preapproved, every device waits for approval, and they can be approved in bulk in the web panel.
 2. **Request:** the agent posts the token, a PKCS#10 request, platform, kind and device name to `POST /agent/enroll`. The server verifies the request signature, which proves key possession, and accepts only P-256 keys. A wrong platform or kind is refused without consuming the token. Used, expired and unknown tokens receive the same refusal; only the audit trail records the reason.
 3. **Approval:** with a preapproved token the answer is the certificate. Otherwise the device becomes pending and the agent receives a request ID and secret, shown once, to poll `POST /agent/enroll/{id}` for up to 30 days. The operator decides from `GET /api/tenants/{tenant}/devices/pending`, which lists only unexpired requests, via `…/devices/{device}/approve` or `…/reject`.
 4. **Certificate:** the server uses its own profile and takes only the public key from the request. The certificate has the device ID as common name, the URI name `urn:midas:device:{tenant}:{device}`, client authentication as its only extended key usage, no CA rights, 365-day validity and a random serial number. The server stores its SHA-256 fingerprint.
@@ -60,6 +83,28 @@ A new agent creates a P-256 key pair locally and requests a client certificate o
 6. **Revocation:** `…/devices/{device}/revoke` revokes every credential of the device, and the server closes its live agent connection at once. The revoked certificate cannot connect again.
 
 Token issuance, accepted enrollment requests, approvals, rejections and revocations are audited, as are refusals tied to a known token. Unknown or malformed tokens are only logged, so unauthenticated requests cannot grow the audit trail. Tokens and request secrets never reach the audit trail.
+
+### Windows installer package (MSI)
+
+`agent/agent-windows/installer/midas-agent.wxs` (WiX Toolset v3) installs the agent into `%ProgramFiles%\MIDAS\Agent` and natively registers the `MidasAgent` service, starting automatically and restarting on failure. Build: `python .github/scripts/check-msi.py` (after `just release`).
+
+| MSI property | Meaning |
+| --- | --- |
+| `MIDAS_SERVER` | server host name (required) |
+| `MIDAS_SERVER_CA` | path of the PEM file with the server CA (required) |
+| `MIDAS_PORT`, `MIDAS_ENROLLMENT_PORT` | agent and enrollment ports (8444 and 443 by default) |
+| `MIDAS_KIND` | `workstation` or `server` |
+| `MIDAS_TOKEN_FILE` | path of the file holding the enrollment token |
+
+- The token is never an MSI property value or a command-line argument: the MSI passes only the file path. During installation the agent's `configure` command (as SYSTEM, after the files are copied) reads the token and places it in the data directory readable only by SYSTEM and Administrators (`%ProgramData%\MIDAS\agent\enrollment-token`).
+- The service enrolls with it on start. Once the server decided (issued a certificate, put the device on hold or refused it) the token is deleted; with an unreachable server it is kept and retried later. Reinstalling or upgrading an enrolled device does not use the token again.
+- **Manual installation:** a single-device token in a file readable only by the administrator: `msiexec /i midas-agent.msi MIDAS_SERVER=midas.example MIDAS_SERVER_CA=C:\Setup\ca.pem MIDAS_TOKEN_FILE=C:\Setup\token.txt`. The file can be deleted afterwards.
+- **Managed deployment (GPO, Intune):** a multi-device (`uses`) token in a place only the target computer accounts can read (for example a restricted share or the Intune Win32 app package); the devices wait for approval and can be approved in bulk in the web panel.
+- CI builds the MSI on the Windows runner and actually installs it with a test token, then checks:
+  - the token is in neither the verbose MSI log nor any process command line;
+  - the token sits in the protected data directory without user access;
+  - the service runs;
+  - removal deletes the service.
 
 ### Web panel: Discovery and enrollment
 
@@ -83,5 +128,6 @@ Enrollment needs a database and the agent CA private key: `--agent-ca agent-ca.p
 ### Known limits
 
 - Certificate renewal is not implemented yet; issued certificates last 365 days. Renewal must recheck device state.
-- Protected local storage of the key and certificate belongs to the Windows service (MIDAS-023) and Linux package (MIDAS-024); protected token delivery in installer packages to MIDAS-033.
+- Protected local storage of the key and certificate belongs to the Windows service (MIDAS-023) and Linux package (MIDAS-024).
+- The MSI is not code-signed yet; production distribution needs a signed package. Real domain GPO and Intune deployment is confirmed by the user's own trial.
 - The TLS-layer CRL loads at startup; the application-level fingerprint check makes revocation effective immediately.

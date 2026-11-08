@@ -335,6 +335,7 @@ function TokenPanel({ tenant, access, t, language, csrf, fail }: Props) {
   const [kind, setKind] = useState<"workstation" | "server">("workstation");
   const [preapproved, setPreapproved] = useState(false);
   const [hours, setHours] = useState(24);
+  const [uses, setUses] = useState(1);
   const [created, setCreated] = useState<CreatedToken | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -350,8 +351,9 @@ function TokenPanel({ tenant, access, t, language, csrf, fail }: Props) {
             site_id: site || null,
             platform,
             kind,
-            preapproved,
+            preapproved: preapproved && uses === 1,
             lifetime_hours: hours,
+            uses,
           },
           csrf,
         ),
@@ -416,15 +418,28 @@ function TokenPanel({ tenant, access, t, language, csrf, fail }: Props) {
             onChange={(event) => setHours(Number(event.target.value))}
           />
         </label>
+        <label className="field">
+          <span>{t.tokenUses}</span>
+          <input
+            type="number"
+            min={1}
+            max={1000}
+            value={uses}
+            onChange={(event) =>
+              setUses(Math.max(1, Number(event.target.value)))
+            }
+          />
+        </label>
         <label className="check-field">
           <input
             type="checkbox"
-            checked={preapproved}
+            disabled={uses > 1}
+            checked={preapproved && uses === 1}
             onChange={(event) => setPreapproved(event.target.checked)}
           />
           <span>
             {t.preapproved}
-            <small>{t.preapprovedHint}</small>
+            <small>{uses > 1 ? t.sharedTokenHint : t.preapprovedHint}</small>
           </span>
         </label>
         <button type="submit" className="button primary">

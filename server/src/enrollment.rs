@@ -31,6 +31,7 @@ use crate::{
 const CERTIFICATE_DAYS: i64 = 365;
 const REQUEST_DAYS: i64 = 30;
 const MAX_TOKEN_HOURS: u32 = 720;
+const MAX_TOKEN_USES: u32 = 1000;
 
 #[derive(Debug)]
 pub enum AuthorityError {
@@ -147,6 +148,13 @@ pub struct TokenSpec {
     /// A preapproved token is a verified deployment identity and issues without review.
     pub preapproved: bool,
     pub lifetime_hours: u32,
+    /// Devices one token may enroll; more than one is for managed deployment and needs review.
+    #[serde(default = "single_use")]
+    pub uses: u32,
+}
+
+fn single_use() -> u32 {
+    1
 }
 
 /// Returned once; only a digest of the token is stored.
@@ -314,7 +322,12 @@ impl Enrollment {
         spec: &TokenSpec,
     ) -> Result<CreatedToken, AccessError> {
         let identity = self.operator(sessions, token, tenant, true).await?;
-        if spec.lifetime_hours == 0 || spec.lifetime_hours > MAX_TOKEN_HOURS {
+        if spec.lifetime_hours == 0
+            || spec.lifetime_hours > MAX_TOKEN_HOURS
+            || spec.uses == 0
+            || spec.uses > MAX_TOKEN_USES
+            || (spec.uses > 1 && spec.preapproved)
+        {
             return Err(AccessError::InvalidInput);
         }
         let value = format!("{TOKEN_PREFIX}{}", secret()?);
@@ -330,10 +343,11 @@ impl Enrollment {
                 return Err(AccessError::InvalidInput);
             }
         }
-        let expires_at: i64 = sqlx::query_scalar("INSERT INTO midas.enrollment_tokens (digest, id, tenant_id, site_id, platform, kind, preapproved, created_by, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, clock_timestamp() + make_interval(hours => $9)) RETURNING extract(epoch FROM expires_at)::bigint")
+        let expires_at: i64 = sqlx::query_scalar("INSERT INTO midas.enrollment_tokens (digest, id, tenant_id, site_id, platform, kind, preapproved, created_by, expires_at, max_uses) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, clock_timestamp() + make_interval(hours => $9), $10) RETURNING extract(epoch FROM expires_at)::bigint")
             .bind(digest(b"enrollment-token", &value)).bind(id).bind(tenant).bind(spec.site_id)
             .bind(spec.platform.as_str()).bind(spec.kind.as_str()).bind(spec.preapproved)
             .bind(identity.operator_id).bind(i32::try_from(spec.lifetime_hours).map_err(|_| AccessError::InvalidInput)?)
+            .bind(i32::try_from(spec.uses).map_err(|_| AccessError::InvalidInput)?)
             .fetch_one(&mut *tx).await?;
         let mut event = Event::new(
             Action::EnrollmentTokenCreate,
@@ -344,7 +358,8 @@ impl Enrollment {
         .detail("platform", spec.platform.as_str())
         .detail("kind", spec.kind.as_str())
         .detail("preapproved", spec.preapproved)
-        .detail("lifetime_hours", spec.lifetime_hours);
+        .detail("lifetime_hours", spec.lifetime_hours)
+        .detail("uses", spec.uses);
         event.tenant = Some(tenant);
         audit::append_tenant(&mut tx, &event).await?;
         tx.commit().await?;
@@ -400,7 +415,7 @@ impl Enrollment {
         }
         let token_digest = digest(b"enrollment-token", &request.token);
         let mut tx = self.pool.begin().await?;
-        let row: Option<TokenRow> = sqlx::query_as("SELECT id, tenant_id, site_id, platform, kind, preapproved, used_at IS NOT NULL, expires_at <= clock_timestamp() FROM midas.enrollment_tokens WHERE digest = $1 FOR UPDATE")
+        let row: Option<TokenRow> = sqlx::query_as("SELECT id, tenant_id, site_id, platform, kind, preapproved, (max_uses = 1 AND used_at IS NOT NULL) OR use_count >= max_uses, expires_at <= clock_timestamp() FROM midas.enrollment_tokens WHERE digest = $1 FOR UPDATE")
             .bind(&token_digest).fetch_optional(&mut *tx).await?;
         let Some((token_id, tenant, site, platform, kind, preapproved, used, expired)) = row else {
             drop(tx);
@@ -428,7 +443,7 @@ impl Enrollment {
             .bind(tenant).bind(device).bind(site).bind(name).bind(&kind).bind(&platform)
             .bind(if preapproved { "active" } else { "pending" }).bind(preapproved)
             .execute(&mut *tx).await?;
-        sqlx::query("UPDATE midas.enrollment_tokens SET used_at = clock_timestamp(), device_id = $2 WHERE digest = $1")
+        sqlx::query("UPDATE midas.enrollment_tokens SET used_at = clock_timestamp(), device_id = $2, use_count = use_count + 1 WHERE digest = $1")
             .bind(&token_digest).bind(device).execute(&mut *tx).await?;
         let answer = if preapproved {
             let certificate = self

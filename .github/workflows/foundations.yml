@@ -78,6 +78,9 @@ jobs:
         run: just test-database
       - name: Build
         run: just release
+      - name: Agent installer (Windows)
+        if: runner.os == 'Windows'
+        run: python .github/scripts/check-msi.py --install
       - name: Agent service hardening (Linux)
         if: runner.os == 'Linux'
         run: python .github/scripts/check-linux-unit.py

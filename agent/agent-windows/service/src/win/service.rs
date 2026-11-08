@@ -106,7 +106,25 @@ fn protect(directory: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
-pub fn install(config: &Config) -> Result<(), String> {
+/// Writes the configuration into the protected data directory and stages an enrollment token
+/// handed over in a file. Installers call this; it registers no service.
+pub fn configure(config: &Config, token: Option<&str>) -> Result<(), String> {
+    config.validate()?;
+    let paths = Paths::new(data_dir());
+    std::fs::create_dir_all(&paths.root).map_err(|e| e.to_string())?;
+    protect(&paths.root)?;
+    let bytes = serde_json::to_vec_pretty(config).map_err(|e| e.to_string())?;
+    write_atomic(&paths.config(), &bytes).map_err(|e| e.to_string())?;
+    // An upgrade may pass the same token again; an enrolled agent keeps its identity.
+    if let Some(token) = token
+        && !paths.certificate().exists()
+    {
+        write_atomic(&paths.token(), token.as_bytes()).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+pub fn install(config: &Config, token: Option<&str>) -> Result<(), String> {
     config.validate()?;
     let program = std::env::current_exe().map_err(|e| e.to_string())?;
     let program_files = std::env::var_os("ProgramFiles").ok_or("ProgramFiles is not set")?;
@@ -118,11 +136,7 @@ pub fn install(config: &Config) -> Result<(), String> {
     ) {
         return Err("install from a folder under %ProgramFiles%".into());
     }
-    let paths = Paths::new(data_dir());
-    std::fs::create_dir_all(&paths.root).map_err(|e| e.to_string())?;
-    protect(&paths.root)?;
-    let bytes = serde_json::to_vec_pretty(config).map_err(|e| e.to_string())?;
-    write_atomic(&paths.config(), &bytes).map_err(|e| e.to_string())?;
+    configure(config, token)?;
     let manager = ServiceManager::local_computer(
         None::<&str>,
         ServiceManagerAccess::CONNECT | ServiceManagerAccess::CREATE_SERVICE,
