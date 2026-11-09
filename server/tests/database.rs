@@ -1,3 +1,4 @@
+use midas_server::database::driver as sqlx;
 use midas_server::database::{Database, connection_options, migrate};
 use sqlx::{
     ConnectOptions, Connection, PgConnection, PgPool,
@@ -110,7 +111,37 @@ async fn postgres_isolates_tenants_and_reused_connections() {
         .password(&password)
         .to_url_lossy()
         .to_string();
-    migrate(&migrator_url, true).await.unwrap();
+    let reference = sqlx::migrate::Migrator::new(std::path::Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/migrations"
+    )))
+    .await
+    .unwrap();
+    let mut existing =
+        PgConnection::connect_with(&connection_options(&migrator_url, true).unwrap())
+            .await
+            .unwrap();
+    sqlx::raw_sql("SET ROLE midas_owner; SET search_path TO midas, pg_catalog;")
+        .execute(&mut existing)
+        .await
+        .unwrap();
+    reference.run(&mut existing).await.unwrap();
+    existing.close().await.unwrap();
+    assert_eq!(
+        reference.iter().count(),
+        midas_server::database::MIGRATIONS.iter().count()
+    );
+    for (original, embedded) in reference
+        .iter()
+        .zip(midas_server::database::MIGRATIONS.iter())
+    {
+        assert_eq!(original.version, embedded.version);
+        assert_eq!(original.description, embedded.description);
+        assert_eq!(original.migration_type, embedded.migration_type);
+        assert_eq!(original.sql.as_str(), embedded.sql.as_str());
+        assert_eq!(original.checksum, embedded.checksum);
+        assert_eq!(original.no_tx, embedded.no_tx);
+    }
     migrate(&migrator_url, true).await.unwrap();
     let applied: i64 =
         sqlx::query_scalar("SELECT count(*) FROM midas._sqlx_migrations WHERE success")

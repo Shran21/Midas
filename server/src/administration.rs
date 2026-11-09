@@ -1,3 +1,4 @@
+use crate::database::driver as sqlx;
 use serde::Serialize;
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;

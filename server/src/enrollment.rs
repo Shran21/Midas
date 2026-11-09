@@ -1,3 +1,4 @@
+use crate::database::driver as sqlx;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -165,7 +166,7 @@ pub struct CreatedToken {
     pub expires_at: i64,
 }
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize)]
 pub struct PendingDevice {
     pub id: Uuid,
     pub name: String,
@@ -174,9 +175,17 @@ pub struct PendingDevice {
     pub site_id: Option<Uuid>,
     pub requested_at: i64,
 }
+crate::database::postgres_row!(PendingDevice {
+    id,
+    name,
+    platform,
+    kind,
+    site_id,
+    requested_at
+});
 
 /// A finished enrollment decision; `decided_by` is empty when a preapproved token issued at once.
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize)]
 pub struct Decision {
     pub id: Uuid,
     pub name: String,
@@ -188,6 +197,17 @@ pub struct Decision {
     pub decided_at: Option<i64>,
     pub decided_by: Option<String>,
 }
+crate::database::postgres_row!(Decision {
+    id,
+    name,
+    platform,
+    kind,
+    site_id,
+    enrollment,
+    requested_at,
+    decided_at,
+    decided_by
+});
 
 /// Agent-facing refusal; the reason stays in the audit trail, not in the response.
 #[derive(Debug, PartialEq, Eq)]

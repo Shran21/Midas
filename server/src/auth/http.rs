@@ -1,3 +1,4 @@
+use crate::database::driver as sqlx;
 use std::{
     net::{IpAddr, SocketAddr},
     sync::Arc,

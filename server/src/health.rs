@@ -1,3 +1,4 @@
+use crate::database::driver as sqlx;
 use midas_protocol::{
     HealthCheck, HealthReport, HealthState, MAX_HEALTH_CHECKS, MAX_HEALTH_SUBJECTS, MAX_HEALTH_TEXT,
 };
@@ -18,7 +19,7 @@ pub struct HealthView {
     pub checks: Vec<HealthEntry>,
 }
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize)]
 pub struct HealthEntry {
     pub id: String,
     pub state: String,
@@ -28,6 +29,14 @@ pub struct HealthEntry {
     /// When the state or reason last changed.
     pub changed_at: i64,
 }
+crate::database::postgres_row!(HealthEntry {
+    id,
+    state,
+    code,
+    summary,
+    subjects,
+    changed_at
+});
 
 fn identifier(text: &str, longest: usize) -> bool {
     (1..=longest).contains(&text.len()) && text.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')

@@ -1,3 +1,4 @@
+use midas_server::database::driver as sqlx;
 use std::{sync::Arc, time::Duration};
 
 use axum::http::StatusCode;

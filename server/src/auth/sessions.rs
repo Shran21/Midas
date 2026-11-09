@@ -1,3 +1,4 @@
+use crate::database::driver as sqlx;
 use std::{
     sync::atomic::{AtomicU64, Ordering},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -96,7 +97,6 @@ pub struct SessionInfo {
     pub expires_at: i64,
 }
 
-#[derive(sqlx::FromRow)]
 struct Row {
     id: Uuid,
     operator_id: Uuid,
@@ -107,6 +107,16 @@ struct Row {
     last_seen_at: i64,
     expires_at: i64,
 }
+crate::database::postgres_row!(Row {
+    id,
+    operator_id,
+    credential_version,
+    authentication_method,
+    authenticated_at,
+    created_at,
+    last_seen_at,
+    expires_at
+});
 
 impl TryFrom<Row> for SessionInfo {
     type Error = AuthError;

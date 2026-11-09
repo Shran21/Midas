@@ -44,6 +44,7 @@ A felmentett tételek állapota: a MIDAS-018, MIDAS-023 és MIDAS-024 Backlog �
 
 ### Nyitott hibák és figyelmeztetések
 
+- A november 9-i ütemezett Security-futás a korábban sikeres `ce9d69d` commiton a `libsqlite3-sys 0.37.0` függőséget jelezte (RUSTSEC-2026-0459). A csomag a zárolt listában szerepelt, az aktív PostgreSQL-fordításban nem. A javítás közvetlenül az SQLx magját és PostgreSQL-meghajtóját használja, így a nem használt SQLite-, MySQL- és makrófüggőség kikerül. A migrációk és a név szerinti sorleképezés megmaradnak; a kompatibilitást az [adatbázispróba](../adatbazis.md#ellenőrzés) ellenőrzi. A korábbi sikeres CI-eredmény a javítás ellenőrzését nem helyettesíti.
 - Nincs nyitott, a terven kívüli issue. Nyitott titokriasztás: 0. Nyitott Dependabot-riasztás: 0. Kódelemzés (code scanning) nincs beállítva; a függőségeket a CI-ban a `cargo deny` és a `cargo audit`, a titkokat a gitleaks ellenőrzi.
 - A fázisban talált és javított hibák:
   - A MIDAS-034 tálcaprogramja minden elutasított állapotlekérdezésnél egy leírót megtartott. A MIDAS-039 mérése találta, és ott javult (f609192), integrációs teszttel.
@@ -136,6 +137,7 @@ Exempt items: MIDAS-018, MIDAS-023 and MIDAS-024 went Backlog → Ready → In p
 
 ### Open defects and warnings
 
+- The November 9 scheduled Security run flagged `libsqlite3-sys 0.37.0` (RUSTSEC-2026-0459) on the previously passing `ce9d69d` commit. The package was in the lockfile, outside the active PostgreSQL build. The fix uses SQLx core and its PostgreSQL driver directly, removing unused SQLite, MySQL and macro dependencies. Embedded migrations and named row mapping are preserved; the [database test](../adatbazis.md#english) checks compatibility. Earlier successful CI does not establish acceptance of this fix.
 - No unplanned issue is open. Open secret alerts: 0. Open Dependabot alerts: 0. Code scanning is not configured; CI checks dependencies with `cargo deny` and `cargo audit`, and secrets with gitleaks.
 - Defects found and fixed during the phase:
   - MIDAS-034's tray program kept one handle per refused status query. The MIDAS-039 measurement found it and MIDAS-039 fixed it (f609192), with an integration test.

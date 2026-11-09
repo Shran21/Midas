@@ -1,6 +1,7 @@
 //! Teams and Slack alert channels. The webhook URL is the secret: it is stored sealed, never
 //! returned, and deliveries go only to the providers' webhook hosts over verified TLS.
 
+use crate::database::driver as sqlx;
 use std::{sync::Arc, time::Duration};
 
 use chacha20poly1305::{
@@ -76,7 +77,7 @@ pub struct ChannelSpec {
 }
 
 /// What operators see of a channel: never its URL.
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize)]
 pub struct ChannelView {
     pub id: Uuid,
     pub kind: String,
@@ -87,6 +88,16 @@ pub struct ChannelView {
     pub last_test_ok: Option<bool>,
     pub last_error: Option<String>,
 }
+crate::database::postgres_row!(ChannelView {
+    id,
+    kind,
+    label,
+    host,
+    created_at,
+    last_test_at,
+    last_test_ok,
+    last_error
+});
 
 #[derive(Debug, Serialize)]
 pub struct TestResult {

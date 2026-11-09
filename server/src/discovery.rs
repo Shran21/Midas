@@ -1,3 +1,4 @@
+use crate::database::driver as sqlx;
 use std::collections::HashMap;
 
 use midas_protocol::{
@@ -38,7 +39,6 @@ pub struct ComputerView {
     pub name_matches: Vec<Named>,
 }
 
-#[derive(sqlx::FromRow)]
 struct Row {
     domain: String,
     object_guid: Uuid,
@@ -53,6 +53,20 @@ struct Row {
     last_seen_at: i64,
     removed_at: Option<i64>,
 }
+crate::database::postgres_row!(Row {
+    domain,
+    object_guid,
+    name,
+    dns_host_name,
+    distinguished_name,
+    operating_system,
+    operating_system_version,
+    last_logon_at,
+    disabled,
+    first_seen_at,
+    last_seen_at,
+    removed_at
+});
 
 fn text(value: &str, limit: usize) -> bool {
     value.chars().count() <= limit && !value.contains('\0')

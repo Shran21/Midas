@@ -1,3 +1,4 @@
+use crate::database::driver as sqlx;
 mod challenges;
 mod crypto;
 pub mod directory;
@@ -115,12 +116,17 @@ pub enum AuthenticationMethod {
     Directory,
 }
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize)]
 pub struct Profile {
     pub login: String,
     pub display_name: String,
     pub platform_admin: bool,
 }
+crate::database::postgres_row!(Profile {
+    login,
+    display_name,
+    platform_admin
+});
 
 #[derive(Debug)]
 pub struct Authenticated {
@@ -168,7 +174,6 @@ impl TotpEnrollment {
     }
 }
 
-#[derive(sqlx::FromRow)]
 struct Account {
     id: Uuid,
     login: String,
@@ -177,6 +182,14 @@ struct Account {
     password_hash: Option<String>,
     totp_secret: Option<Vec<u8>>,
 }
+crate::database::postgres_row!(Account {
+    id,
+    login,
+    display_name,
+    credential_version,
+    password_hash,
+    totp_secret
+});
 
 pub struct AuthService {
     pool: PgPool,

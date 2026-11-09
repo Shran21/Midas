@@ -1,3 +1,4 @@
+use crate::database::driver as sqlx;
 use midas_protocol::{InventoryItem, InventoryUpdate, MAX_INVENTORY_ITEMS, MAX_INVENTORY_TEXT};
 use serde::Serialize;
 use uuid::Uuid;
@@ -14,13 +15,19 @@ pub struct InventoryView {
     pub items: Vec<InventoryEntry>,
 }
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize)]
 pub struct InventoryEntry {
     pub kind: String,
     pub key: String,
     pub value: String,
     pub updated_at: i64,
 }
+crate::database::postgres_row!(InventoryEntry {
+    kind,
+    key,
+    value,
+    updated_at
+});
 
 fn valid_kind(kind: &str) -> bool {
     (1..=16).contains(&kind.len()) && kind.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')

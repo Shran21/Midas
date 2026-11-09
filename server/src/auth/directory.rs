@@ -1,3 +1,4 @@
+use crate::database::driver as sqlx;
 use std::{net::IpAddr, sync::Arc, time::Duration};
 
 use ldap3::{LdapConnAsync, LdapConnSettings, Scope as LdapScope, SearchEntry, ldap_escape};

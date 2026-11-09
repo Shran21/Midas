@@ -1,3 +1,4 @@
+use crate::database::driver as sqlx;
 use std::time::Duration;
 
 use midas_protocol::{MAX_BATCH_SAMPLES, MetricsBatch};

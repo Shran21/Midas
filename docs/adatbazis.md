@@ -25,6 +25,8 @@ cargo run --locked -p midas-server --bin midas-db
 
 A migrációk a binárisba kerülnek, sorszámuk és ellenőrzőösszegük nyilvántartott. Az újrafuttatás a már alkalmazott változást nem ismétli meg. A futó szerver nem futtat migrációt, és nem igényli a migrációs fiók titkát.
 
+A szerver közvetlenül az SQLx PostgreSQL-meghajtóját és közös magját használja; SQLite-, MySQL- és SQLx-makrófüggőség nincs. A build az SQLx saját migrációfeloldójával ágyazza be az SQL-fájlokat, az eredeti verzióval, leírással, tranzakciós beállítással és ellenőrzőösszeggel. A név szerinti sorleképezés csak PostgreSQL-re készül. Az integrációs próba a szokásos SQLx-feloldóval létrehozott adatbázison is ellenőrzi a beágyazott migrációk újrafuttatását.
+
 A szerver a `MIDAS_DATABASE_URL` változóból kapja a korlátozott fiók kapcsolatát. Enélkül az előnézet és a meglévő állapotvégpont továbbra is működik. Beállított, de hibás vagy túl jogosult adatbáziskapcsolattal az indítás leáll. A `MIDAS_DATABASE_POOL_SIZE` pozitív egész számmal állítható, alapértelmezése 8; a pool nem tart fenn kötelezően ennyi üres kapcsolatot. A kiszolgáló induláskor és minden új adatbáziskapcsolatnál ellenőrzi a szerepet és az RLS alapfeltételeit.
 
 A kapcsolat alapértelmezésben `verify-full` TLS-t követel, a szervertanúsítvány és a hosztnév ellenőrzésével. Szükség esetén a kapcsolat `sslrootcert` beállításával add meg a CA-t. A URL-ben megadott gyengébb `sslmode` nem kapcsolja ki az ellenőrzést. Helyi fejlesztéshez a `MIDAS_DATABASE_LOCAL_PLAINTEXT=1` kizárólag számmal megadott loopback IP-címen enged titkosítás nélküli kapcsolatot. Távoli címhez ez az opció hibát okoz.
@@ -35,7 +37,7 @@ Minden ügyfélhez kötött táblán `ENABLE` és `FORCE ROW LEVEL SECURITY` mű
 
 A szerver `Database::begin` hívása tranzakción belül, lokális beállítással adja meg az ügyfelet. Commit, rollback és eldobott tranzakció után ez megszűnik; a pool kiadás előtt is törli az előző ügyfélkontextust. A lekérdezések paraméterezettek, és az alkalmazás szűrése mellett az adatbázis is ellenőriz.
 
-Az ügyfélazonosítót a hitelesített munkamenet és a [jogosultságellenőrzés](jogosultsagok.md) alapján lehet felhasználni, nem egy megbízhatónak tekintett HTTP-fejléc. Az RLS a hibás alkalmazásszűrő elleni további védelem; nem helyettesíti a hitelesítést és az RBAC-ot, és nem véd egy adatbázis-rendszergazdától vagy a futtatófiókkal megszerzett tetszőleges SQL-végrehajtástól. Jelenleg nincs nyilvános ügyfélkezelő vagy eszközkezelő API. Az alkalmazás nem naplóz SQL-szöveget vagy kötött értékeket.
+Az ügyfélazonosítót a hitelesített munkamenet és a [jogosultságellenőrzés](jogosultsagok.md) alapján lehet felhasználni, nem egy megbízhatónak tekintett HTTP-fejléc. Az RLS a hibás alkalmazásszűrő elleni további védelem; nem helyettesíti a hitelesítést és az RBAC-ot, és nem véd egy adatbázis-rendszergazdától vagy a futtatófiókkal megszerzett tetszőleges SQL-végrehajtástól. Az ügyfélkezelő és eszközkezelő API hitelesítést és a megfelelő célhatókörre érvényes jogosultságot követel. Az alkalmazás nem naplóz SQL-szöveget vagy kötött értékeket.
 
 ### Ellenőrzés
 
@@ -61,7 +63,9 @@ Connections require verified TLS including hostname validation; provide a CA thr
 
 All tenant tables enable and force RLS. Missing context exposes no rows and permits no writes. Composite foreign keys include tenant IDs. `Database::begin` uses transaction-local context, cleared by commit, rollback or dropped transactions; the pool also clears context before reuse. Parameterized application filters complement database enforcement.
 
-Authenticated sessions and [authorization](jogosultsagok.md#english) must validate tenant access before exposing this internal layer. Untrusted HTTP headers cannot supply authority. RLS protects against faulty filters, not database administrators or arbitrary SQL execution obtained with runtime credentials. Tenant/device HTTP APIs are not implemented. Application statement and parameter logging is disabled.
+Authenticated sessions and [authorization](jogosultsagok.md#english) must validate tenant access before exposing this internal layer. Untrusted HTTP headers cannot supply authority. RLS protects against faulty filters, not database administrators or arbitrary SQL execution obtained with runtime credentials. Tenant/device HTTP APIs require authentication and permission for the target scope. Application statement and parameter logging is disabled.
+
+The server depends directly on SQLx's PostgreSQL driver and core, without SQLite, MySQL or SQLx macro dependencies. The build uses SQLx's own migration resolver to embed SQL files with their original versions, descriptions, transaction settings and checksums. Named row mapping targets PostgreSQL only. The integration test also verifies embedded migrations against a database initialized with the standard SQLx resolver.
 
 Run `just test-database`. On Windows, `python .github/scripts/install-postgres.py` downloads checksum-pinned PostgreSQL 18.6 binaries without installing a system service. The test harness starts a fresh loopback cluster with a random password, then stops it and removes its own temporary data. Alternatively set `MIDAS_TEST_DATABASE_ADMIN_URL` to a dedicated disposable PostgreSQL 18 cluster: the database name must start with `midas_test_`, and MIDAS roles must not exist yet. Never run this against production; it creates roles and schema.
 

@@ -1,3 +1,4 @@
+use crate::database::driver as sqlx;
 use std::{
     collections::{HashMap, HashSet},
     fmt,
@@ -152,11 +153,12 @@ pub struct RemoteRequest {
     pub unattended: bool,
 }
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize)]
 pub struct TenantSummary {
     pub id: Uuid,
     pub name: String,
 }
+crate::database::postgres_row!(TenantSummary { id, name });
 
 /// Navigation hint for the signed-in operator; every operation still needs its own authorization.
 #[derive(Debug, Serialize)]

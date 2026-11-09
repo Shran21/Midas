@@ -1,3 +1,4 @@
+use crate::database::driver as sqlx;
 use midas_protocol::{
     DirectoryAssignment, DirectoryReport,
     directory::{domain_dn, valid_bases},

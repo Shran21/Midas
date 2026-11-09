@@ -1,3 +1,4 @@
+use crate::database::driver as sqlx;
 use std::{collections::HashMap, time::Duration, time::Instant};
 
 use serde::Serialize;
@@ -59,7 +60,6 @@ pub struct DeviceSummary {
     pub permissions: Vec<Permission>,
 }
 
-#[derive(sqlx::FromRow)]
 struct Row {
     id: Uuid,
     name: String,
@@ -86,8 +86,34 @@ struct Row {
     disk_used: Option<i64>,
     disk_total: Option<i64>,
 }
+crate::database::postgres_row!(Row {
+    id,
+    name,
+    kind,
+    platform,
+    enrollment,
+    site_id,
+    site_name,
+    online,
+    last_seen_at,
+    decided_at,
+    os,
+    capabilities,
+    health,
+    health_reported_at,
+    inventory_reconciled_at,
+    restart_pending,
+    open_alerts,
+    critical_alerts,
+    metrics_at,
+    cpu_permille,
+    memory_used,
+    memory_total,
+    disk_used,
+    disk_total
+});
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize)]
 pub struct Sample {
     pub at: i64,
     pub cpu_permille: i16,
@@ -98,8 +124,18 @@ pub struct Sample {
     pub net_rx: i64,
     pub net_tx: i64,
 }
+crate::database::postgres_row!(Sample {
+    at,
+    cpu_permille,
+    memory_used,
+    memory_total,
+    disk_used,
+    disk_total,
+    net_rx,
+    net_tx
+});
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize)]
 pub struct HourlySample {
     pub hour: i64,
     pub cpu_avg_permille: i16,
@@ -109,6 +145,15 @@ pub struct HourlySample {
     pub disk_used_max: i64,
     pub disk_total: i64,
 }
+crate::database::postgres_row!(HourlySample {
+    hour,
+    cpu_avg_permille,
+    cpu_max_permille,
+    memory_used_avg,
+    memory_total,
+    disk_used_max,
+    disk_total
+});
 
 #[derive(Debug, Serialize)]
 pub struct MetricsView {

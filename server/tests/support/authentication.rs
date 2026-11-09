@@ -1,3 +1,4 @@
+use midas_server::database::driver as sqlx;
 use std::{
     net::IpAddr,
     time::{SystemTime, UNIX_EPOCH},

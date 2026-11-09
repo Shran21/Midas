@@ -3,6 +3,7 @@
 //! `dev_fleet ca` writes an agent CA into `MIDAS_DEV_DIR`. `dev_fleet run` enrolls the devices
 //! of every tenant with preapproved tokens (stored once through `MIDAS_ADMIN_DATABASE_URL`) and
 //! then reports metrics, inventory and health checks over mTLS until stopped.
+use midas_server::database::driver as sqlx;
 use std::{
     fs,
     path::{Path, PathBuf},

@@ -1,3 +1,4 @@
+use crate::database::driver as sqlx;
 use std::net::IpAddr;
 
 use serde::Serialize;
@@ -188,7 +189,6 @@ pub struct Record {
     pub hash: String,
 }
 
-#[derive(sqlx::FromRow)]
 struct Row {
     sequence: i64,
     occurred_at: i64,
@@ -203,6 +203,20 @@ struct Row {
     details: String,
     hash: String,
 }
+crate::database::postgres_row!(Row {
+    sequence,
+    occurred_at,
+    tenant_id,
+    action,
+    outcome,
+    actor_operator_id,
+    actor_session_id,
+    subject_operator_id,
+    device_id,
+    source,
+    details,
+    hash
+});
 impl TryFrom<Row> for Record {
     type Error = AccessError;
     fn try_from(row: Row) -> Result<Self, AccessError> {

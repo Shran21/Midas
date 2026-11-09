@@ -1,3 +1,6 @@
+use crate::database::driver as sqlx;
+pub mod driver;
+
 use serde::Serialize;
 use sqlx::{
     ConnectOptions, Connection, PgConnection, PgPool, Postgres, Transaction,
@@ -8,7 +11,18 @@ use uuid::Uuid;
 
 use crate::transport::TransportError;
 
-pub static MIGRATIONS: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+include!(concat!(env!("OUT_DIR"), "/migrations.rs"));
+
+macro_rules! postgres_row {
+    ($name:ty { $($field:ident),+ $(,)? }) => {
+        impl $crate::database::driver::FromRow<'_, $crate::database::driver::postgres::PgRow> for $name {
+            fn from_row(row: &$crate::database::driver::postgres::PgRow) -> std::result::Result<Self, $crate::database::driver::Error> {
+                Ok(Self { $($field: $crate::database::driver::Row::try_get(row, stringify!($field))?),+ })
+            }
+        }
+    };
+}
+pub(crate) use postgres_row;
 
 pub fn connection_options(
     url: &str,
@@ -179,11 +193,12 @@ pub struct TenantTransaction<'a> {
     transaction: Transaction<'a, Postgres>,
 }
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize)]
 pub struct Site {
     pub id: Uuid,
     pub name: String,
 }
+crate::database::postgres_row!(Site { id, name });
 
 impl TenantTransaction<'_> {
     pub async fn create_tenant(&mut self, name: &str) -> Result<(), sqlx::Error> {

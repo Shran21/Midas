@@ -1,3 +1,4 @@
+use crate::database::driver as sqlx;
 use std::collections::HashMap;
 
 use midas_protocol::{PolicyAssignment, PolicySetting, policy};
@@ -56,7 +57,7 @@ pub struct CatalogueEntry {
     pub default: i64,
 }
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize)]
 pub struct StoredValue {
     pub level: String,
     pub scope_id: Uuid,
@@ -64,6 +65,13 @@ pub struct StoredValue {
     pub value: i64,
     pub updated_at: i64,
 }
+crate::database::postgres_row!(StoredValue {
+    level,
+    scope_id,
+    key,
+    value,
+    updated_at
+});
 
 #[derive(Debug, Serialize)]
 pub struct PolicyView {
@@ -76,12 +84,13 @@ pub struct ValueSpec {
     pub value: i64,
 }
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize)]
 pub struct Group {
     pub id: Uuid,
     pub name: String,
     pub priority: i32,
 }
+crate::database::postgres_row!(Group { id, name, priority });
 
 #[derive(Debug, Deserialize)]
 pub struct GroupSpec {

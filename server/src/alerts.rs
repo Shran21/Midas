@@ -1,3 +1,4 @@
+use crate::database::driver as sqlx;
 use std::time::Duration;
 
 use lettre::{
@@ -257,7 +258,7 @@ fn valid_email(address: &str) -> bool {
         && address.parse::<lettre::Address>().is_ok()
 }
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize)]
 pub struct AlertView {
     pub id: Uuid,
     pub device_id: Uuid,
@@ -275,6 +276,23 @@ pub struct AlertView {
     pub notifications_pending: i64,
     pub notifications_failed: i64,
 }
+crate::database::postgres_row!(AlertView {
+    id,
+    device_id,
+    device_name,
+    kind,
+    severity,
+    summary,
+    opened_at,
+    last_seen_at,
+    occurrences,
+    resolved_at,
+    acknowledged_at,
+    acknowledged_by,
+    notifications_sent,
+    notifications_pending,
+    notifications_failed
+});
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Recipients {

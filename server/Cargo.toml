@@ -34,7 +34,8 @@ rustls-acme.workspace = true
 futures-util.workspace = true
 clap.workspace = true
 serde.workspace = true
-sqlx.workspace = true
+sqlx-core.workspace = true
+sqlx-postgres.workspace = true
 uuid.workspace = true
 tokio.workspace = true
 tracing.workspace = true
@@ -46,6 +47,9 @@ rcgen = { workspace = true, features = ["x509-parser"] }
 time.workspace = true
 tower.workspace = true
 tokio-rustls.workspace = true
+
+[build-dependencies]
+sqlx-core = { version = "=0.9.0", default-features = false, features = ["migrate"] }
 
 [dev-dependencies]
 midas-agent-core = { path = "../agent/agent-core", version = "0.1.0" }
