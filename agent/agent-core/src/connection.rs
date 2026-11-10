@@ -21,6 +21,7 @@ pub const DIRECTORY_EVERY: Duration = Duration::from_secs(6 * 3600);
 
 #[derive(Clone)]
 pub struct Settings {
+    pub sessions: Option<crate::sessions::Probe>,
     pub host: String,
     pub port: u16,
     /// Must carry the agent's client certificate; the server only accepts mTLS.
@@ -47,6 +48,7 @@ pub struct Settings {
 impl Settings {
     pub fn new(host: String, port: u16, tls: Arc<rustls::ClientConfig>, platform: &str) -> Self {
         Self {
+            sessions: None,
             host,
             port,
             tls,
@@ -184,6 +186,7 @@ async fn session(
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     tick.tick().await;
     let mut pending: Option<u64> = None;
+    let (session_reports, mut session_results) = tokio::sync::mpsc::channel(1);
     let (reports, mut finished) = tokio::sync::mpsc::channel(1);
     // One directory check at a time; a newer assignment waits for the running one.
     let mut checking = false;
@@ -215,6 +218,11 @@ async fn session(
     }
     loop {
         tokio::select! {
+            Some(report) = session_results.recv() => {
+                if send(&mut socket, Body::SessionReport(report), keepalive).await.is_err() {
+                    return Outcome::Ended { connected };
+                }
+            }
             Some(scan) = finished.recv() => {
                 checking = false;
                 if let Some(next) = queued.take() {
@@ -258,6 +266,15 @@ async fn session(
                 }
             }
             frame = receive(&mut socket) => match frame {
+                Ok(Body::SessionRequest(request)) => {
+                    if let Some(probe) = &settings.sessions
+                        && midas_protocol::sessions::identifier(&request.request_id)
+                        && midas_protocol::sessions::identifier(&welcome.connection_id)
+                        && request.connection_id == welcome.connection_id
+                    {
+                        probe.request(request, session_reports.clone());
+                    }
+                }
                 Ok(Body::Pong(pong)) if Some(pong.nonce) == pending => pending = None,
                 Ok(Body::Ping(ping)) => {
                     if send(&mut socket, Body::Pong(Pong { nonce: ping.nonce }), keepalive).await.is_err() {

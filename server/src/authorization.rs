@@ -508,7 +508,7 @@ impl Authorizer {
         Ok(decision)
     }
 
-    async fn evaluate_in(
+    pub(crate) async fn evaluate_in(
         tx: &mut Transaction<'_, Postgres>,
         identity: &SessionInfo,
         target: Target,

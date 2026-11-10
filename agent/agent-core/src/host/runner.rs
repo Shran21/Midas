@@ -283,6 +283,7 @@ async fn collect(paths: &Paths, config: &Config, state: &watch::Sender<State>) {
 /// What a platform adds to the shared agent logic.
 #[derive(Clone, Default)]
 pub struct Probes {
+    pub sessions: Option<crate::sessions::Probe>,
     pub inventory: Option<crate::inventory::Collector>,
     pub health: Option<crate::health::Checker>,
     /// Health check ids the platform implements; each becomes a `health.<id>` capability.
@@ -298,6 +299,9 @@ impl Probes {
         }
         if self.health.is_some() {
             capabilities.extend(self.checks.iter().map(|check| format!("health.{check}")));
+        }
+        if self.sessions.is_some() {
+            capabilities.push(midas_protocol::sessions::CAPABILITY.into());
         }
         capabilities.extend(self.profile.capabilities());
         capabilities
@@ -360,6 +364,7 @@ pub async fn serve(
         (shared, schedule)
     });
     let settings = Settings {
+        sessions: probes.sessions,
         directory,
         metrics: Some(buffer),
         inventory: inventory.as_ref().map(|(shared, _)| shared.clone()),
@@ -391,6 +396,7 @@ mod tests {
     fn capabilities_follow_the_platform_probes() {
         assert_eq!(Probes::default().capabilities(), ["metrics"]);
         let probes = Probes {
+            sessions: None,
             inventory: Some(Arc::new(crate::inventory::Snapshot::new)),
             health: Some(Arc::new(|_: &crate::health::Thresholds| Vec::new())),
             checks: vec![crate::health::SERVICES, crate::health::STORAGE],

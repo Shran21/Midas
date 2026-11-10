@@ -210,6 +210,7 @@ mod windows {
                     stopped,
                     SessionRule::Exactly(session),
                     pipe,
+                    None,
                 ));
                 ExitCode::SUCCESS
             }

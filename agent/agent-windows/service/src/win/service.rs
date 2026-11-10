@@ -56,10 +56,16 @@ fn service_main(_arguments: Vec<OsString>) {
             .with_writer(std::sync::Mutex::new(file))
             .init();
     }
+    let observer = std::sync::Arc::new(super::sessions::Observer::default());
+    let probe = observer.probe();
     let (stop, stopped) = watch::channel(false);
     let handler = move |event| match event {
         ServiceControl::Stop | ServiceControl::Shutdown => {
             stop.send_replace(true);
+            ServiceControlHandlerResult::NoError
+        }
+        ServiceControl::SessionChange(_) => {
+            observer.changed();
             ServiceControlHandlerResult::NoError
         }
         ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
@@ -68,10 +74,18 @@ fn service_main(_arguments: Vec<OsString>) {
     let Ok(control) = service_control_handler::register(NAME, handler) else {
         return;
     };
-    let _ = control.set_service_status(status(
-        ServiceState::Running,
-        ServiceControlAccept::STOP | ServiceControlAccept::SHUTDOWN,
-    ));
+    if control
+        .set_service_status(status(
+            ServiceState::Running,
+            ServiceControlAccept::STOP
+                | ServiceControlAccept::SHUTDOWN
+                | ServiceControlAccept::SESSION_CHANGE,
+        ))
+        .is_err()
+    {
+        tracing::error!("service status and session notifications could not be enabled");
+        return;
+    }
     match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -81,6 +95,7 @@ fn service_main(_arguments: Vec<OsString>) {
             stopped,
             SessionRule::ActiveConsole,
             PIPE.into(),
+            Some(probe),
         )),
         Err(error) => tracing::error!(%error, "runtime could not start"),
     }

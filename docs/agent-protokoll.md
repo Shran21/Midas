@@ -17,7 +17,8 @@ Az agent egy tartós, kimenő, hitelesített kapcsolattal csatlakozik a szerverh
 | Üzenet | Irány | Tartalom |
 | --- | --- | --- |
 | `Hello` | agent → szerver | támogatott verziótartomány, agentverzió (legfeljebb 64 bájt), platform (legfeljebb 32 bájt), platformképességek (legfeljebb 32, [állapotellenőrzések](allapotellenorzes.md), [gépprofil](gepprofil.md)) |
-| `Welcome` | szerver → agent | egyeztetett verzió, keepalive-időköz másodpercben, szerververzió |
+| `Welcome` | szerver → agent | egyeztetett verzió, keepalive-időköz másodpercben, szerververzió, hiteles agentkapcsolat UUID-ja |
+| `SessionRequest` / `SessionReport` | szerver ↔ agent | Kérésre felderített Windows-munkamenetek, egyszeri kérés- és kapcsolat-azonosító; csak `remote.sessions` képességgel. [Szerződés és korlátok](felugyelet-nelkuli-hozzaferes.md#windows-munkamenetek-lekérdezése). |
 | `Reject` | szerver → agent | ok (`UNSUPPORTED_VERSION`, `INVALID_HELLO`) és a szerver által támogatott tartomány; utána a szerver bont |
 | `Ping` / `Pong` | mindkét irány | élőség-ellenőrzés véletlen azonosítóval |
 | `DirectoryAssignment` / `DirectoryReport` | szerver → kijelölt connector, illetve vissza | címtár-olvasási feladat és a vizsgálatot lezáró eredmény ([címtár-connector](cimtar-connector.md)) |
@@ -62,6 +63,8 @@ A `shared/protocol` egységtesztjei az egyeztetést, az újabb mezők és üzene
 - A Windows-szolgáltatás és a Linux-csomag, amelyek az agent-core kapcsolatát futtatják, a MIDAS-023 és a MIDAS-024 része.
 - A kliens HTTP/1.1-es WebSocket-frissítést használ; a HTTP/2-n keresztüli WebSocket nem cél.
 
+A munkamenet-lekérdezés a v1 protokoll opcionális bővítése: az Envelope 17/18 mezőjét és a Welcome 4. mezőjét használja. Képességjelzés nélkül a szerver nem küld ilyen kérést; hiányzó vagy hibás kapcsolat-azonosítóval az agent nem végez megfigyelést.
+
 ## English
 
 November 7, 2026 · MIDAS-021
@@ -77,7 +80,8 @@ The agent connects to the server over one persistent, outbound, authenticated co
 | Message | Direction | Content |
 | --- | --- | --- |
 | `Hello` | agent → server | supported version range, agent version (at most 64 bytes), platform (at most 32 bytes), platform capabilities (at most 32, [health checks](allapotellenorzes.md#english), [host profile](gepprofil.md#english)) |
-| `Welcome` | server → agent | negotiated version, keepalive interval in seconds, server version |
+| `Welcome` | server → agent | negotiated version, keepalive interval in seconds, server version, authenticated agent-connection UUID |
+| `SessionRequest` / `SessionReport` | server ↔ agent | On-demand Windows session discovery with one-use request and connection identifiers; requires `remote.sessions`. [Contract and limits](felugyelet-nelkuli-hozzaferes.md#querying-windows-sessions). |
 | `Reject` | server → agent | reason (`UNSUPPORTED_VERSION`, `INVALID_HELLO`) and the server's supported range; the server then closes |
 | `Ping` / `Pong` | both directions | liveness check with a random identifier |
 | `DirectoryAssignment` / `DirectoryReport` | server → designated connector and back | directory read task and the result that closes the scan ([directory connector](cimtar-connector.md#english)) |
@@ -121,3 +125,5 @@ Unit tests in `shared/protocol` cover negotiation, tolerance of newer fields and
 
 - The Windows service and Linux package that run the agent-core connection belong to MIDAS-023 and MIDAS-024.
 - The client uses an HTTP/1.1 WebSocket upgrade; WebSocket over HTTP/2 is not a goal.
+
+Session discovery is an optional v1 extension using Envelope fields 17/18 and Welcome field 4. Without the capability the server sends no query; without a valid connection identifier the agent performs no observation.

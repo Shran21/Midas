@@ -3,6 +3,7 @@
 pub use midas_agent_core::host::{config, runner};
 
 pub mod ipc;
+pub mod sessions;
 pub mod status;
 #[cfg(windows)]
 pub mod win;
@@ -13,6 +14,7 @@ pub async fn run_agent(
     shutdown: tokio::sync::watch::Receiver<bool>,
     rule: ipc::SessionRule,
     pipe: String,
+    sessions: Option<midas_agent_core::sessions::Probe>,
 ) {
     let (state, observed) = tokio::sync::watch::channel(runner::State::Starting);
     let status = match std::env::current_exe() {
@@ -34,6 +36,7 @@ pub async fn run_agent(
         paths,
         midas_protocol::enrollment::Platform::Windows,
         runner::Probes {
+            sessions,
             inventory: Some(std::sync::Arc::new(win::inventory::collect)),
             health: Some(std::sync::Arc::new(win::health::check)),
             checks: win::health::CHECKS.to_vec(),

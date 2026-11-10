@@ -125,6 +125,10 @@ async fn serve(
         version,
         keepalive_seconds: u32::try_from(protocol.keepalive.as_secs()).unwrap_or(u32::MAX),
         server_version: env!("CARGO_PKG_VERSION").into(),
+        connection_id: admission
+            .as_ref()
+            .map(|a| a.connection_id().as_bytes().to_vec())
+            .unwrap_or_default(),
     });
     if send(&mut socket, welcome, protocol.keepalive)
         .await
@@ -161,9 +165,34 @@ async fn serve(
     {
         return;
     }
+    let mut session_queries = match (&protocol.identities, &admission) {
+        (Some(identities), Some(admission))
+            if hello
+                .capabilities
+                .iter()
+                .any(|c| c == midas_protocol::sessions::CAPABILITY) =>
+        {
+            Some(identities.remote_sessions.register(admission))
+        }
+        _ => None,
+    };
+    let mut session_pending: Option<crate::remote_sessions::Pending> = None;
     let ending = loop {
         let next = tokio::select! {
             next = timeout(protocol.idle_limit(), receive(&mut socket)) => next,
+            Some(request) = crate::remote_sessions::next(&mut session_queries), if session_pending.is_none() => {
+                if let Some(admission) = &admission
+                    && let Some((pending, message)) = crate::remote_sessions::Pending::start(request, admission)
+                {
+                    session_pending = Some(pending);
+                    if send(&mut socket, Body::SessionRequest(message), protocol.keepalive).await.is_err() { break "closed"; }
+                }
+                continue;
+            }
+            () = crate::remote_sessions::expired(&session_pending) => {
+                if let Some(pending) = session_pending.take() { pending.expire(); }
+                continue;
+            }
             signal = changed(&mut admission) => {
                 if signal.revoked {
                     let _ = timeout(protocol.handshake_timeout, socket.send(Message::Close(None))).await;
@@ -187,6 +216,16 @@ async fn serve(
         match next {
             Err(_) => break "idle",
             Ok(Err(())) => break "closed",
+            Ok(Ok(Body::SessionReport(report))) => {
+                if let Some(admission) = &admission
+                    && session_pending
+                        .as_ref()
+                        .is_some_and(|pending| pending.matches(&report, admission))
+                    && let Some(pending) = session_pending.take()
+                {
+                    pending.finish(report, admission);
+                }
+            }
             Ok(Ok(Body::Ping(ping))) => {
                 seen(&protocol, identity).await;
                 if send(

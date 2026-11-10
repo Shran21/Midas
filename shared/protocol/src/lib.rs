@@ -10,6 +10,7 @@ use prost::Message;
 pub mod directory;
 pub mod enrollment;
 pub mod policy;
+pub mod sessions;
 
 /// Versions this build can speak.
 pub const SUPPORTED: VersionRange = VersionRange { min: 1, max: 1 };
@@ -46,7 +47,7 @@ impl VersionRange {
 pub struct Envelope {
     #[prost(
         oneof = "Body",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18"
     )]
     pub body: Option<Body>,
 }
@@ -85,6 +86,10 @@ pub enum Body {
     RefreshRequest(RefreshRequest),
     #[prost(message, tag = "16")]
     DirectoryChunk(DirectoryChunk),
+    #[prost(message, tag = "17")]
+    SessionRequest(sessions::SessionRequest),
+    #[prost(message, tag = "18")]
+    SessionReport(sessions::SessionReport),
 }
 
 /// First message from the agent.
@@ -115,6 +120,8 @@ pub struct Welcome {
     pub keepalive_seconds: u32,
     #[prost(string, tag = "3")]
     pub server_version: String,
+    #[prost(bytes = "vec", tag = "4")]
+    pub connection_id: Vec<u8>,
 }
 
 /// Refused handshake; the server closes the connection after sending it.

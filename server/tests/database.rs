@@ -18,6 +18,8 @@ mod authorization;
 mod directory;
 #[path = "support/enrollment.rs"]
 mod enrollment;
+#[path = "support/remote_sessions.rs"]
+mod remote_sessions;
 #[path = "support/sessions.rs"]
 mod sessions;
 #[path = "support/setup.rs"]

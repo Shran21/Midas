@@ -202,3 +202,5 @@ pub fn current_session() -> io::Result<u32> {
     // SAFETY: no arguments.
     session_of(unsafe { GetCurrentProcessId() })
 }
+
+pub mod sessions;

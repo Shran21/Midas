@@ -105,6 +105,7 @@ fn main() -> ExitCode {
                 paths,
                 Platform::Linux,
                 runner::Probes {
+                    sessions: None,
                     inventory: Some(Arc::new(inventory::collect)),
                     health: Some(Arc::new(health::check)),
                     checks: health::CHECKS.to_vec(),

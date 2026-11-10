@@ -4,7 +4,7 @@
 
 ## Magyar
 
-A MIDAS-041 első megvalósítása a szerveres szabályzat tárolását, webes szerkesztőjét, adminisztrációs API-ját és belső döntési szolgáltatását tartalmazza. Távoli kép- vagy beviteli kapcsolatot még nem indít. Az agentoldali munkamenet-felderítés bekötése, az aláírt, egyszer használható felhatalmazás és a tényleges helyi jóváhagyás még szükséges; a feladat ezért nem lezárt.
+A MIDAS-041 jelenlegi megvalósítása a szerveres szabályzat tárolását, webes szerkesztőjét, adminisztrációs API-ját, belső döntési szolgáltatását és a Windows-munkamenetek hiteles agentcsatornán történő lekérdezését tartalmazza. Távoli kép- vagy beviteli kapcsolatot még nem indít. A munkamenet-kijelölő webes felület, a natív megfigyelés bekötése a döntésbe, az aláírt, egyszer használható felhatalmazás és a tényleges helyi jóváhagyás még szükséges; a feladat ezért nem lezárt.
 
 ### Beállítás
 
@@ -39,6 +39,35 @@ Az időablak a böngésző helyi időzónáját használja, a mezők alatt UTC-i
 
 A pillanatnyi időablak-állapot az utolsó lekérés idejére vonatkozik. Sem ez, sem a két bekapcsolt kapcsoló nem jelenti egy távoli kapcsolat engedélyezését. A felület magyarul és angolul, világos és sötét módban használható.
 
+### Windows-munkamenetek lekérdezése
+
+A `POST /api/tenants/{id}/devices/{device}/remote-sessions` a bejelentkezett kezelő `device.read` és `remote.view` jogát ellenőrzi a célgépen. Origin- és CSRF-védelem szükséges. A kérés a gép már hitelesített mTLS-kapcsolatán jut el az agenthez; a böngésző nem adhat meg felhasználói jelenlétet vagy agentválaszt. A válasz `connection_id` mezőt és `sessions` listát tartalmaz. Egy elem például:
+
+```json
+{
+  "selection": {
+    "connection_id": "01646509-2e0a-4ebc-886b-a14c9674c971",
+    "os_session_id": "3",
+    "generation": "5461e30a-55f9-4309-bb64-567e392dccd6"
+  },
+  "presence": "occupied",
+  "account": "EXAMPLE\\operator",
+  "station": "RDP-Tcp#2",
+  "console": false,
+  "locked": true
+}
+```
+
+A Windows-szolgáltatás kérésre használja a WTS API-t, nincs folyamatos munkamenet-lekérdezés. A zárolt vagy leválasztott, de bejelentkezett munkamenet foglalt. Üres csak az ismert állapotú, csatlakoztatott cél lehet, ha nincs felhasználónév, tartomány és bejelentkezési idő. Más állapot ismeretlen; lekérdezési hiba, változó lista vagy hibás adat esetén a teljes eredmény elutasított. A 0. munkamenet és az RDP-figyelő nem választható cél. A generáció az észlelt adatok megváltozásakor, eltűnéskor vagy szolgáltatási munkamenet-eseménynél megújul. Sikertelen megfigyelés után sem marad használatban a korábbi generáció.
+
+Egyszerre egy natív lekérdezés futhat, újracsatlakozáson át is. A szerver egyszeri kérésazonosítóhoz és az adott kapcsolathoz köti a választ; nyolc másodperc után elveti. Hiányzó képesség, megszakadás, párhuzamos kérés vagy több alkalmas agentkapcsolat esetén a végpont `409` választ ad. Új kapcsolat új azonosítót kap. A protokoll legfeljebb 128 munkamenetet fogad egy válaszban a meglévő 64 KiB-os üzenethatáron belül; túlcsorduláskor nem szolgáltat részleges listát.
+
+Válaszadás előtt a szerver ismét ellenőrzi a böngészős munkamenetet, jogosultságot, gépregisztrációt és a konkrét agenttanúsítványt. A sikeres lekérdezés auditja a kapcsolat azonosítóját és a munkamenetek számát tárolja, felhasználónevet nem. Auditálási hiba esetén a végpont nem adja ki a listát. A válasz megfigyelés, nem vezérlési engedély; későbbi végrehajtás előtt új megfigyelés és célazonosság-ellenőrzés kell.
+
+A `remote.sessions` képességet jelenleg csak az eseményértesítésekre feliratkozott Windows-szolgáltatás hirdeti. A Windows előtérben futó módja és a Linux-agent még nem támogatja; ezekből nem keletkezik hamis „üres” eredmény. A webes célkijelölő még nem készült el. Az automatizált próbák a protokollt, állapotosztályozást, mTLS-kapcsolatot, visszajátszás elutasítását, jogosultság- és tanúsítvány-visszavonást, időtúllépést, auditálási hibát és újracsatlakozást vizsgálják. Valódi SYSTEM-szolgáltatásos, több RDP-felhasználós, zárolási, kijelentkezési és UAC-próba még szükséges; a fejlesztői gépre ehhez nem települ szolgáltatás.
+
+Natív szerződés: [WTS-munkamenetállapotok](https://learn.microsoft.com/en-us/windows/win32/api/wtsapi32/ne-wtsapi32-wts_connectstate_class), [munkamenet-információ és zárolási jelzők](https://learn.microsoft.com/en-us/windows/win32/api/wtsapi32/ns-wtsapi32-wtsinfoex_level1_w).
+
 ### Munkamenet-döntés
 
 A belső `Authorizer::check_unattended_request` megköveteli mindkét kapcsolót, a szerverprofilt, a megtekintési és vezérlési jogokat, a külön unattended jogot, öt percen belüli passkey-hitelesítést, az indoklást és a kijelölt munkamenetet. A rendszergazdai mód és az UAC további külön jogosultságot kér. A jelenlegi jogosultságokat minden döntésnél újraolvassa.
@@ -53,7 +82,7 @@ Ez szabályzatdöntés, nem végrehajtható felhatalmazás. A későbbi aláírt
 
 ## English
 
-The first MIDAS-041 implementation provides server-policy storage, a web editor, an administration API and an internal decision service. It does not start remote media or input. Native agent session discovery, signed single-use grants and actual local consent still need integration; the task remains open.
+The current MIDAS-041 implementation provides server-policy storage, a web editor, an administration API, an internal decision service and Windows session queries over the authenticated agent channel. It does not start remote media or input. The web session selector, native observation integration into the decision, signed single-use grants and actual local consent remain; the task stays open.
 
 ### Configuration
 
@@ -75,6 +104,20 @@ The customer switch is on **Access**, available with tenant-wide access-manageme
 The window uses the browser's local time zone and displays UTC below each input. Nonexistent or repeated local times at clock changes are rejected. Disabling the server clears its stored window. Saving asks for passkey confirmation when needed; cancelling preserves the draft. Success requires reading back the stored result. Background refresh does not overwrite a draft; detected concurrent edits require discarding it and reviewing the current settings. The pre-save check is not a database version lock: concurrent API writes use last-writer-wins semantics, each with its own audit entry.
 
 Window status describes the last fetch time. Neither that status nor both opt-ins authorize a remote connection. The editor supports Hungarian and English, light and dark themes.
+
+### Querying Windows sessions
+
+`POST /api/tenants/{id}/devices/{device}/remote-sessions` requires the signed-in operator's `device.read` and `remote.view` permissions on the target, plus Origin and CSRF validation. The request travels over the device's authenticated mTLS connection; the browser cannot supply presence or an agent response. The response contains `connection_id` and `sessions`. Each entry has `selection` (connection ID, OS session ID and generation), `presence` (`occupied`, `vacant` or `unknown`), `account`, `station`, `console` and nullable `locked`, as illustrated above.
+
+The Windows service calls WTS on demand without continuous session polling. Locked or disconnected signed-in sessions remain occupied. Only a connected target with known flags and no username, domain or logon time may be vacant. Other states are unknown; query failures, changing enumeration or malformed data reject the entire observation. Session 0 and RDP listeners are excluded. Changed data, disappearance or a service session-change notification renews the generation. Failed observations also invalidate previous generations.
+
+Only one native query may run, including across reconnects. The server binds each reply to a one-use request identifier and its agent connection, and discards it after eight seconds. Missing capability, disconnection, concurrent queries or multiple eligible agent connections return `409`. Reconnection changes the connection ID. The protocol accepts up to 128 sessions within the existing 64 KiB message bound; overflow never yields a partial list.
+
+Before returning data, the server rechecks the browser session, permissions, enrollment and the specific agent certificate. Successful-query audit records contain the connection ID and session count, never account names. Audit failure prevents disclosure of the list. A response is an observation, not control authorization; later execution needs another observation and target-identity check.
+
+Only the Windows service with session notifications enabled currently advertises `remote.sessions`. Windows foreground mode and Linux do not support it yet and cannot report false vacancy. The web target selector is pending. Automated tests cover protocol validation, classification, mTLS exchange, replay rejection, permission and certificate revocation, timeout, audit failure and reconnection. Actual SYSTEM service, multi-user RDP, lock, logoff and UAC trials remain required; no service is installed on the development machine for these checks.
+
+Native contracts: [WTS session states](https://learn.microsoft.com/en-us/windows/win32/api/wtsapi32/ne-wtsapi32-wts_connectstate_class), [session information and lock flags](https://learn.microsoft.com/en-us/windows/win32/api/wtsapi32/ns-wtsapi32-wtsinfoex_level1_w).
 
 ### Session decision
 

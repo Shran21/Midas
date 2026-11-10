@@ -917,6 +917,23 @@ pub async fn verify(database: &Database, admin: &mut PgConnection) {
         })
         .await;
 
+    super::remote_sessions::verify(
+        super::remote_sessions::Context {
+            app: &app,
+            web: &web,
+            manager: &manager,
+            outsider: &outsider,
+            tenant,
+            device: preapproved.device_id,
+            port: agent_port,
+            tls: deployment
+                .client_config(roots(&server_ca), &preapproved.certificate)
+                .unwrap(),
+        },
+        admin,
+    )
+    .await;
+
     let connector_path = format!("/api/tenants/{tenant}/directory-connector");
     let connector = |device: Uuid, url: &str, bases: &[&str]| {
         json!({
