@@ -72,7 +72,7 @@ Az ellenőrzés a GitHub saját státuszeseményeit használta (`ProjectV2ItemSt
 - A projektgazda 2026. november 7-i döntése alapján az 1. fázis a MIDAS-020 lezárása előtt indul. A MIDAS-018, a MIDAS-019 és a MIDAS-020 projektgazdai ellenőrzése kötelező marad, de Done állapotuk nem feltétele későbbi feladat indításának ([terjedelemváltozások](../feladatlista.md#terjedelemváltozások)). A 0. mérföldkő a MIDAS-020 Done állapota után zárul.
 - Elsőként a MIDAS-021 (verziózott agentprotokoll) indítható, mert csak a már kész MIDAS-006-tól függ.
 - Sikertelen ellenőrzésnél a MIDAS-034, MIDAS-042, MIDAS-047, MIDAS-059 és az ezekre épülő munka újravizsgálandó.
-- Az 1. fázis zárásához külső tesztkörnyezet kell: tíz vegyes tesztgép egyhetes jelentése, 24 órás agentmérés, 1000 szimulált agentes terhelési próba, valamint Debian, Ubuntu és Rocky Linux tesztgép. Ezek előkészítését érdemes a fázis elején megkezdeni.
+- Az eredeti átadás külső tesztkörnyezetet írt elő: tíz vegyes tesztgép egyhetes jelentését, 24 órás agentmérést, 1000 szimulált agentes terhelési próbát, valamint Debian, Ubuntu és Rocky Linux tesztgépet. **Későbbi döntések:** a november 8-i jóváhagyás a 24 órás mérést 2,9 órással váltotta ki; a november 10-i döntés a tízgépes, egyhetes próbát a pilot elé helyezte (MIDAS-086). Az aktuális feltételeket az [1. fázis összesítője](1-fazis.md) és a [feladatlista](../feladatlista.md#terjedelemváltozások) tartalmazza.
 
 ## English
 
@@ -144,4 +144,4 @@ The review used GitHub's own status events (`ProjectV2ItemStatusChangedEvent`), 
 - By the project owner's decision on November 7, 2026, phase 1 starts before MIDAS-020 closes. The owner's verification of MIDAS-018, MIDAS-019 and MIDAS-020 remains required, but their Done status is not a prerequisite for starting later tasks ([scope changes](../feladatlista.md#scope-changes)). Milestone 0 closes after MIDAS-020 is Done.
 - MIDAS-021 (versioned agent protocol) can start first, as it depends only on the completed MIDAS-006.
 - If a verification fails, re-check MIDAS-034, MIDAS-042, MIDAS-047, MIDAS-059 and work built on them.
-- Closing phase 1 needs an external test environment: ten mixed test devices reporting for a week, a 24-hour agent measurement, a 1000-simulated-agent load test, and Debian, Ubuntu and Rocky Linux test machines. Start preparing these early in the phase.
+- The original handoff required an external test environment: ten mixed devices reporting for a week, a 24-hour agent measurement, a 1000-simulated-agent load test, and Debian, Ubuntu and Rocky Linux machines. **Later decisions:** the November 8 approval replaced the 24-hour measurement with the 2.9-hour run; the November 10 decision moved the ten-device, one-week trial before the pilot (MIDAS-086). See the [phase 1 summary](1-fazis.md#english) and [task list](../feladatlista.md#scope-changes) for current conditions.
