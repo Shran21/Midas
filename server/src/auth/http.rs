@@ -164,6 +164,14 @@ pub fn router(state: Arc<WebAuth>) -> Router {
         .route("/api/sessions/{id}", delete(revoke))
         .route("/api/tenants", get(tenants))
         .route("/api/tenants/{id}", get(tenant))
+        .route(
+            "/api/tenants/{id}/unattended-policy",
+            get(tenant_unattended_policy).put(set_tenant_unattended_policy),
+        )
+        .route(
+            "/api/tenants/{id}/devices/{device}/unattended-policy",
+            get(device_unattended_policy).put(set_device_unattended_policy),
+        )
         .route("/api/roles", get(roles))
         .route("/api/admin/tenants", post(create_tenant))
         .route("/api/admin/operators", post(create_operator))
@@ -521,6 +529,79 @@ struct NewOverride {
 #[derive(Serialize)]
 struct Created {
     id: Uuid,
+}
+
+async fn tenant_unattended_policy(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<crate::authorization::unattended::TenantPolicy>> {
+    Ok(Json(
+        state
+            .authorizer
+            .tenant_unattended_policy(&state.sessions, &context.token, id)
+            .await?,
+    ))
+}
+
+async fn set_tenant_unattended_policy(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path(id): Path<Uuid>,
+    Json(policy): Json<crate::authorization::unattended::TenantPolicy>,
+) -> Result<StatusCode> {
+    state
+        .authorizer
+        .set_tenant_unattended_policy(&state.sessions, &context.token, id, &policy)
+        .await?;
+    if let Some(enrollment) = &state.enrollment {
+        enrollment.changed(id);
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn device_unattended_policy(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((tenant, device)): Path<(Uuid, Uuid)>,
+) -> Result<Json<crate::authorization::unattended::DevicePolicy>> {
+    Ok(Json(
+        state
+            .authorizer
+            .device_unattended_policy(
+                &state.sessions,
+                &context.token,
+                crate::authorization::Target {
+                    tenant,
+                    device: Some(device),
+                },
+            )
+            .await?,
+    ))
+}
+
+async fn set_device_unattended_policy(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((tenant, device)): Path<(Uuid, Uuid)>,
+    Json(policy): Json<crate::authorization::unattended::DevicePolicySpec>,
+) -> Result<StatusCode> {
+    state
+        .authorizer
+        .set_device_unattended_policy(
+            &state.sessions,
+            &context.token,
+            crate::authorization::Target {
+                tenant,
+                device: Some(device),
+            },
+            &policy,
+        )
+        .await?;
+    if let Some(enrollment) = &state.enrollment {
+        enrollment.changed(tenant);
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn roles(

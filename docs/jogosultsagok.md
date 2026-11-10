@@ -4,7 +4,7 @@
 
 ## Magyar
 
-A `midas_server::authorization::Authorizer` belső szolgáltatás aktuális böngészős munkamenet, ügyfél, célgép és kért művelet alapján dönt. Alapállapotban minden tiltott. A modul még nem indít távoli műveletet, nem állít ki aláírt felhatalmazást, és nincs nyilvános jogosultságszerkesztő végpontja. A jogosultságváltozások és a távvezérlési döntések [auditba](audit.md) kerülnek. A kezelőfelület és az adminisztrációs API bekötése külön feladat.
+A `midas_server::authorization::Authorizer` belső szolgáltatás aktuális böngészős munkamenet, ügyfél, célgép és kért művelet alapján dönt. Alapállapotban minden tiltott. A modul még nem indít távoli műveletet és nem állít ki aláírt felhatalmazást. A jogosultságváltozások és a távvezérlési döntések [auditba](audit.md) kerülnek. Az adminisztrációs API és a webpanel hozzáférés-kezelése az alábbiak szerint működik; a [szerveres unattended szabályzat](felugyelet-nelkuli-hozzaferes.md) külön leírja az új konfigurációs és munkamenet-döntési réteget.
 
 ### Szerepek és hatókör
 
@@ -114,7 +114,7 @@ A `just test-database` valódi PostgreSQL-en és valódi szoftveres WebAuthn-al�
 
 ## English
 
-The internal `midas_server::authorization::Authorizer` evaluates a current browser session, tenant, target device and requested operation. Default access is denied. It does not execute remote actions, issue signed grants or expose public privilege-management endpoints. Permission changes and remote decisions are [audited](audit.md#english). UI and administration API integration remain separate work.
+The internal `midas_server::authorization::Authorizer` evaluates a current browser session, tenant, target device and requested operation. Default access is denied. It does not execute remote actions or issue signed grants. Permission changes and remote decisions are [audited](audit.md#english). The administration API and web-panel access management operate as described below; the [unattended server policy](felugyelet-nelkuli-hozzaferes.md#english) describes the new configuration and session-decision layer separately.
 
 ### Roles and scope
 

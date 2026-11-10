@@ -24,6 +24,8 @@ mod sessions;
 mod setup;
 #[path = "support/tenants.rs"]
 mod tenants;
+#[path = "support/unattended.rs"]
+mod unattended;
 
 #[test]
 fn database_transport_requires_verified_tls_or_explicit_loopback() {
@@ -372,6 +374,7 @@ async fn postgres_isolates_tenants_and_reused_connections() {
     tenants::verify(&authentication_database, &mut admin, &pool).await;
     setup::verify(&authentication_database, &mut admin).await;
     administration::verify(&authentication_database, &mut admin).await;
+    unattended::verify(&authentication_database, &mut admin).await;
     directory::verify(&authentication_database, &mut admin).await;
     enrollment::verify(&authentication_database, &mut admin).await;
     authentication_database.close().await;

@@ -32,6 +32,7 @@ names!(Action {
     OverrideSet => "access.override_set",
     OverrideRemove => "access.override_remove",
     RemoteRequest => "remote.request",
+    UnattendedPolicySet => "remote.unattended_policy_set",
     TenantCreate => "tenant.create",
     SiteCreate => "inventory.site_create",
     OperatorCreate => "access.operator_create",

@@ -1,4 +1,5 @@
 use crate::database::driver as sqlx;
+pub mod unattended;
 use std::{
     collections::{HashMap, HashSet},
     fmt,
@@ -501,16 +502,29 @@ impl Authorizer {
         fresh_required: bool,
     ) -> Result<AccessDecision> {
         let mut tx = self.tenant_transaction(target.tenant, true).await?;
-        let fresh = session_state(&mut tx, identity, target.tenant).await?;
+        let decision =
+            Self::evaluate_in(&mut tx, identity, target, permissions, fresh_required).await?;
+        tx.commit().await?;
+        Ok(decision)
+    }
+
+    async fn evaluate_in(
+        tx: &mut Transaction<'_, Postgres>,
+        identity: &SessionInfo,
+        target: Target,
+        permissions: &[Permission],
+        fresh_required: bool,
+    ) -> Result<AccessDecision> {
+        let fresh = session_state(tx, identity, target.tenant).await?;
         let names: Vec<_> = permissions.iter().map(|p| p.as_str()).collect();
         if let Some(device) = target.device {
-            let traits = device_traits(&mut tx, target.tenant, Some(device)).await?;
+            let traits = device_traits(tx, target.tenant, Some(device)).await?;
             let (_, traits) = traits.first().ok_or(AccessError::Denied)?;
             if permissions.iter().any(|p| !traits.eligible(*p)) {
                 return Err(AccessError::Denied);
             }
             let granted = device_grants(
-                &mut tx,
+                tx,
                 target.tenant,
                 identity.operator_id,
                 &names,
@@ -527,7 +541,7 @@ impl Authorizer {
             if permissions.iter().any(|p| p.requires_device()) {
                 return Err(AccessError::Denied);
             }
-            let rules = tenant_rules(&mut tx, target.tenant, identity.operator_id, &names).await?;
+            let rules = tenant_rules(tx, target.tenant, identity.operator_id, &names).await?;
             let held = allowed(&rules);
             if permissions.iter().any(|p| !held.contains(p)) {
                 return Err(AccessError::Denied);
@@ -536,7 +550,6 @@ impl Authorizer {
         if fresh_required && permissions.iter().any(|p| p.requires_fresh_passkey()) && !fresh {
             return Err(AccessError::FreshPasskeyRequired);
         }
-        tx.commit().await?;
         Ok(AccessDecision {
             session_id: identity.id,
             operator_id: identity.operator_id,

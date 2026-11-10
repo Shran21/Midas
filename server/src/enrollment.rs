@@ -247,7 +247,15 @@ type Live = Arc<Mutex<HashMap<Uuid, watch::Sender<Signal>>>>;
 pub struct Admission {
     pub identity: AgentIdentity,
     pub signal: watch::Receiver<Signal>,
+    connection_id: Uuid,
+    pub(crate) credential_fingerprint: Vec<u8>,
     live: Live,
+}
+
+impl Admission {
+    pub fn connection_id(&self) -> Uuid {
+        self.connection_id
+    }
 }
 
 impl Drop for Admission {
@@ -707,6 +715,8 @@ impl Enrollment {
         let admission = Admission {
             identity,
             signal,
+            connection_id: Uuid::new_v4(),
+            credential_fingerprint: fingerprint(certificate),
             live: self.live.clone(),
         };
         // A revocation between the first lookup and registration is caught here.
