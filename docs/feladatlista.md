@@ -141,7 +141,7 @@ P0: elsőbbséget igénylő alapműködés, biztonság vagy kapu; P1: a fázison
 - **MIDAS-037:** A jelölt különbözik az online agenttől, az objectGUID-alapú egyeztetés nem kapcsol össze más ügyfeleket. Követelmény: AD-03, AD-04. Korábbi azonosító: —.
 - **MIDAS-038:** Az admin látja a jelölteket, kezelt gépeket és regisztrációs döntéseket, a felderítés nem telepít automatikusan. Követelmény: UI-01, AD-03, AD-04. Korábbi azonosító: —.
 - **MIDAS-039:** Külön mérés készül a háttéragentről és megnyitott helyi felületről, a szerverprofil megkülönbözteti a grafikus és háttérképességeket. Legalább 24 órás agentmérés készül, Windows 11-en a kapcsolódó WebView2-folyamatokkal együtt (a projektgazda 2026. november 8-i döntése szerint a 2,9 órás mérés váltja ki, lásd a terjedelemváltozásokat). Az eredmény optimalizálási alap, nincs előírt CPU-, GPU-, memória- vagy adatforgalmi plafon. Követelmény: PERF-01, PERF-02, PERF-03, PERF-04, SERVER-03. Korábbi azonosító: —.
-- **MIDAS-040:** A monitorozás, felderítés, regisztráció és terhelésmérés elfogadva; az összes vállalt feladat ellenőrzött Done, a támogatási mátrix és a következő fázis feltételei rögzítve. Tíz vegyes tesztgép egy hétig jelent; a 24 órás agent- (a projektgazda döntése szerint a 2,9 órás) és az egyórás, 1000 szimulált agentes mérés bizonyítéka csatolt. A MIDAS-018, MIDAS-019, MIDAS-023 és MIDAS-024 ellenőrzésének állapota rögzített; Done állapotuk nem feltétele a zárásnak. Követelmény: —. Korábbi azonosító: F1-16.
+- **MIDAS-040:** A monitorozás, felderítés, regisztráció és terhelésmérés elfogadva; az összes vállalt feladat ellenőrzött Done, a támogatási mátrix és a következő fázis feltételei rögzítve. A 2,9 órás agentmérés és az egyórás, 1000 szimulált agentes mérés bizonyítéka csatolt. A tíz vegyes tesztgép egyhetes próbája a projektgazda 2026. november 10-i döntése szerint a MIDAS-086 pilotindításának kötelező előfeltétele, az M1 zárását nem akadályozza. A MIDAS-018, MIDAS-019, MIDAS-023 és MIDAS-024 ellenőrzésének állapota rögzített; Done állapotuk nem feltétele a zárásnak. Követelmény: —. Korábbi azonosító: F1-16.
 
 ### 2. Távsegítés
 
@@ -258,8 +258,8 @@ P0: elsőbbséget igénylő alapműködés, biztonság vagy kapu; P1: a fázison
 - **MIDAS-083:** Fenyegetésmodell és külső vizsgálat alapján a kritikus/magas találatok javítottak, visszateszteltek. Követelmény: SEC-01, SEC-02, SEC-03, SEC-04, SEC-05, SEC-06. Korábbi azonosító: F4-08.
 - **MIDAS-084:** A pilot adatkezelési szerepei, megőrzése, hozzáférése és alkalmazandó kötelezettségei dokumentáltak. Követelmény: —. Korábbi azonosító: F4-09.
 - **MIDAS-085:** A deklarált támogatási mátrix, műveleti korlátok és korábbi használhatósági próbák ismét sikerülnek. Követelmény: PERF-03, UI-08, REMOTE-07. Korábbi azonosító: —.
-- **MIDAS-086:** Javított biztonsági találatok után bevezetett ügyfél egy hónapos incidensmentes próbaüzeme dokumentált. Követelmény: —. Korábbi azonosító: F4-10.
-- **MIDAS-087:** A biztonsági és visszaállítási próbák elfogadva; a kritikus és magas kockázatú hibák javítva; az első ügyfél egy hónapos incidensmentes pilotja lezárva. Minden vállalt feladat ellenőrzött Done. Követelmény: —. Korábbi azonosító: F4-11.
+- **MIDAS-086:** Az ügyfélpilot indítása előtt tíz vegyes tesztgép egy hétig megbízhatóan jelent; a gépek, verziók, mérési időszak, kiesések, helyreállás és nyitott hibák jegyzőkönyve elfogadott. A próba kötelező, szimulált flotta vagy a 2,9 órás agentmérés nem váltja ki. Javított biztonsági találatok után bevezetett ügyfél egy hónapos incidensmentes próbaüzeme dokumentált. Követelmény: —. Korábbi azonosító: F4-10.
+- **MIDAS-087:** A biztonsági és visszaállítási próbák elfogadva; a kritikus és magas kockázatú hibák javítva; az első ügyfél egy hónapos incidensmentes pilotja lezárva. Minden vállalt feladat ellenőrzött Done. A pilot előtt elvégzett tízgépes, egyhetes próba elfogadott jegyzőkönyve is csatolt. Követelmény: —. Korábbi azonosító: F4-11.
 
 ### 5. Bővítések
 
@@ -337,6 +337,12 @@ Ezek még nem vállalt funkciók, mind Backlogban maradnak. Külön döntés né
 - **Döntés és ok:** a projektgazda döntése. A valódi agent és a tálcaprogram 2,9 órás, kimaradás nélküli mérése (169 perces minta) már megmutatta a háttér- és a megnyitott felület terhelését, a stabil leírószámot és memóriát, valamint a forgalmat. A projektgazda szerint ez elegendő, a 24 órás futást nem kell kivárni ([mérés](meresek/agent-profil.md)).
 - **Szabály:** a MIDAS-039 elfogadásánál és a MIDAS-040 kapujánál ez a mérés számít a 24 órás agentmérés bizonyítékának. A többi feltétel nem változik.
 - **Kockázat és teendő:** a 24 óránként futó teljes leltár-újraegyeztetés és a hosszú távú szivárgás ebben a mérésben nem látszik. A mérés ugyanazzal a szkripttel bármikor megismételhető hosszabb futással; a platform- és terhelési regresszió (MIDAS-085) újra méri.
+
+**2026. november 10. · Az egyhetes tesztflotta a pilot előfeltétele**
+
+- **Döntés:** a projektgazda engedélyezte a fejlesztés folytatását. A tíz vegyes tesztgép egyhetes próbája kötelező marad, de a MIDAS-040 helyett a MIDAS-086 pilotindításának előfeltétele.
+- **Követés:** a próba a MIDAS-086 külön elfogadási feltétele; a MIDAS-087 zárásához a jegyzőkönyve is kell. A [próbamenet](meresek/tesztflotta.md) rögzíti az elvárt bizonyítékot. A próba még nem történt meg.
+- **Hatás:** az M1 kapuja a többi ellenőrzött feltétellel lezárható, utána az M2 munkája indulhat. A próba sikertelensége blokkolja a pilot indítását, és az érintett megvalósításokat újra kell vizsgálni. A korábbi öt projektgazdai ellenőrzés kivétele és minden más fázisszabály változatlan.
 
 ### Lényeges változások a régi vázlathoz képest
 
@@ -488,7 +494,7 @@ P0: core behavior, security or gates needing precedence; P1: work ordered afterw
 - **MIDAS-037:** Candidates remain distinct from live agents and objectGUID matching does not cross tenants. Requirements: AD-03, AD-04. Legacy ID: —.
 - **MIDAS-038:** The admin sees candidates, managed devices and enrollment decisions, while discovery triggers no automatic installation. Requirements: UI-01, AD-03, AD-04. Legacy ID: —.
 - **MIDAS-039:** Separate measurements cover background and open UI, and server profiles distinguish graphical and background capabilities. Run at least a 24-hour agent measurement, including related WebView2 processes on Windows 11 (replaced by the 2.9-hour measurement by the project owner's decision of November 8, 2026; see the scope changes). Results guide optimization without preset CPU, GPU, memory or traffic ceilings. Requirements: PERF-01, PERF-02, PERF-03, PERF-04, SERVER-03. Legacy ID: —.
-- **MIDAS-040:** Accept monitoring, discovery, enrollment and load evidence; all committed work is reviewed Done, with a support matrix and next-phase prerequisites recorded. Ten mixed test devices report for one week; attach evidence for the 24-hour agent (by the project owner's decision, the 2.9-hour) and one-hour 1000-simulated-agent measurements. Record the verification state of MIDAS-018, MIDAS-019, MIDAS-023 and MIDAS-024; their Done status is not a closure condition. Requirements: —. Legacy ID: F1-16.
+- **MIDAS-040:** Accept monitoring, discovery, enrollment and load evidence; all committed work is reviewed Done, with a support matrix and next-phase prerequisites recorded. Attach evidence for the 2.9-hour agent measurement and the one-hour 1000-simulated-agent run. By the owner's November 10, 2026 decision, the one-week trial with ten mixed devices is a mandatory prerequisite to starting the MIDAS-086 pilot and does not block M1 closure. Record the verification state of MIDAS-018, MIDAS-019, MIDAS-023 and MIDAS-024; their Done status is not a closure condition. Requirements: —. Legacy ID: F1-16.
 
 ### 2. Remote support
 
@@ -605,8 +611,8 @@ P0: core behavior, security or gates needing precedence; P1: work ordered afterw
 - **MIDAS-083:** Threat modeling and external review findings of critical/high severity are fixed and retested. Requirements: SEC-01, SEC-02, SEC-03, SEC-04, SEC-05, SEC-06. Legacy ID: F4-08.
 - **MIDAS-084:** Pilot data roles, retention, access and applicable obligations are documented. Requirements: —. Legacy ID: F4-09.
 - **MIDAS-085:** The declared support matrix, authorization boundaries and prior usability trials pass again. Requirements: PERF-03, UI-08, REMOTE-07. Legacy ID: —.
-- **MIDAS-086:** After security remediation, the first customer's month-long incident-free pilot is documented. Requirements: —. Legacy ID: F4-10.
-- **MIDAS-087:** Accept security and recovery tests; fix critical and high-risk findings; complete the first customer's one-month incident-free pilot. All committed work is reviewed Done. Requirements: —. Legacy ID: F4-11.
+- **MIDAS-086:** Before the customer pilot starts, ten mixed test devices report reliably for one week; accept the record of devices, versions, measurement period, gaps, recovery and open defects. The trial is mandatory and cannot be replaced by the simulated fleet or the 2.9-hour agent measurement. After security remediation, the first customer's month-long incident-free pilot is documented. Requirements: —. Legacy ID: F4-10.
+- **MIDAS-087:** Accept security and recovery tests; fix critical and high-risk findings; complete the first customer's one-month incident-free pilot. All committed work is reviewed Done. Attach the accepted record of the ten-device, one-week trial completed before the pilot. Requirements: —. Legacy ID: F4-11.
 
 ### 5. Extensions
 
@@ -684,6 +690,12 @@ These are uncommitted proposals and remain Backlog. They need a separate decisio
 - **Decision and reason:** decided by the project owner. The 2.9-hour gap-free measurement of the real agent and tray program (169 one-minute samples) already shows the background and open-interface load, stable handles and memory, and the traffic. The owner considers this sufficient; the 24-hour run need not be waited for ([measurement](meresek/agent-profil.md#english)).
 - **Rule:** this measurement counts as the 24-hour agent measurement evidence for accepting MIDAS-039 and at the MIDAS-040 gate. All other conditions stay unchanged.
 - **Risk and follow-up:** the full inventory reconciliation, which runs every 24 hours, and long-term leaks are not visible in this measurement. The same script can repeat the measurement with a longer run at any time; the platform and load regression (MIDAS-085) measures again.
+
+**November 10, 2026 · The week-long fleet trial becomes a pilot prerequisite**
+
+- **Decision:** the owner authorized development to continue. The one-week trial with ten mixed devices remains mandatory, moving from MIDAS-040 to a prerequisite for starting the MIDAS-086 pilot.
+- **Tracking:** MIDAS-086 has a separate acceptance criterion; MIDAS-087 also requires its record. The [trial procedure](meresek/tesztflotta.md#english) defines the evidence. The trial has not been performed.
+- **Effect:** M1 can close once its other conditions are verified, allowing M2 to start. A failed trial blocks the pilot and requires re-checking affected implementations. The earlier five owner-verification exceptions and all other phase rules remain unchanged.
 
 ### Material changes from the earlier drafts
 

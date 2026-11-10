@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "2026-11-08",
+  "revision": "2026-11-10",
   "purpose": {
     "hu": "Közzétett kezdő feladatfelosztás; az aktuális státusz a GitHub Projectben követendő.",
     "en": "Published initial task allocation; track current status in GitHub Projects."
@@ -1623,12 +1623,12 @@
       "acceptance": {
         "hu": [
           "A monitorozás, felderítés, regisztráció és terhelésmérés elfogadva; az összes vállalt feladat ellenőrzött Done, a támogatási mátrix és a következő fázis feltételei rögzítve.",
-          "Tíz vegyes tesztgép egy hétig jelent; a 24 órás agent- és az egyórás, 1000 szimulált agentes mérés bizonyítéka csatolt. A 24 órás agentmérést a projektgazda döntése szerint a 2,9 órás mérés váltja ki.",
+          "A 2,9 órás agentmérés és az egyórás, 1000 szimulált agentes mérés bizonyítéka csatolt. A tíz vegyes tesztgép egyhetes próbája a projektgazda 2026. november 10-i döntése szerint a MIDAS-086 pilotindításának kötelező előfeltétele, az M1 zárását nem akadályozza.",
           "A MIDAS-018, MIDAS-019, MIDAS-023 és MIDAS-024 ellenőrzésének állapota rögzített; Done állapotuk nem feltétele a zárásnak."
         ],
         "en": [
           "Accept monitoring, discovery, enrollment and load evidence; all committed work is reviewed Done, with a support matrix and next-phase prerequisites recorded.",
-          "Ten mixed test devices report for one week; attach evidence for the 24-hour agent and one-hour 1000-simulated-agent measurements. By the project owner's decision, the 2.9-hour measurement replaces the 24-hour one.",
+          "Attach evidence for the 2.9-hour agent measurement and the one-hour 1000-simulated-agent run. By the owner's November 10, 2026 decision, the one-week trial with ten mixed devices is a mandatory prerequisite to starting the MIDAS-086 pilot and does not block M1 closure.",
           "Record the verification state of MIDAS-018, MIDAS-019, MIDAS-023 and MIDAS-024; their Done status is not a closure condition."
         ]
       },
@@ -3411,9 +3411,11 @@
       ],
       "acceptance": {
         "hu": [
+          "Az ügyfélpilot indítása előtt tíz vegyes tesztgép egy hétig megbízhatóan jelent; a gépek, verziók, mérési időszak, kiesések, helyreállás és nyitott hibák jegyzőkönyve elfogadott. A próba kötelező, szimulált flotta vagy a 2,9 órás agentmérés nem váltja ki.",
           "Javított biztonsági találatok után bevezetett ügyfél egy hónapos incidensmentes próbaüzeme dokumentált."
         ],
         "en": [
+          "Before the customer pilot starts, ten mixed test devices report reliably for one week; accept the record of devices, versions, measurement period, gaps, recovery and open defects. The trial is mandatory and cannot be replaced by the simulated fleet or the 2.9-hour agent measurement.",
           "After security remediation, the first customer's month-long incident-free pilot is documented."
         ]
       },
@@ -3456,10 +3458,10 @@
       ],
       "acceptance": {
         "hu": [
-          "A biztonsági és visszaállítási próbák elfogadva; a kritikus és magas kockázatú hibák javítva; az első ügyfél egy hónapos incidensmentes pilotja lezárva. Minden vállalt feladat ellenőrzött Done."
+          "A biztonsági és visszaállítási próbák elfogadva; a kritikus és magas kockázatú hibák javítva; az első ügyfél egy hónapos incidensmentes pilotja lezárva. Minden vállalt feladat ellenőrzött Done. A pilot előtt elvégzett tízgépes, egyhetes próba elfogadott jegyzőkönyve is csatolt."
         ],
         "en": [
-          "Accept security and recovery tests; fix critical and high-risk findings; complete the first customer's one-month incident-free pilot. All committed work is reviewed Done."
+          "Accept security and recovery tests; fix critical and high-risk findings; complete the first customer's one-month incident-free pilot. All committed work is reviewed Done. Attach the accepted record of the ten-device, one-week trial completed before the pilot."
         ]
       },
       "label_names": [

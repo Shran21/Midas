@@ -4,7 +4,7 @@
 
 ## Magyar
 
-2026. november 9. · MIDAS-040 · Fáziszárási összesítő
+2026. november 9. · Frissítve: november 10. · MIDAS-040 · Fáziszárási összesítő
 
 ### Eredmény
 
@@ -58,6 +58,8 @@ A felmentett tételek állapota: a MIDAS-018, MIDAS-023 és MIDAS-024 Backlog �
 
 ### Döntések
 
+- **2026. november 10.:** a tízgépes, egyhetes próba kötelező marad, de a projektgazda a MIDAS-086 pilotindítása elé helyezte. Az M1 kapuját nem blokkolja; az M2 a kapu elfogadása után indulhat. A próba nem tekinthető elvégzettnek.
+
 - **2026. november 7.:** a MIDAS-018, -019 és -020, majd a MIDAS-023 és -024 projektgazdai ellenőrzésre vár, de nem akadályozza a későbbi munkát. Sikertelen ellenőrzésnél a MIDAS-034, MIDAS-042, MIDAS-047, MIDAS-059 és az ezekre épülő munka újravizsgálandó.
 - **2026. november 8.:** a MIDAS-039 24 órás agentmérését a 2,9 órás mérés váltja ki; a kapunál ez számít a 24 órás agentmérés bizonyítékának.
 - **UAC-prototípus és használhatósági prototípus:** a 0. fázis zárása szerint a döntés a MIDAS-018 VM-es, illetve a MIDAS-019 résztvevős próbája után a MIDAS-040 keretében rögzítendő. Mindkét próba még a projektgazdára vár, így a döntés nincs rögzítve; a feladatok In review állapotban követik.
@@ -69,7 +71,7 @@ A felmentett tételek állapota: a MIDAS-018, MIDAS-023 és MIDAS-024 Backlog �
 | A monitorozás, felderítés, regisztráció és terhelésmérés elfogadva | Teljesült | MIDAS-021–039 eredményszakaszai |
 | Az összes vállalt feladat ellenőrzött Done | Teljesült | Státuszelőzmények fent |
 | Támogatási mátrix és a következő fázis feltételei rögzítve | Teljesült | Ez a dokumentum |
-| Tíz vegyes tesztgép egy hétig jelent | **Nem teljesült** | Külső tesztgépek kellenek; a fejlesztői gépen nem végezhető el |
+| Tíz vegyes tesztgép egyhetes próbája | Áthelyezve; nem M1-kapufeltétel | A november 10-i döntés szerint a [MIDAS-086](https://github.com/Shran21/Midas/issues/87) pilotindításának kötelező előfeltétele; még nincs elvégezve |
 | A 24 órás (döntés szerint 2,9 órás) agentmérés és az egyórás, 1000 agentes mérés bizonyítéka csatolt | Teljesült | [agentmérés](../meresek/agent-profil.md), [flottamérés](../meresek/flotta-terheles.md) |
 | A MIDAS-018, -019, -023 és -024 ellenőrzésének állapota rögzített | Teljesült | Státuszelőzmények fent |
 
@@ -86,7 +88,7 @@ A felmentett tételek állapota: a MIDAS-018, MIDAS-023 és MIDAS-024 Backlog �
 | AD | LDAPS-tesztcímtár 1206 géppel, valódi tartományi laptop elérhető és elérhetetlen tartományvezérlővel | MIDAS-036, MIDAS-037 | Éles címtárak a pilot előtt |
 | Webpanel | Magyar és angol, világos és sötét téma, billentyűzet, Chromium, helyi próbakörnyezet | MIDAS-031, MIDAS-032, MIDAS-038, MIDAS-039 | Böngészőpróba a valódi fejlesztői szerverrel; a helyi tanúsítványt a projektgazda fogadja el |
 | Gépprofil | Windows 11 (`Client`) és Windows Server (`Server`) valódi gépen | MIDAS-039 | Server Core, grafikus asztal nélküli Linux |
-| Tesztflotta | — | — | Tíz vegyes tesztgép egyhetes jelentése (kapufeltétel) |
+| Tesztflotta | — | — | Tíz vegyes tesztgép egyhetes jelentése a pilot előtt (MIDAS-086) |
 
 ### A 2. fázis indulási feltételei
 
@@ -97,7 +99,7 @@ A felmentett tételek állapota: a MIDAS-018, MIDAS-023 és MIDAS-024 Backlog �
 
 ## English
 
-November 9, 2026 · MIDAS-040 · Phase closure summary
+November 9, 2026 · Updated November 10 · MIDAS-040 · Phase closure summary
 
 ### Outcome
 
@@ -151,6 +153,8 @@ Exempt items: MIDAS-018, MIDAS-023 and MIDAS-024 went Backlog → Ready → In p
 
 ### Decisions
 
+- **November 10, 2026:** the owner moved the mandatory ten-device, one-week trial to before the MIDAS-086 pilot. It no longer blocks M1; M2 may start after gate acceptance. The trial is not considered performed.
+
 - **November 7, 2026:** MIDAS-018, -019 and -020, then MIDAS-023 and -024 wait for the owner's verification without blocking later work. If a verification fails, re-check MIDAS-034, MIDAS-042, MIDAS-047, MIDAS-059 and work built on them.
 - **November 8, 2026:** a 2.9-hour run replaces MIDAS-039's 24-hour agent measurement and counts as that evidence at this gate.
 - **UAC and usability prototypes:** per the phase 0 closure, the decisions are recorded within MIDAS-040 after the MIDAS-018 VM trial and the MIDAS-019 participant trial. Both trials still wait for the owner, so the decisions are not recorded yet; the tasks track them in review.
@@ -162,7 +166,7 @@ Exempt items: MIDAS-018, MIDAS-023 and MIDAS-024 went Backlog → Ready → In p
 | Monitoring, discovery, enrollment and load evidence accepted | Met | Result sections of MIDAS-021–039 |
 | All committed work reviewed Done | Met | Status history above |
 | Support matrix and next-phase prerequisites recorded | Met | This document |
-| Ten mixed test devices report for one week | **Not met** | Needs external test devices; it cannot be done on the development machine |
+| One-week trial with ten mixed devices | Moved; not an M1 gate condition | By the November 10 decision, a mandatory prerequisite to starting the [MIDAS-086](https://github.com/Shran21/Midas/issues/87) pilot; not yet performed |
 | Evidence attached for the 24-hour (by decision 2.9-hour) agent and the one-hour 1000-agent measurements | Met | [agent measurement](../meresek/agent-profil.md#english), [fleet measurement](../meresek/flotta-terheles.md#english) |
 | Verification state of MIDAS-018, -019, -023 and -024 recorded | Met | Status history above |
 
@@ -179,7 +183,7 @@ Exempt items: MIDAS-018, MIDAS-023 and MIDAS-024 went Backlog → Ready → In p
 | AD | LDAPS test directory with 1206 computers, a real domain laptop with a reachable and an unreachable domain controller | MIDAS-036, MIDAS-037 | Production directories before the pilot |
 | Web panel | Hungarian and English, light and dark themes, keyboard, Chromium, local harness | MIDAS-031, MIDAS-032, MIDAS-038, MIDAS-039 | A browser check against the real development server; the owner accepts its local certificate |
 | Host profile | Windows 11 (`Client`) and Windows Server (`Server`) on real machines | MIDAS-039 | Server Core, headless Linux |
-| Test fleet | — | — | Ten mixed test devices reporting for a week (gate condition) |
+| Test fleet | — | — | Ten mixed test devices reporting for a week before the pilot (MIDAS-086) |
 
 ### Phase 2 start conditions
 
