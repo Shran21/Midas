@@ -10,6 +10,7 @@ use prost::Message;
 pub mod directory;
 pub mod enrollment;
 pub mod policy;
+pub mod remote;
 pub mod sessions;
 
 /// Versions this build can speak.
@@ -47,7 +48,7 @@ impl VersionRange {
 pub struct Envelope {
     #[prost(
         oneof = "Body",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23"
     )]
     pub body: Option<Body>,
 }
@@ -90,6 +91,16 @@ pub enum Body {
     SessionRequest(sessions::SessionRequest),
     #[prost(message, tag = "18")]
     SessionReport(sessions::SessionReport),
+    #[prost(message, tag = "19")]
+    RemotePrepare(remote::Prepare),
+    #[prost(message, tag = "20")]
+    RemoteChallenge(remote::Challenge),
+    #[prost(message, tag = "21")]
+    RemoteDeliver(remote::Deliver),
+    #[prost(message, tag = "22")]
+    RemoteRevoke(remote::Revoke),
+    #[prost(message, tag = "23")]
+    RemoteAck(remote::Ack),
 }
 
 /// First message from the agent.
@@ -122,6 +133,8 @@ pub struct Welcome {
     pub server_version: String,
     #[prost(bytes = "vec", tag = "4")]
     pub connection_id: Vec<u8>,
+    #[prost(message, optional, tag = "5")]
+    pub remote: Option<remote::Context>,
 }
 
 /// Refused handshake; the server closes the connection after sending it.

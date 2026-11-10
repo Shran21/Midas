@@ -44,6 +44,7 @@ ldap3.workspace = true
 lettre.workspace = true
 midas-protocol = { path = "../shared/protocol", version = "0.1.0" }
 midas-remote-auth = { path = "../shared/remote-auth", version = "0.1.0" }
+prost.workspace = true
 rcgen = { workspace = true, features = ["x509-parser"] }
 time.workspace = true
 tower.workspace = true

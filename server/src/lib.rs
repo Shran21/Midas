@@ -20,6 +20,7 @@ pub mod health;
 pub mod inventory;
 pub mod metrics;
 pub mod policy;
+pub mod remote_grants;
 pub mod remote_sessions;
 pub mod transport;
 

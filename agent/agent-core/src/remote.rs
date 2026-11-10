@@ -9,6 +9,8 @@ use std::{
 use midas_remote_auth::{Claims, Connection, Error, Mode, Rights, SignedGrant, Target, verify};
 use uuid::Uuid;
 
+pub mod transport;
+
 struct ChannelState {
     identity: Connection,
     key: [u8; 32],

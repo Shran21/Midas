@@ -475,7 +475,7 @@ impl Authorizer {
         }
     }
 
-    async fn record_decision(&self, event: &Event) -> Result<()> {
+    pub(crate) async fn record_decision(&self, event: &Event) -> Result<()> {
         let tenant = event.tenant.ok_or(AccessError::InvalidInput)?;
         let mut tx = self.tenant_transaction(tenant, false).await?;
         match audit::append_tenant(&mut tx, event).await {

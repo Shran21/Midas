@@ -22,6 +22,7 @@ pub const DIRECTORY_EVERY: Duration = Duration::from_secs(6 * 3600);
 #[derive(Clone)]
 pub struct Settings {
     pub sessions: Option<crate::sessions::Probe>,
+    pub remote: Option<crate::remote::transport::Backend>,
     pub host: String,
     pub port: u16,
     /// Must carry the agent's client certificate; the server only accepts mTLS.
@@ -49,6 +50,7 @@ impl Settings {
     pub fn new(host: String, port: u16, tls: Arc<rustls::ClientConfig>, platform: &str) -> Self {
         Self {
             sessions: None,
+            remote: None,
             host,
             port,
             tls,
@@ -143,12 +145,21 @@ async fn session(
         },
         () = stopped(shutdown) => return Outcome::Shutdown,
     };
+    let mut capabilities: Vec<_> = settings
+        .capabilities
+        .iter()
+        .filter(|name| name.as_str() != midas_protocol::remote::CAPABILITY)
+        .cloned()
+        .collect();
+    if settings.remote.is_some() {
+        capabilities.push(midas_protocol::remote::CAPABILITY.into());
+    }
     let hello = Body::Hello(Hello {
         min_version: settings.supported.min,
         max_version: settings.supported.max,
         agent_version: settings.agent_version.clone(),
         platform: settings.platform.clone(),
-        capabilities: settings.capabilities.clone(),
+        capabilities,
     });
     let handshake = async {
         send(&mut socket, hello, settings.handshake_timeout).await?;
@@ -169,6 +180,14 @@ async fn session(
             return Outcome::Failed(Reason::Incompatible { server });
         }
         _ => return Outcome::Failed(Reason::Handshake),
+    };
+    let mut remote = match &settings.remote {
+        Some(backend) => match crate::remote::transport::Transport::connect(backend, &welcome) {
+            Ok(transport) => transport,
+            Err(_) => return Outcome::Failed(Reason::Handshake),
+        },
+        None if welcome.remote.is_some() => return Outcome::Failed(Reason::Handshake),
+        None => None,
     };
     let keepalive = Duration::from_secs(
         welcome
@@ -218,6 +237,12 @@ async fn session(
     }
     loop {
         tokio::select! {
+            result = crate::remote::transport::next(&mut remote), if remote.is_some() => {
+                let Some(result) = result else { return Outcome::Ended { connected }; };
+                if send(&mut socket, result, keepalive).await.is_err() {
+                    return Outcome::Ended { connected };
+                }
+            }
             Some(report) = session_results.recv() => {
                 if send(&mut socket, Body::SessionReport(report), keepalive).await.is_err() {
                     return Outcome::Ended { connected };
@@ -266,6 +291,21 @@ async fn session(
                 }
             }
             frame = receive(&mut socket) => match frame {
+                Ok(Body::RemotePrepare(request)) => {
+                    if remote.as_mut().is_none_or(|remote| remote.prepare(request).is_err()) {
+                        return Outcome::Ended { connected };
+                    }
+                }
+                Ok(Body::RemoteDeliver(delivery)) => {
+                    if remote.as_mut().is_none_or(|remote| remote.deliver(delivery).is_err()) {
+                        return Outcome::Ended { connected };
+                    }
+                }
+                Ok(Body::RemoteRevoke(request)) => {
+                    if remote.as_mut().is_none_or(|remote| remote.revoke(request).is_err()) {
+                        return Outcome::Ended { connected };
+                    }
+                }
                 Ok(Body::SessionRequest(request)) => {
                     if let Some(probe) = &settings.sessions
                         && midas_protocol::sessions::identifier(&request.request_id)
@@ -328,7 +368,8 @@ async fn session(
                 Err(()) => return Outcome::Ended { connected },
             },
             () = stopped(shutdown) => {
-                let _ = socket.close(None).await;
+                drop(remote.take());
+                let _ = timeout(settings.handshake_timeout, socket.close(None)).await;
                 return Outcome::Shutdown;
             }
         }

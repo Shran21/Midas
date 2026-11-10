@@ -919,6 +919,7 @@ pub async fn verify(database: &Database, admin: &mut PgConnection) {
 
     super::remote_sessions::verify(
         super::remote_sessions::Context {
+            enrollment: &enrollment,
             app: &app,
             web: &web,
             manager: &manager,

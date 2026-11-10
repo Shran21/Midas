@@ -303,6 +303,7 @@ type TokenRow = (Uuid, Uuid, Option<Uuid>, String, String, bool, bool, bool);
 type RequestRow = (Vec<u8>, Uuid, Uuid, Option<Vec<u8>>, bool);
 
 pub struct Enrollment {
+    pub(crate) remote_grants: crate::remote_grants::Registry,
     pub(crate) remote_sessions: crate::remote_sessions::Registry,
     pub(crate) pool: PgPool,
     pub(crate) authorizer: Authorizer,
@@ -322,6 +323,7 @@ impl Enrollment {
             authorizer: Authorizer::new(database),
             authority,
             remote_sessions: Default::default(),
+            remote_grants: Default::default(),
             live: Arc::default(),
             changes: broadcast::channel(256).0,
             refreshed: Mutex::default(),

@@ -2113,6 +2113,7 @@ dependencies = [
  "midas-protocol",
  "midas-remote-auth",
  "openssl",
+ "prost",
  "rcgen 0.14.10",
  "rustls",
  "rustls-acme",

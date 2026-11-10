@@ -15,6 +15,7 @@ use uuid::Uuid;
 use super::administration::{Client, ORIGIN, call};
 
 pub struct Context<'a> {
+    pub enrollment: &'a Arc<midas_server::enrollment::Enrollment>,
     pub app: &'a Router,
     pub web: &'a Arc<WebAuth>,
     pub manager: &'a Client,
@@ -260,10 +261,15 @@ pub async fn verify(ctx: Context<'_>, admin: &mut PgConnection) {
     let mut settings = midas_agent_core::connection::Settings::new(
         "127.0.0.1".into(),
         ctx.port,
-        ctx.tls,
+        ctx.tls.clone(),
         "windows",
     );
     settings.capabilities.push(CAPABILITY.into());
+    let broker = Arc::new(super::remote_transport::Broker::new(generation));
+    settings.remote = Some(
+        midas_agent_core::remote::transport::Backend::new(ctx.tenant, ctx.device, broker.clone())
+            .unwrap(),
+    );
     settings.sessions = Some(midas_agent_core::sessions::Probe::new(Arc::new(
         move || {
             Some(vec![OsSession {
@@ -295,6 +301,15 @@ pub async fn verify(ctx: Context<'_>, admin: &mut PgConnection) {
         generation.to_string()
     );
     assert_eq!(view["sessions"][0]["presence"], "vacant");
+    let active_grant = super::remote_transport::verify(&ctx, admin, &view, &broker).await;
     stop.send_replace(true);
     agent.await.unwrap();
+    assert!(!broker.allowed());
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while active_grant.is_active() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
 }

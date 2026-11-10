@@ -24,6 +24,8 @@ mod remote_decisions;
 mod remote_grants;
 #[path = "support/remote_sessions.rs"]
 mod remote_sessions;
+#[path = "support/remote_transport.rs"]
+mod remote_transport;
 #[path = "support/sessions.rs"]
 mod sessions;
 #[path = "support/setup.rs"]

@@ -121,6 +121,20 @@ async fn serve(
         refuse(&mut socket, RejectReason::UnsupportedVersion, &protocol).await;
         return;
     };
+    let mut remote_grants = match (&protocol.identities, &admission) {
+        (Some(identities), Some(admission))
+            if hello
+                .capabilities
+                .iter()
+                .any(|c| c == midas_protocol::remote::CAPABILITY) =>
+        {
+            match identities.remote_grants.register(admission) {
+                Ok(registration) => Some(registration),
+                Err(_) => return,
+            }
+        }
+        _ => None,
+    };
     let welcome = Body::Welcome(Welcome {
         version,
         keepalive_seconds: u32::try_from(protocol.keepalive.as_secs()).unwrap_or(u32::MAX),
@@ -129,6 +143,10 @@ async fn serve(
             .as_ref()
             .map(|a| a.connection_id().as_bytes().to_vec())
             .unwrap_or_default(),
+        remote: remote_grants
+            .as_ref()
+            .zip(admission.as_ref())
+            .map(|(registration, admission)| registration.context(admission)),
     });
     if send(&mut socket, welcome, protocol.keepalive)
         .await
@@ -180,6 +198,18 @@ async fn serve(
     let ending = loop {
         let next = tokio::select! {
             next = timeout(protocol.idle_limit(), receive(&mut socket)) => next,
+            Some(event) = crate::remote_grants::next(&mut remote_grants) => {
+                if let (Some(registration), Some(admission)) = (&mut remote_grants, &admission) {
+                    let message = match event {
+                        crate::remote_grants::Event::Command(command) => registration.command(command, admission),
+                        crate::remote_grants::Event::Cancel => registration.cancel(),
+                    };
+                    if let Some(message) = message
+                        && send(&mut socket, message, protocol.handshake_timeout).await.is_err()
+                    { break "closed"; }
+                }
+                continue;
+            }
             Some(request) = crate::remote_sessions::next(&mut session_queries), if session_pending.is_none() => {
                 if let Some(admission) = &admission
                     && let Some((pending, message)) = crate::remote_sessions::Pending::start(request, admission)
@@ -195,6 +225,7 @@ async fn serve(
             }
             signal = changed(&mut admission) => {
                 if signal.revoked {
+                    drop(remote_grants.take());
                     let _ = timeout(protocol.handshake_timeout, socket.send(Message::Close(None))).await;
                     break "revoked";
                 }
@@ -216,6 +247,16 @@ async fn serve(
         match next {
             Err(_) => break "idle",
             Ok(Err(())) => break "closed",
+            Ok(Ok(Body::RemoteChallenge(message))) => {
+                if let (Some(registration), Some(admission)) = (&mut remote_grants, &admission) {
+                    registration.challenge(message, admission);
+                }
+            }
+            Ok(Ok(Body::RemoteAck(message))) => {
+                if let Some(registration) = &mut remote_grants {
+                    registration.acknowledged(message);
+                }
+            }
             Ok(Ok(Body::SessionReport(report))) => {
                 if let Some(admission) = &admission
                     && session_pending
