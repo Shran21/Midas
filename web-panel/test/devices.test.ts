@@ -131,6 +131,7 @@ test("the host profile separates graphical and background capabilities", () => {
   );
   assert.deepEqual(commonActionIds(desktopServer), [
     "refresh",
+    "support",
     "remote",
     "remoteAdmin",
     "revoke",

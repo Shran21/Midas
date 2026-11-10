@@ -107,6 +107,23 @@ export type InventoryView = {
   items: { kind: string; key: string; value: string; updated_at: number }[];
 };
 export type MaintenanceWindow = { starts_at: number; ends_at: number };
+export type SessionSelection = {
+  connection_id: string;
+  os_session_id: string;
+  generation: string;
+};
+export type RemoteSession = {
+  selection: SessionSelection;
+  presence: "occupied" | "vacant" | "unknown";
+  account: string;
+  station: string;
+  console: boolean;
+  locked: boolean | null;
+};
+export type RemoteSessions = {
+  connection_id: string;
+  sessions: RemoteSession[];
+};
 export type DeviceUnattendedSpec = {
   enabled: boolean;
   maintenance_window: MaintenanceWindow | null;
@@ -238,7 +255,12 @@ export class ApiError extends Error {
 
 async function request<T>(
   path: string,
-  init: { method?: string; body?: unknown; csrf?: string } = {},
+  init: {
+    method?: string;
+    body?: unknown;
+    csrf?: string;
+    signal?: AbortSignal;
+  } = {},
 ): Promise<T> {
   const headers: Record<string, string> = {};
   if (init.body !== undefined) headers["content-type"] = "application/json";
@@ -251,6 +273,7 @@ async function request<T>(
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
       credentials: "same-origin",
       cache: "no-store",
+      signal: init.signal,
     });
   } catch {
     throw new ApiError(0, "network");
@@ -412,6 +435,17 @@ export const api = {
     request<DeviceSummary[]>(`${tenantPath(tenant)}/devices`),
   device: (tenant: string, device: string) =>
     request<DeviceSummary>(devicePath(tenant, device)),
+  remoteSessions: (
+    tenant: string,
+    device: string,
+    csrf: string,
+    signal: AbortSignal,
+  ) =>
+    request<unknown>(`${devicePath(tenant, device)}/remote-sessions`, {
+      method: "POST",
+      csrf,
+      signal,
+    }),
   health: (tenant: string, device: string) =>
     request<HealthView>(`${devicePath(tenant, device)}/health`),
   inventory: (tenant: string, device: string) =>

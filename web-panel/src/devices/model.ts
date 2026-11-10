@@ -6,6 +6,7 @@ export type ActionId =
   | "monitoring"
   | "inventory"
   | "policy"
+  | "support"
   | "remote"
   | "remoteAdmin"
   | "terminal"
@@ -50,6 +51,12 @@ const catalogue: Definition[] = [
   {
     id: "policy",
     permission: "device.read",
+    scope: "device",
+    needsAgent: false,
+  },
+  {
+    id: "support",
+    permission: "remote.view",
     scope: "device",
     needsAgent: false,
   },
@@ -132,7 +139,9 @@ export function deviceActions(device: DeviceSummary, access: Access): Action[] {
     )
     .filter(
       (definition) =>
-        !(definition.id === "revoke" && device.enrollment === "revoked"),
+        !(definition.id === "revoke" && device.enrollment === "revoked") &&
+        (definition.id !== "support" ||
+          device.permissions.includes("device.read")),
     )
     .map((definition) => ({
       id: definition.id,
@@ -166,7 +175,7 @@ export function desktop(device: DeviceSummary): boolean | null {
 export function commonActionIds(device: DeviceSummary): ActionId[] {
   return desktop(device) === false
     ? ["refresh", "terminal", "files", "revoke"]
-    : ["refresh", "remote", "remoteAdmin", "revoke"];
+    : ["refresh", "support", "remote", "remoteAdmin", "revoke"];
 }
 
 export type CapabilityState =

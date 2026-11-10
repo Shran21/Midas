@@ -4,7 +4,7 @@
 
 ## Magyar
 
-A MIDAS-041 jelenlegi megvalósítása a szerveres szabályzat tárolását, webes szerkesztőjét, adminisztrációs API-ját, belső döntési szolgáltatását és a Windows-munkamenetek hiteles agentcsatornán történő lekérdezését tartalmazza. Távoli kép- vagy beviteli kapcsolatot még nem indít. A munkamenet-kijelölő webes felület, a natív megfigyelés bekötése a döntésbe, az aláírt, egyszer használható felhatalmazás és a tényleges helyi jóváhagyás még szükséges; a feladat ezért nem lezárt.
+A MIDAS-041 jelenlegi megvalósítása a szerveres szabályzat tárolását, webes szerkesztőjét, adminisztrációs API-ját, belső döntési szolgáltatását, a Windows-munkamenetek hiteles agentcsatornán történő lekérdezését és webes kijelölését tartalmazza. Távoli kép- vagy beviteli kapcsolatot még nem indít. A natív megfigyelés bekötése a döntésbe, az aláírt, egyszer használható felhatalmazás és a tényleges helyi jóváhagyás még szükséges; a feladat ezért nem lezárt.
 
 ### Beállítás
 
@@ -39,6 +39,16 @@ Az időablak a böngésző helyi időzónáját használja, a mezők alatt UTC-i
 
 A pillanatnyi időablak-állapot az utolsó lekérés idejére vonatkozik. Sem ez, sem a két bekapcsolt kapcsoló nem jelenti egy távoli kapcsolat engedélyezését. A felület magyarul és angolul, világos és sötét módban használható.
 
+### Célmunkamenet a webpanelen
+
+Az **Eszközök → kiválasztott gép → Távsegítség** lapon kézzel kérhető le és jelölhető ki a célmunkamenet. A lap a gép menüjéből és a parancskeresőből is elérhető. Ehhez a kezelőnek a gépen `device.read` és `remote.view` joggal kell rendelkeznie. A lekérdezés csak elérhető, aktív regisztrációjú, `remote.sessions` képességet hirdető agenttel indítható. A jogosultságokat minden kérésnél a szerver ellenőrzi.
+
+A lista a felhasználót, munkamenetszámot, konzolt vagy állomásnevet, jelenlétet és zárolási állapotot mutatja. A bizonytalan jelenlétű cél nem jelölhető ki. Bejelentkezett célnál a felület helyi jóváhagyást jelez, üres szerveres célnál a külön szabályzat és hitelesítés feltételeit; üres munkaállomásnál nem ígér unattended elérést. Az üres lista nem jelent felügyelet nélküli engedélyt.
+
+Nincs automatikus munkamenet-lekérdezés. A lista és a kijelölés legfeljebb 30 másodpercig marad meg, a kérés indításától, monoton órával mérve. Ez megjelenítési érvényesség, nem végrehajtási engedély. Új lekérés, hiba, lap- vagy célváltás, böngészős munkamenetcsere, háttérbe helyezés, illetve észlelt kapcsolatvesztés, képességhiány vagy a megtekintési jog elvesztése törli a korábbi adatot és kijelölést. A megszakított kérés késői válasza nem töltheti vissza. Új agentkapcsolatból érkező lista új kijelölést kér; a böngésző nem figyeli folyamatosan az OS-munkamenetek változását, ezért későbbi kapcsolatindítás előtt kötelező a friss, szerveroldali ellenőrzés.
+
+A lista billentyűzettel is kezelhető. Lejáráskor a benne lévő fókusz a frissítőgombra kerül, keskeny nézetben az aktív eszközlap látható marad. A felület magyarul és angolul, világos és sötét módban működik. A tényleges kapcsolatindítás még nem érhető el; a kijelölés jelenleg csak a webes nézetben él, nem kerül helyi tárolóba vagy végrehajtási kérésbe.
+
 ### Windows-munkamenetek lekérdezése
 
 A `POST /api/tenants/{id}/devices/{device}/remote-sessions` a bejelentkezett kezelő `device.read` és `remote.view` jogát ellenőrzi a célgépen. Origin- és CSRF-védelem szükséges. A kérés a gép már hitelesített mTLS-kapcsolatán jut el az agenthez; a böngésző nem adhat meg felhasználói jelenlétet vagy agentválaszt. A válasz `connection_id` mezőt és `sessions` listát tartalmaz. Egy elem például:
@@ -64,7 +74,7 @@ Egyszerre egy natív lekérdezés futhat, újracsatlakozáson át is. A szerver 
 
 Válaszadás előtt a szerver ismét ellenőrzi a böngészős munkamenetet, jogosultságot, gépregisztrációt és a konkrét agenttanúsítványt. A sikeres lekérdezés auditja a kapcsolat azonosítóját és a munkamenetek számát tárolja, felhasználónevet nem. Auditálási hiba esetén a végpont nem adja ki a listát. A válasz megfigyelés, nem vezérlési engedély; későbbi végrehajtás előtt új megfigyelés és célazonosság-ellenőrzés kell.
 
-A `remote.sessions` képességet jelenleg csak az eseményértesítésekre feliratkozott Windows-szolgáltatás hirdeti. A Windows előtérben futó módja és a Linux-agent még nem támogatja; ezekből nem keletkezik hamis „üres” eredmény. A webes célkijelölő még nem készült el. Az automatizált próbák a protokollt, állapotosztályozást, mTLS-kapcsolatot, visszajátszás elutasítását, jogosultság- és tanúsítvány-visszavonást, időtúllépést, auditálási hibát és újracsatlakozást vizsgálják. Valódi SYSTEM-szolgáltatásos, több RDP-felhasználós, zárolási, kijelentkezési és UAC-próba még szükséges; a fejlesztői gépre ehhez nem települ szolgáltatás.
+A `remote.sessions` képességet jelenleg csak az eseményértesítésekre feliratkozott Windows-szolgáltatás hirdeti. A Windows előtérben futó módja és a Linux-agent még nem támogatja; ezekből nem keletkezik hamis „üres” eredmény. Az automatizált próbák a protokollt, állapotosztályozást, mTLS-kapcsolatot, visszajátszás elutasítását, jogosultság- és tanúsítvány-visszavonást, időtúllépést, auditálási hibát és újracsatlakozást vizsgálják. Valódi SYSTEM-szolgáltatásos, több RDP-felhasználós, zárolási, kijelentkezési és UAC-próba még szükséges; a fejlesztői gépre ehhez nem települ szolgáltatás.
 
 Natív szerződés: [WTS-munkamenetállapotok](https://learn.microsoft.com/en-us/windows/win32/api/wtsapi32/ne-wtsapi32-wts_connectstate_class), [munkamenet-információ és zárolási jelzők](https://learn.microsoft.com/en-us/windows/win32/api/wtsapi32/ns-wtsapi32-wtsinfoex_level1_w).
 
@@ -82,7 +92,7 @@ Ez szabályzatdöntés, nem végrehajtható felhatalmazás. A későbbi aláírt
 
 ## English
 
-The current MIDAS-041 implementation provides server-policy storage, a web editor, an administration API, an internal decision service and Windows session queries over the authenticated agent channel. It does not start remote media or input. The web session selector, native observation integration into the decision, signed single-use grants and actual local consent remain; the task stays open.
+The current MIDAS-041 implementation provides server-policy storage, a web editor, an administration API, an internal decision service, Windows session queries over the authenticated agent channel and web target selection. It does not start remote media or input. Native observation integration into the decision, signed single-use grants and actual local consent remain; the task stays open.
 
 ### Configuration
 
@@ -105,6 +115,16 @@ The window uses the browser's local time zone and displays UTC below each input.
 
 Window status describes the last fetch time. Neither that status nor both opt-ins authorize a remote connection. The editor supports Hungarian and English, light and dark themes.
 
+### Selecting a target in the web panel
+
+**Devices → selected device → Remote support** lets operators fetch and select a target session. The device menu and command palette also open this tab. Both `device.read` and `remote.view` permissions on the device are required. Queries require an online, actively enrolled agent advertising `remote.sessions`; the server authorizes every request.
+
+The list shows account, session number, console or station, presence and lock state. Unknown presence cannot be selected. Occupied targets indicate the need for local consent; vacant server targets describe policy and authentication prerequisites. Vacant workstations do not imply unattended access. An empty list grants no access.
+
+There is no automatic session polling. The list and selection last up to 30 seconds measured from request start using a monotonic clock. This is display freshness, not execution authorization. Refresh, failure, tab or target changes, browser-session rotation, hiding the page, or observed loss of connectivity, capability or viewing permission clear previous data and selection. A cancelled request's late response cannot restore them. Lists from a new agent connection require reselection. The browser does not continuously watch OS session changes, so starting a later connection must perform a fresh server-side check.
+
+Keyboard selection is supported. On expiry, focus inside the list returns to the refresh button; the active device tab remains visible on narrow screens. Hungarian/English and light/dark modes are supported. Actual connection initiation remains unavailable: the selection currently lives only in the view and is not persisted locally or submitted for execution.
+
 ### Querying Windows sessions
 
 `POST /api/tenants/{id}/devices/{device}/remote-sessions` requires the signed-in operator's `device.read` and `remote.view` permissions on the target, plus Origin and CSRF validation. The request travels over the device's authenticated mTLS connection; the browser cannot supply presence or an agent response. The response contains `connection_id` and `sessions`. Each entry has `selection` (connection ID, OS session ID and generation), `presence` (`occupied`, `vacant` or `unknown`), `account`, `station`, `console` and nullable `locked`, as illustrated above.
@@ -115,7 +135,7 @@ Only one native query may run, including across reconnects. The server binds eac
 
 Before returning data, the server rechecks the browser session, permissions, enrollment and the specific agent certificate. Successful-query audit records contain the connection ID and session count, never account names. Audit failure prevents disclosure of the list. A response is an observation, not control authorization; later execution needs another observation and target-identity check.
 
-Only the Windows service with session notifications enabled currently advertises `remote.sessions`. Windows foreground mode and Linux do not support it yet and cannot report false vacancy. The web target selector is pending. Automated tests cover protocol validation, classification, mTLS exchange, replay rejection, permission and certificate revocation, timeout, audit failure and reconnection. Actual SYSTEM service, multi-user RDP, lock, logoff and UAC trials remain required; no service is installed on the development machine for these checks.
+Only the Windows service with session notifications enabled currently advertises `remote.sessions`. Windows foreground mode and Linux do not support it yet and cannot report false vacancy. Automated tests cover protocol validation, classification, mTLS exchange, replay rejection, permission and certificate revocation, timeout, audit failure and reconnection. Actual SYSTEM service, multi-user RDP, lock, logoff and UAC trials remain required; no service is installed on the development machine for these checks.
 
 Native contracts: [WTS session states](https://learn.microsoft.com/en-us/windows/win32/api/wtsapi32/ne-wtsapi32-wts_connectstate_class), [session information and lock flags](https://learn.microsoft.com/en-us/windows/win32/api/wtsapi32/ns-wtsapi32-wtsinfoex_level1_w).
 

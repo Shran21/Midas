@@ -3141,3 +3141,150 @@ h1[tabindex="-1"]:focus {
 .device-policy .unattended-panel .form-error {
   margin: 0;
 }
+
+.remote-sessions {
+  min-width: 0;
+}
+.remote-content {
+  display: grid;
+  gap: 16px;
+  padding: 0 18px 18px;
+  line-height: 1.55;
+}
+.remote-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+}
+.remote-toolbar .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.remote-list {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.remote-list legend {
+  padding: 0 0 10px;
+  font-weight: 600;
+}
+.remote-session {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  cursor: pointer;
+}
+.remote-session:hover:not(.uncertain) {
+  border-color: var(--accent);
+}
+.remote-session.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.remote-session.uncertain {
+  cursor: not-allowed;
+}
+.remote-session input {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin: 3px 0 0;
+  accent-color: var(--accent);
+}
+.remote-session-content {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  flex: 1;
+}
+.remote-session-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+.remote-session-heading strong {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.remote-session-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.remote-presence {
+  flex-shrink: 0;
+  padding: 2px 9px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--hover);
+  color: var(--text);
+}
+.remote-presence.occupied {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.remote-presence.unknown {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.remote-uncertain-note {
+  font-size: 12px;
+  color: var(--warning);
+}
+.remote-selection {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border-left: 3px solid var(--accent);
+  background: var(--surface-subtle);
+  border-radius: 4px;
+}
+.remote-sessions .remote-selection > svg {
+  margin-top: 2px;
+  color: var(--accent);
+}
+.remote-selection p {
+  margin-top: 5px;
+  color: var(--muted);
+}
+.remote-validity {
+  font-size: 12px;
+}
+.remote-pending {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.remote-sessions .remote-pending > svg {
+  margin-top: 2px;
+}
+.remote-empty {
+  padding: 18px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+.remote-empty p {
+  margin-top: 6px;
+}

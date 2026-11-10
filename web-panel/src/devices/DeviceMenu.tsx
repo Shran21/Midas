@@ -17,6 +17,7 @@ export const actionIcons: Record<ActionId, IconName> = {
   monitoring: "activity",
   inventory: "box",
   policy: "settings",
+  support: "remote",
   remote: "remote",
   remoteAdmin: "shield",
   terminal: "terminal",
@@ -33,6 +34,7 @@ export function actionLabel(id: ActionId, t: Copy) {
     monitoring: t.actionMonitoring,
     inventory: t.actionInventory,
     policy: t.actionPolicy,
+    support: t.actionSupport,
     remote: t.normalSupport,
     remoteAdmin: t.adminSupport,
     terminal: t.actionTerminal,
@@ -212,6 +214,7 @@ export function useDeviceActions({
       case "monitoring":
       case "inventory":
       case "policy":
+      case "support":
         return onOpen(device.id, action.id);
       case "revoke":
         return setConfirming(device);
@@ -274,7 +277,12 @@ export function useDeviceActions({
   return { run, element };
 }
 
-export type Tab = "overview" | "monitoring" | "inventory" | "policy";
+export type Tab =
+  | "overview"
+  | "monitoring"
+  | "inventory"
+  | "policy"
+  | "support";
 
 function RevokeDialog({
   device,

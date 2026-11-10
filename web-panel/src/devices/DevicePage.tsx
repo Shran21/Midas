@@ -16,6 +16,7 @@ import {
 } from "../api";
 import { Icon } from "../Icon";
 import type { Copy, Language } from "../i18n";
+import { SessionPicker } from "../remote/SessionPicker";
 import { errorText } from "../SignIn";
 import { UnattendedPolicy } from "../unattended/UnattendedPolicy";
 import {
@@ -67,7 +68,13 @@ type Props = {
   confirmIdentity: (force?: boolean) => Promise<string>;
 };
 
-const tabs: Tab[] = ["overview", "monitoring", "inventory", "policy"];
+const tabs: Tab[] = [
+  "overview",
+  "monitoring",
+  "inventory",
+  "policy",
+  "support",
+];
 
 export function DevicePage(props: Props) {
   const { tenant, tenantName, access, t, language, fail, changes, deviceId } =
@@ -96,6 +103,31 @@ export function DevicePage(props: Props) {
     if (name) onIdentity?.(name);
   }, [name, onIdentity]);
 
+  const loaded = !!device;
+  const offered = device ? deviceActions(device, access) : [];
+  const allowedTabs = tabs.filter(
+    (tab) => tab === "overview" || offered.some((action) => action.id === tab),
+  );
+  const tab = allowedTabs.includes(props.tab) ? props.tab : "overview";
+  useEffect(() => {
+    const list = tabList.current;
+    if (!list || !loaded) return;
+    const reveal = () => {
+      const active = list.querySelector(`[data-tab="${tab}"]`);
+      if (!active) return;
+      const item = active.getBoundingClientRect();
+      const container = list.getBoundingClientRect();
+      list.scrollLeft +=
+        item.left < container.left
+          ? item.left - container.left
+          : Math.max(0, item.right - container.right);
+    };
+    reveal();
+    const observer = new ResizeObserver(reveal);
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [tab, loaded]);
+
   if (!device) {
     if (live.error)
       return (
@@ -117,11 +149,6 @@ export function DevicePage(props: Props) {
     return <p className="loading-line">{t.loading}</p>;
   }
 
-  const offered = deviceActions(device, access);
-  const allowedTabs = tabs.filter(
-    (tab) => tab === "overview" || offered.some((action) => action.id === tab),
-  );
-  const tab = allowedTabs.includes(props.tab) ? props.tab : "overview";
   const quick = commonActionIds(device);
   const common = quick.flatMap(
     (id) => offered.find((action) => action.id === id) ?? [],
@@ -237,6 +264,13 @@ export function DevicePage(props: Props) {
         {tab === "monitoring" && <Monitoring {...props} device={device} />}
         {tab === "inventory" && <Inventory {...props} device={device} />}
         {tab === "policy" && <Policy {...props} device={device} />}
+        {tab === "support" && (
+          <SessionPicker
+            {...props}
+            device={device}
+            unavailable={!!live.error}
+          />
+        )}
       </div>
       {menu && (
         <DeviceMenu
@@ -257,6 +291,7 @@ function tabLabel(tab: Tab, t: Copy) {
     monitoring: t.monitoringAndAlerts,
     inventory: t.actionInventory,
     policy: t.actionPolicy,
+    support: t.remote,
   }[tab];
 }
 
