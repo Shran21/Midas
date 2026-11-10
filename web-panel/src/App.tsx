@@ -72,7 +72,7 @@ export function App() {
     case "signed-in":
       return (
         <Shell
-          key={mode.session.session.id}
+          key={mode.session.session.operator_id}
           preferences={preferences}
           signedIn={mode.session}
           onSignedOut={signedOut}

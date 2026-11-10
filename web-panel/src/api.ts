@@ -106,6 +106,17 @@ export type InventoryView = {
   reconciled_at: number | null;
   items: { kind: string; key: string; value: string; updated_at: number }[];
 };
+export type MaintenanceWindow = { starts_at: number; ends_at: number };
+export type DeviceUnattendedSpec = {
+  enabled: boolean;
+  maintenance_window: MaintenanceWindow | null;
+};
+export type DeviceUnattendedPolicy = DeviceUnattendedSpec & {
+  tenant_enabled: boolean;
+  within_maintenance_window: boolean;
+  reboot_confirmation_required: boolean;
+  reconnect_verification_required: boolean;
+};
 export type EffectiveSetting = {
   key: string;
   value: number;
@@ -407,6 +418,29 @@ export const api = {
     request<InventoryView>(`${devicePath(tenant, device)}/inventory`),
   policy: (tenant: string, device: string) =>
     request<EffectiveSetting[]>(`${devicePath(tenant, device)}/policy`),
+  tenantUnattended: (tenant: string) =>
+    request<{ enabled: boolean }>(`${tenantPath(tenant)}/unattended-policy`),
+  setTenantUnattended: (tenant: string, enabled: boolean, csrf: string) =>
+    request<void>(`${tenantPath(tenant)}/unattended-policy`, {
+      method: "PUT",
+      body: { enabled },
+      csrf,
+    }),
+  deviceUnattended: (tenant: string, device: string) =>
+    request<DeviceUnattendedPolicy>(
+      `${devicePath(tenant, device)}/unattended-policy`,
+    ),
+  setDeviceUnattended: (
+    tenant: string,
+    device: string,
+    body: DeviceUnattendedSpec,
+    csrf: string,
+  ) =>
+    request<void>(`${devicePath(tenant, device)}/unattended-policy`, {
+      method: "PUT",
+      body,
+      csrf,
+    }),
   metrics: (tenant: string, device: string) =>
     request<MetricsView>(`${devicePath(tenant, device)}/metrics`),
   deviceAlerts: (tenant: string, device: string) =>

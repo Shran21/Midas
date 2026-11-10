@@ -26,6 +26,8 @@ import { type Copy, type Language, translations } from "./i18n";
 import { permissionNames } from "./permissions";
 import { type Preferences, remember, stored } from "./preferences";
 import { errorText, PreferenceControls } from "./SignIn";
+import { freshPasskey } from "./unattended/model";
+import { UnattendedPolicy } from "./unattended/UnattendedPolicy";
 
 export type SignOutReason = "ended" | "signed-out";
 
@@ -129,6 +131,7 @@ export function Shell({
   const [reload, setReload] = useState(0);
   const heading = useRef<HTMLHeadingElement>(null);
   const firstRender = useRef(true);
+  const confirmingIdentity = useRef(false);
 
   const fail = useCallback(
     (error: unknown) => {
@@ -140,6 +143,24 @@ export function Shell({
     },
     [onSignedOut],
   );
+
+  const confirmIdentity = async () => {
+    if (freshPasskey(signedIn.session, Date.now() / 1000))
+      return signedIn.csrf_token;
+    confirmingIdentity.current = true;
+    let confirmed: SignedIn;
+    try {
+      confirmed = await api.passkey(signedIn.operator.login);
+    } finally {
+      confirmingIdentity.current = false;
+    }
+    if (confirmed.session.operator_id !== operator) {
+      onSignedOut("ended");
+      throw new ApiError(401, "authentication_failed");
+    }
+    onSessionReplaced(confirmed);
+    return confirmed.csrf_token;
+  };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: the reload counter re-requests the data
   useEffect(() => {
@@ -196,6 +217,10 @@ export function Shell({
       stop = watchSession(
         signedIn.csrf_token,
         () => {
+          if (confirmingIdentity.current) {
+            retry = setTimeout(connect, 5000);
+            return;
+          }
           api.session().then(
             () => {
               if (!active) return;
@@ -426,14 +451,27 @@ export function Shell({
     );
   } else if (section === "access" && tenantId) {
     content = (
-      <AccessView
-        key={tenantId}
-        tenant={tenantId}
-        t={t}
-        language={language}
-        csrf={signedIn.csrf_token}
-        fail={fail}
-      />
+      <div className="access-sections" key={tenantId}>
+        {context.state === "ready" &&
+          context.value.tenant_wide.includes("access.manage") && (
+            <UnattendedPolicy
+              tenant={tenantId}
+              tenantName={tenantName ?? ""}
+              manage
+              language={language}
+              changes={changes}
+              confirmIdentity={confirmIdentity}
+              fail={fail}
+            />
+          )}
+        <AccessView
+          tenant={tenantId}
+          t={t}
+          language={language}
+          csrf={signedIn.csrf_token}
+          fail={fail}
+        />
+      </div>
     );
   } else if (section === "devices" && tenantId && context.state === "ready") {
     content = device ? (
@@ -447,6 +485,7 @@ export function Shell({
         csrf={signedIn.csrf_token}
         fail={fail}
         changes={changes}
+        confirmIdentity={confirmIdentity}
         deviceId={device.id}
         tab={device.tab}
         onTab={(tab) => setDevice({ id: device.id, tab })}
@@ -710,7 +749,7 @@ function Sessions({
     return () => {
       active = false;
     };
-  }, [reload, fail]);
+  }, [reload, fail, current.session.id]);
 
   const revoke = async (id: string) => {
     setError(null);

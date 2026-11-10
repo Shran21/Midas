@@ -4,7 +4,7 @@
 
 ## Magyar
 
-A MIDAS-041 első megvalósítása a szerveres szabályzat tárolását, adminisztrációs API-ját és belső döntési szolgáltatását tartalmazza. Távoli kép- vagy beviteli kapcsolatot még nem indít. A webpanel szabályzatszerkesztője, az agentoldali munkamenet-felderítés bekötése, az aláírt, egyszer használható felhatalmazás és a tényleges helyi jóváhagyás még szükséges; a feladat ezért nem lezárt.
+A MIDAS-041 első megvalósítása a szerveres szabályzat tárolását, webes szerkesztőjét, adminisztrációs API-ját és belső döntési szolgáltatását tartalmazza. Távoli kép- vagy beviteli kapcsolatot még nem indít. Az agentoldali munkamenet-felderítés bekötése, az aláírt, egyszer használható felhatalmazás és a tényleges helyi jóváhagyás még szükséges; a feladat ezért nem lezárt.
 
 ### Beállítás
 
@@ -31,6 +31,14 @@ Az engedélyezéshez szükséges saját jogot a szerver a kapcsoló állapotát�
 
 Az időpontok UTC Unix-másodpercek. Az intervallum eleje beleértendő, a vége kizárt; a bekapcsolási kérés idején a végpontnak jövőbelinek kell lennie. Jelenleg egyszeri ablak tárolható, ismétlődő ütemezés még nincs. A `within_maintenance_window` kizárólag az időablakról tájékoztat, nem jelenti egy távoli művelet engedélyezését.
 
+### Webes beállítás
+
+Az ügyfél kapcsolója a **Hozzáférés** oldalon, ügyfélszintű hozzáférés-kezelési joggal érhető el. Az adott szerver kapcsolója és időablaka az **Eszközök → kiválasztott szerver → Szabályzat és csoportok** lapon található. Gépszintű kezelési joggal szerkeszthető; csak megtekintési joggal olvasható. Munkaállomáson ez a szerkesztő nem jelenik meg.
+
+Az időablak a böngésző helyi időzónáját használja, a mezők alatt UTC-időpont is látszik. A nem létező vagy az óraátállításkor kétszer előforduló helyi időpont elutasított. A szerver kikapcsolása törli a tárolt időablakot. A mentés szükség esetén passkey-megerősítést kér; a megszakított hitelesítés megőrzi a vázlatot. A panel csak visszaolvasott eredményt jelez sikeresként. Az automatikus frissítés nem írja felül a vázlatot; az észlelt párhuzamos változás elvetést és újbóli áttekintést kér. A mentés előtti ellenőrzés nem adatbázisszintű verziózár: egyidejű API-írások közül az utolsó érvényesül, mindegyik külön auditbejegyzéssel.
+
+A pillanatnyi időablak-állapot az utolsó lekérés idejére vonatkozik. Sem ez, sem a két bekapcsolt kapcsoló nem jelenti egy távoli kapcsolat engedélyezését. A felület magyarul és angolul, világos és sötét módban használható.
+
 ### Munkamenet-döntés
 
 A belső `Authorizer::check_unattended_request` megköveteli mindkét kapcsolót, a szerverprofilt, a megtekintési és vezérlési jogokat, a külön unattended jogot, öt percen belüli passkey-hitelesítést, az indoklást és a kijelölt munkamenetet. A rendszergazdai mód és az UAC további külön jogosultságot kér. A jelenlegi jogosultságokat minden döntésnél újraolvassa.
@@ -45,7 +53,7 @@ Ez szabályzatdöntés, nem végrehajtható felhatalmazás. A későbbi aláírt
 
 ## English
 
-The first MIDAS-041 implementation provides server-policy storage, an administration API and an internal decision service. It does not start remote media or input. The web-panel policy editor, native agent session discovery, signed single-use grants and actual local consent still need integration; the task remains open.
+The first MIDAS-041 implementation provides server-policy storage, a web editor, an administration API and an internal decision service. It does not start remote media or input. Native agent session discovery, signed single-use grants and actual local consent still need integration; the task remains open.
 
 ### Configuration
 
@@ -59,6 +67,14 @@ Customer and individual server opt-ins are separate and default to off. Sites an
 The server checks the actor's held permission independently of the opt-in being edited. Applicable denials take precedence. Disabling does not require unattended permission but still requires access management and a fresh passkey. Writes enforce CSRF protection. Authorization, the change and its audit entry share a consistent database transaction; audit failure rolls back the change.
 
 The tenant body is `{"enabled":true}`. The device body has `enabled` and `maintenance_window` with `starts_at` and `ends_at`, as illustrated above. Timestamps are UTC Unix seconds. The start is inclusive and the end exclusive; enabling requires an end in the future. Windows are currently one-off, without recurrence. `within_maintenance_window` describes time eligibility only, not authorization to execute an operation.
+
+### Web configuration
+
+The customer switch is on **Access**, available with tenant-wide access-management permission. The server switch and window are under **Devices → selected server → Policy and groups**. Device-scoped access managers can edit; viewers get a read-only view. Workstations do not show this editor.
+
+The window uses the browser's local time zone and displays UTC below each input. Nonexistent or repeated local times at clock changes are rejected. Disabling the server clears its stored window. Saving asks for passkey confirmation when needed; cancelling preserves the draft. Success requires reading back the stored result. Background refresh does not overwrite a draft; detected concurrent edits require discarding it and reviewing the current settings. The pre-save check is not a database version lock: concurrent API writes use last-writer-wins semantics, each with its own audit entry.
+
+Window status describes the last fetch time. Neither that status nor both opt-ins authorize a remote connection. The editor supports Hungarian and English, light and dark themes.
 
 ### Session decision
 

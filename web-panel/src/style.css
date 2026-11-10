@@ -3050,3 +3050,94 @@ h1[tabindex="-1"]:focus {
     display: none;
   }
 }
+
+.access-sections {
+  display: grid;
+  gap: 20px;
+}
+.unattended-panel {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.unattended-panel .panel-heading {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.unattended-content {
+  padding: 0 18px 18px;
+  display: grid;
+  gap: 14px;
+}
+.unattended-content p {
+  margin: 0;
+  line-height: 1.55;
+}
+.unattended-target {
+  overflow-wrap: anywhere;
+}
+.unattended-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 32px;
+  margin: 0;
+  padding: 14px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+.unattended-status dt,
+.unattended-panel .unattended-status small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: normal;
+}
+.unattended-status dd {
+  margin: 4px 0 0;
+  font-weight: 600;
+}
+.unattended-panel .unattended-status small {
+  display: block;
+  margin-top: 4px;
+}
+.unattended-fields {
+  display: grid;
+  gap: 14px;
+  padding: 16px 0;
+  margin: 0;
+  min-width: 0;
+  border-block: 1px solid var(--border);
+}
+.unattended-fields .check-field {
+  max-width: none;
+}
+.unattended-window {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 16px;
+}
+.unattended-window input {
+  min-width: 0;
+  width: 100%;
+}
+.unattended-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.unattended-availability {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px;
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border-radius: 7px;
+}
+.unattended-panel .unattended-availability > svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+.device-policy .unattended-panel .form-error {
+  margin: 0;
+}

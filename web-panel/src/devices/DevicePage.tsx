@@ -17,6 +17,7 @@ import {
 import { Icon } from "../Icon";
 import type { Copy, Language } from "../i18n";
 import { errorText } from "../SignIn";
+import { UnattendedPolicy } from "../unattended/UnattendedPolicy";
 import {
   actionIcons,
   actionLabel,
@@ -63,6 +64,7 @@ type Props = {
   onTab: (tab: Tab) => void;
   onOpen: (device: string, tab: Tab) => void;
   onIdentity?: (name: string) => void;
+  confirmIdentity: () => Promise<string>;
 };
 
 const tabs: Tab[] = ["overview", "monitoring", "inventory", "policy"];
@@ -962,6 +964,8 @@ function Inventory({ device, t, language, tenant, fail, changes }: Section) {
 }
 
 function Policy({
+  tenantName,
+  confirmIdentity,
   device,
   t,
   language,
@@ -979,6 +983,16 @@ function Policy({
   const manageGroups = access.tenant_wide.includes("access.manage");
   return (
     <div className="device-policy">
+      <UnattendedPolicy
+        tenant={tenant}
+        tenantName={tenantName}
+        device={device}
+        manage={device.permissions.includes("access.manage")}
+        language={language}
+        changes={changes}
+        confirmIdentity={confirmIdentity}
+        fail={fail}
+      />
       <section className="panel">
         <div className="panel-heading">
           <div className="panel-title">

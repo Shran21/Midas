@@ -14,7 +14,7 @@
     "typecheck": "pnpm --filter @midas/web-panel typecheck",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "test:web": "node --test web-panel/test/service-worker.test.mjs web-panel/test/usability.test.ts web-panel/test/devices.test.ts"
+    "test:web": "node --test web-panel/test/service-worker.test.mjs web-panel/test/usability.test.ts web-panel/test/devices.test.ts web-panel/test/unattended.test.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.4",
