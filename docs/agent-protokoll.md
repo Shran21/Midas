@@ -4,7 +4,7 @@
 
 ## Magyar
 
-2026. november 7. · MIDAS-021
+2026. november 10. · MIDAS-021, MIDAS-047
 
 Az agent egy tartós, kimenő, hitelesített kapcsolattal csatlakozik a szerverhez (PERF-01). A közös szerződés a [`shared/protocol`](../shared/protocol), a kapcsolatkezelés az [`agent/agent-core`](../agent/agent-core) csomagban van; a szerveroldal a `server/src/agent.rs`.
 
@@ -17,8 +17,11 @@ Az agent egy tartós, kimenő, hitelesített kapcsolattal csatlakozik a szerverh
 | Üzenet | Irány | Tartalom |
 | --- | --- | --- |
 | `Hello` | agent → szerver | támogatott verziótartomány, agentverzió (legfeljebb 64 bájt), platform (legfeljebb 32 bájt), platformképességek (legfeljebb 32, [állapotellenőrzések](allapotellenorzes.md), [gépprofil](gepprofil.md)) |
-| `Welcome` | szerver → agent | egyeztetett verzió, keepalive-időköz másodpercben, szerververzió, hiteles agentkapcsolat UUID-ja |
+| `Welcome` | szerver → agent | egyeztetett verzió, keepalive-időköz másodpercben, szerververzió, hiteles agentkapcsolat UUID-ja; `remote.grants` mellett az ügyfél/gép azonosítója és a kapcsolat publikus ellenőrzőkulcsa |
 | `SessionRequest` / `SessionReport` | szerver ↔ agent | Kérésre felderített Windows-munkamenetek, egyszeri kérés- és kapcsolat-azonosító; csak `remote.sessions` képességgel. [Szerződés és korlátok](felugyelet-nelkuli-hozzaferes.md#windows-munkamenetek-lekérdezése). |
+| `RemotePrepare` / `RemoteChallenge` | szerver → agent, illetve vissza | konkrét cél, kezelő és jogok; az agent egyszeri kihívása és friss natív jelenlétmegfigyelése |
+| `RemoteDeliver` / `RemoteAck` | szerver → agent, illetve vissza | aláírt engedély és a natív végrehajtónak történő átadás eredménye; nem média-kapcsolati visszaigazolás |
+| `RemoteRevoke` | szerver → agent | az adott kéréshez tartozó függő vagy átadott engedély visszavonása |
 | `Reject` | szerver → agent | ok (`UNSUPPORTED_VERSION`, `INVALID_HELLO`) és a szerver által támogatott tartomány; utána a szerver bont |
 | `Ping` / `Pong` | mindkét irány | élőség-ellenőrzés véletlen azonosítóval |
 | `DirectoryAssignment` / `DirectoryReport` | szerver → kijelölt connector, illetve vissza | címtár-olvasási feladat és a vizsgálatot lezáró eredmény ([címtár-connector](cimtar-connector.md)) |
@@ -65,9 +68,11 @@ A `shared/protocol` egységtesztjei az egyeztetést, az újabb mezők és üzene
 
 A munkamenet-lekérdezés a v1 protokoll opcionális bővítése: az Envelope 17/18 mezőjét és a Welcome 4. mezőjét használja. Képességjelzés nélkül a szerver nem küld ilyen kérést; hiányzó vagy hibás kapcsolat-azonosítóval az agent nem végez megfigyelést.
 
+Az engedélycsatorna szintén opcionális v1-bővítés: Envelope 19–23, Welcome 5. mező. A `remote.grants` képességet csak a külön bekötött, megbízható natív végrehajtó mellett hirdeti az agent; a telepíthető Windows/Linux szolgáltatás még nem állítja be. Régi szerver mellett a monitorozás tovább működhet e csatorna nélkül. A kulcs és az azonosítók mTLS-en érkeznek, a fogadó a saját beiratkozási azonosságával egyezteti őket. Az engedély helyi érvényességét a kérés beérkezésekor induló monoton időmérés korlátozza; a visszavonás és kapcsolatvesztés nem hagyhat újraaktiválható kérést. [Teljes folyamat, audit és integrációs határok](tavsegitesi-felhatalmazas.md).
+
 ## English
 
-November 7, 2026 · MIDAS-021
+November 10, 2026 · MIDAS-021, MIDAS-047
 
 The agent connects to the server over one persistent, outbound, authenticated connection (PERF-01). The shared contract lives in [`shared/protocol`](../shared/protocol), connection handling in [`agent/agent-core`](../agent/agent-core), and the server side in `server/src/agent.rs`.
 
@@ -80,8 +85,11 @@ The agent connects to the server over one persistent, outbound, authenticated co
 | Message | Direction | Content |
 | --- | --- | --- |
 | `Hello` | agent → server | supported version range, agent version (at most 64 bytes), platform (at most 32 bytes), platform capabilities (at most 32, [health checks](allapotellenorzes.md#english), [host profile](gepprofil.md#english)) |
-| `Welcome` | server → agent | negotiated version, keepalive interval in seconds, server version, authenticated agent-connection UUID |
+| `Welcome` | server → agent | negotiated version, keepalive interval in seconds, server version, authenticated agent-connection UUID; with `remote.grants`, tenant/device IDs and the connection public verification key |
 | `SessionRequest` / `SessionReport` | server ↔ agent | On-demand Windows session discovery with one-use request and connection identifiers; requires `remote.sessions`. [Contract and limits](felugyelet-nelkuli-hozzaferes.md#querying-windows-sessions). |
+| `RemotePrepare` / `RemoteChallenge` | server → agent and back | exact target, operator and rights; agent-generated single-use challenge and fresh native presence observation |
+| `RemoteDeliver` / `RemoteAck` | server → agent and back | signed grant and native handoff result; not a media-session acknowledgement |
+| `RemoteRevoke` | server → agent | revokes pending or handed-off authority for the specified request |
 | `Reject` | server → agent | reason (`UNSUPPORTED_VERSION`, `INVALID_HELLO`) and the server's supported range; the server then closes |
 | `Ping` / `Pong` | both directions | liveness check with a random identifier |
 | `DirectoryAssignment` / `DirectoryReport` | server → designated connector and back | directory read task and the result that closes the scan ([directory connector](cimtar-connector.md#english)) |
@@ -127,3 +135,5 @@ Unit tests in `shared/protocol` cover negotiation, tolerance of newer fields and
 - The client uses an HTTP/1.1 WebSocket upgrade; WebSocket over HTTP/2 is not a goal.
 
 Session discovery is an optional v1 extension using Envelope fields 17/18 and Welcome field 4. Without the capability the server sends no query; without a valid connection identifier the agent performs no observation.
+
+The grant channel is another optional v1 extension: Envelope fields 19–23 and Welcome field 5. Only an agent with an explicitly wired trusted native backend advertises `remote.grants`; the installable Windows/Linux services do not configure it yet. Monitoring may continue against an older server without this channel. The key and identity arrive over mTLS and must match the receiver's enrolled identity. A monotonic timer started on request receipt bounds local grant lifetime; cancellation and transport loss must leave no request that can reactivate. [Full flow, audit and integration boundaries](tavsegitesi-felhatalmazas.md#english).
