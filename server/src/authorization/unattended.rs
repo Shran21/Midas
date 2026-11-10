@@ -5,6 +5,10 @@ use crate::enrollment::{Admission, AgentEvidence};
 
 use super::*;
 
+pub mod grants;
+use grants::{GrantDecision, GrantRequest};
+use midas_remote_auth::{Claims, Connection, Mode, Rights, SignedGrant, Target as GrantTarget};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MaintenanceWindow {
@@ -237,8 +241,52 @@ impl Authorizer {
         request: &UnattendedRequest,
         observation: Option<&SessionObservation>,
     ) -> Result<UnattendedDecision> {
+        self.decide_unattended(sessions, token, target, request, observation, None)
+            .await
+            .map(|(decision, _)| decision)
+    }
+
+    pub async fn issue_unattended_grant(
+        &self,
+        sessions: &Sessions,
+        token: &SessionToken,
+        target: Target,
+        request: &UnattendedRequest,
+        observation: Option<&SessionObservation>,
+        issuance: GrantRequest<'_>,
+    ) -> Result<GrantDecision> {
+        let (decision, grant) = self
+            .decide_unattended(
+                sessions,
+                token,
+                target,
+                request,
+                observation,
+                Some(issuance),
+            )
+            .await?;
+        match (decision, grant) {
+            (UnattendedDecision::LocalConsentRequired, None) => {
+                Ok(GrantDecision::LocalConsentRequired)
+            }
+            (UnattendedDecision::Eligible { .. }, Some(grant)) => Ok(GrantDecision::Issued(grant)),
+            _ => Err(AccessError::Unavailable),
+        }
+    }
+
+    async fn decide_unattended(
+        &self,
+        sessions: &Sessions,
+        token: &SessionToken,
+        target: Target,
+        request: &UnattendedRequest,
+        observation: Option<&SessionObservation>,
+        issuance: Option<GrantRequest<'_>>,
+    ) -> Result<(UnattendedDecision, Option<SignedGrant>)> {
         let identity = sessions.validate(token, false).await?;
         let mut tx = self.unattended_tx(target.tenant).await?;
+        let mut signed = None;
+        let mut grant_id = None;
         let result = async {
             let access = Self::evaluate_in(&mut tx, &identity, target, &request.permissions(), true).await?;
             request.validate()?;
@@ -256,6 +304,18 @@ impl Authorizer {
             if remaining == 0 { return Err(AccessError::Offline); }
             let expiry = (now + remaining).min(window.ends_at).min(session_deadline);
             if expiry <= now { return Err(AccessError::FreshPasskeyRequired); }
+            if let Some(issuance) = &issuance {
+                let id = Uuid::new_v4();
+                let claims = Claims {
+                    id, challenge: issuance.challenge, operator: identity.operator_id,
+                    target: GrantTarget { connection: Connection { tenant: target.tenant, device: target.device.ok_or(AccessError::InvalidInput)?, id: request.session.connection_id },
+                        session: request.session.os_session_id.parse().map_err(|_| AccessError::InvalidInput)?, generation: request.session.generation },
+                    rights: Rights { mode: match request.mode { RemoteMode::Normal => Mode::Normal, RemoteMode::Administrative => Mode::Administrative }, uac: request.uac },
+                    issued_at: now, expires_at: expiry,
+                };
+                signed = Some(issuance.authority.sign(&claims, &observation.source)?);
+                grant_id = Some(id);
+            }
             Ok(UnattendedDecision::Eligible { access, session: request.session.clone(), expires_at: expiry })
         }.await;
         let (outcome, label) = match &result {
@@ -267,7 +327,7 @@ impl Authorizer {
             Err(AccessError::InvalidInput) => (Outcome::Denied, "invalid_request"),
             Err(AccessError::Offline) => (Outcome::Denied, "session_unavailable"),
             Err(AccessError::Denied | AccessError::Unauthenticated) => (Outcome::Denied, "denied"),
-            Err(_) => return result,
+            Err(_) => return result.map(|decision| (decision, None)),
         };
         let mut event = Event::new(Action::RemoteRequest, outcome, Actor::session(&identity))
             .detail("unattended", true)
@@ -276,6 +336,12 @@ impl Authorizer {
             .detail("result", label);
         event.tenant = Some(target.tenant);
         event.device = target.device;
+        if let Some(id) = grant_id {
+            event.action = Action::RemoteGrantIssued;
+            event = event
+                .detail("grant_id", id.to_string())
+                .detail("result", "issued");
+        }
         if result.is_ok() {
             observed_presence(
                 target,
@@ -301,7 +367,7 @@ impl Authorizer {
             drop(tx);
             self.record_decision(&event).await?;
         }
-        result
+        result.map(|decision| (decision, signed))
     }
 
     async fn unattended_tx(&self, tenant: Uuid) -> Result<Transaction<'_, Postgres>> {

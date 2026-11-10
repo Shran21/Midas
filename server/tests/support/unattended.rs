@@ -326,6 +326,20 @@ pub async fn verify(database: &Database, admin: &mut PgConnection) {
             .unwrap(),
         UnattendedDecision::Eligible { .. }
     ));
+    super::remote_grants::verify(
+        super::remote_grants::Context {
+            policy: &policy,
+            sessions: web.sessions(),
+            token: &token,
+            target,
+            admission: &admission,
+            agents: &agents,
+            certificate: &certificate,
+            operator,
+        },
+        admin,
+    )
+    .await;
     for permission in [
         Permission::RemoteAdmin,
         Permission::RemoteUacInteract,

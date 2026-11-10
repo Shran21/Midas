@@ -32,6 +32,7 @@ names!(Action {
     OverrideSet => "access.override_set",
     OverrideRemove => "access.override_remove",
     RemoteRequest => "remote.request",
+    RemoteGrantIssued => "remote.grant_issued",
     RemoteSessionsRead => "remote.sessions_read",
     UnattendedPolicySet => "remote.unattended_policy_set",
     TenantCreate => "tenant.create",

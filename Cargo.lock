@@ -2006,6 +2006,7 @@ dependencies = [
  "ldap3",
  "ldap3_proto",
  "midas-protocol",
+ "midas-remote-auth",
  "prost",
  "rcgen 0.14.10",
  "rustls",
@@ -2081,6 +2082,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "midas-remote-auth"
+version = "0.1.0"
+dependencies = [
+ "prost",
+ "ring",
+ "uuid",
+]
+
+[[package]]
 name = "midas-server"
 version = "0.1.0"
 dependencies = [
@@ -2101,6 +2111,7 @@ dependencies = [
  "lettre",
  "midas-agent-core",
  "midas-protocol",
+ "midas-remote-auth",
  "openssl",
  "rcgen 0.14.10",
  "rustls",

@@ -4,7 +4,7 @@
 
 ## Magyar
 
-A MIDAS-041 jelenlegi megvalósítása a szerveres szabályzat tárolását, webes szerkesztőjét, adminisztrációs API-ját, belső döntési szolgáltatását, a Windows-munkamenetek hiteles agentcsatornán történő lekérdezését és webes kijelölését, valamint a friss agentmegfigyelésen alapuló hozzáférés-ellenőrzést tartalmazza. Távoli kép- vagy beviteli kapcsolatot még nem indít. Az aláírt, egyszer használható felhatalmazás és a tényleges helyi jóváhagyás még szükséges; a feladat ezért nem lezárt.
+A MIDAS-041 jelenlegi megvalósítása a szerveres szabályzat tárolását, webes szerkesztőjét, adminisztrációs API-ját, belső döntési szolgáltatását, a Windows-munkamenetek hiteles agentcsatornán történő lekérdezését és webes kijelölését, valamint a friss agentmegfigyelésen alapuló hozzáférés-ellenőrzést tartalmazza. Távoli kép- vagy beviteli kapcsolatot még nem indít. Az aláírt felhatalmazás belső szerveroldali kiadója és az agentoldali ellenőrző könyvtár elkészült; a védett agentcsatornás kézbesítés és a tényleges helyi jóváhagyás még szükséges. A feladat ezért nem lezárt. [Felhatalmazási szerződés és integrációs határok](tavsegitesi-felhatalmazas.md).
 
 ### Beállítás
 
@@ -100,7 +100,7 @@ Ez szabályzatdöntés, nem végrehajtható felhatalmazás. A későbbi aláírt
 
 ## English
 
-The current MIDAS-041 implementation provides server-policy storage, a web editor, an administration API, an internal decision service, Windows session queries over the authenticated agent channel and web target selection, plus access checks based on fresh agent observations. It does not start remote media or input. Signed single-use grants and actual local consent remain; the task stays open.
+The current MIDAS-041 implementation provides server-policy storage, a web editor, an administration API, an internal decision service, Windows session queries over the authenticated agent channel and web target selection, plus access checks based on fresh agent observations. It does not start remote media or input. The internal signed-grant issuer and agent enforcement library are implemented; protected agent-channel delivery and actual local consent remain. The task stays open. [Grant contract and integration boundaries](tavsegitesi-felhatalmazas.md#english).
 
 ### Configuration
 

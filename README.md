@@ -2,11 +2,11 @@
 
 [English](#english)
 
-A MIDAS saját szerveren üzemeltethető, nyílt forráskódú távfelügyeleti platform terve. Egy technikus több ügyfél munkaállomásait és szervereit kezelheti ugyanarról a webes adminfelületről.
+A MIDAS fejlesztés alatt álló, saját szerveren üzemeltethető, nyílt forráskódú távfelügyeleti platform. Egy technikus több ügyfél munkaállomásait és szervereit kezelheti ugyanarról a webes adminfelületről.
 
 ## Állapot
 
-Az alapok megvalósítása elindult: Rust-szerver helyi állapotvégponttal, magyar–angol üzemeltetői előnézet világos és sötét témával és közös buildparancsok. A Windowsos távsegítés és az UAC kezelése a későbbi prototípus része. A 0–5. fázis felülvizsgált feladatai a [GitHub Projectben](https://github.com/users/Shran21/projects/4) követhetők: 97 ütemezett tétel és 6 külön javaslat.
+Az agent- és monitorozási fázis kapuja lezárult; a távsegítés fejlesztése folyamatban van. A szerver, a Windows/Linux agent, az eszközleltár, a monitorozás és a magyar–angol, világos/sötét webpanel megvalósítása elérhető. A Windows-munkamenetek lekérdezése és a hozzáférési feltételek ellenőrzése működik; a tényleges távoli kép- és beviteli kapcsolat még nincs bekötve az adminpanelbe. A 0–5. fázis feladatai a [GitHub Projectben](https://github.com/users/Shran21/projects/4) követhetők: 97 ütemezett tétel és 6 külön javaslat. A [kézi elfogadási próbák](docs/vegso-ellenorzes.md) a fejlesztés végén következnek.
 
 - A [rendszerterv](docs/rendszerterv.md) tartalmazza az architektúrát, a platformokat, a biztonsági modellt és az ütemtervet.
 - A [működési követelmények](docs/kovetelmenyek.md) írják le az agent és az adminpanel használatát, a jogosultságokat és az elfogadási próbákat.
@@ -18,7 +18,9 @@ Fejlesztői indítás: `just setup`, majd `just dev`. A szerveralap támogatja a
 
 - `server/`: a központi Rust-szerver.
 - `web-panel/`: a React/TypeScript webpanel.
-- `agent/agent-windows/` és `agent/agent-linux/`: a tervezett platformagentek helye.
+- `agent/agent-windows/` és `agent/agent-linux/`: a platformagentek.
+- `agent/agent-core/`: közös agentműködés.
+- `shared/protocol/` és `shared/remote-auth/`: közös üzenetek és [távsegítési felhatalmazások](docs/tavsegitesi-felhatalmazas.md).
 
 Hitelesítéssel a webpanel belépőképernyőt, ügyfélválasztót, jogosultsághoz igazodó navigációt és munkamenet-kezelést ad (`just dev-auth`). Hitelesítés nélkül az előnézet kereshető, szűrhető mintaeszközöket és eszközadatlapot mutat. A mintaadatok nem jelentenek beiratkozott eszközöket; távoli művelet nem indítható.
 
@@ -49,11 +51,11 @@ A sebezhetőségeket a [privát hibabejelentőn](https://github.com/Shran21/Mida
 
 ## English
 
-MIDAS is a design for a self-hosted, open-source remote monitoring and management platform. A technician can manage workstations and servers belonging to multiple customers from a web admin panel.
+MIDAS is a self-hosted, open-source remote monitoring and management platform under development. A technician can manage workstations and servers belonging to multiple customers from a web admin panel.
 
 ### Status
 
-Foundation implementation has started: a Rust server with a local liveness endpoint, a Hungarian/English operator preview with light and dark themes and shared build commands. Windows remote support and UAC interaction belong to the subsequent prototype. The reviewed phases 0–5 are tracked in the [GitHub Project](https://github.com/users/Shran21/projects/4): 97 scheduled items and 6 separate proposals.
+The agent and monitoring phase gate is closed; remote support is under development. Implementations of the server, Windows/Linux agents, inventory, monitoring and Hungarian/English light/dark web panel are available. Windows session discovery and access checks work; actual remote video and input are not connected to the admin panel yet. Phases 0–5 are tracked in the [GitHub Project](https://github.com/users/Shran21/projects/4): 97 scheduled items and 6 separate proposals. [Manual acceptance trials](docs/vegso-ellenorzes.md#english) are deferred until the end of development.
 
 - The [system plan](docs/rendszerterv.md#english) covers architecture, platforms, security and delivery.
 - The [operating requirements](docs/kovetelmenyek.md#english) describe the agent and admin panel, permissions and acceptance trials.
@@ -65,7 +67,9 @@ Development startup: `just setup`, then `just dev`. The server foundation suppor
 
 - `server/`: the central Rust server.
 - `web-panel/`: the React/TypeScript web panel.
-- `agent/agent-windows/` and `agent/agent-linux/`: locations for the planned platform agents.
+- `agent/agent-windows/` and `agent/agent-linux/`: platform agents.
+- `agent/agent-core/`: shared agent behavior.
+- `shared/protocol/` and `shared/remote-auth/`: shared messages and [remote-support authorization](docs/tavsegitesi-felhatalmazas.md#english).
 
 With authentication the web panel provides sign-in, tenant selection, permission-aware navigation and session management (`just dev-auth`). Without authentication the preview offers searchable, filterable sample devices and device details. Sample data does not represent enrolled devices, and remote operations are unavailable.
 
