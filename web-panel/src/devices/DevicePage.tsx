@@ -64,7 +64,7 @@ type Props = {
   onTab: (tab: Tab) => void;
   onOpen: (device: string, tab: Tab) => void;
   onIdentity?: (name: string) => void;
-  confirmIdentity: () => Promise<string>;
+  confirmIdentity: (force?: boolean) => Promise<string>;
 };
 
 const tabs: Tab[] = ["overview", "monitoring", "inventory", "policy"];

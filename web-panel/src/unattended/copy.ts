@@ -37,6 +37,8 @@ const hu = {
   save: "Mentés",
   saving: "Megerősítés és mentés…",
   saved: "A mentett beállításokat visszaellenőriztük.",
+  confirmRetry:
+    "A szerver új passkey-megerősítést kér. A vázlat megmaradt; kattints újra a Mentés gombra.",
   readbackFailed:
     "A mentést elküldtük, de a visszaellenőrzés nem sikerült. Frissítsd a beállításokat az eredmény ellenőrzéséhez.",
   refresh: "Beállítások frissítése",
@@ -88,6 +90,8 @@ const en: Record<keyof typeof hu, string> = {
   save: "Save",
   saving: "Confirming and saving…",
   saved: "Saved settings have been verified.",
+  confirmRetry:
+    "The server requires a new passkey confirmation. Your draft is preserved; select Save again.",
   readbackFailed:
     "The save was submitted, but verification failed. Refresh settings to check the result.",
   refresh: "Refresh settings",

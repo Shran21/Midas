@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { api, type DeviceSummary } from "../api";
+import { ApiError, api, type DeviceSummary } from "../api";
 import { moment } from "../devices/labels";
 import { useLive } from "../devices/useLive";
 import { Icon } from "../Icon";
@@ -29,7 +29,7 @@ type Props = {
   manage: boolean;
   language: Language;
   changes: number;
-  confirmIdentity: () => Promise<string>;
+  confirmIdentity: (force?: boolean) => Promise<string>;
   fail: (error: unknown) => boolean;
 };
 
@@ -73,6 +73,7 @@ function PolicyForm({
   } | null>(null);
   const mounted = useRef(false);
   const saving = useRef(false);
+  const forceConfirmation = useRef(false);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -102,7 +103,8 @@ function PolicyForm({
     setFeedback(null);
     let written = false;
     try {
-      const csrf = await confirmIdentity();
+      const csrf = await confirmIdentity(forceConfirmation.current);
+      forceConfirmation.current = false;
       if (!mounted.current) return;
       const current = await load();
       if (!mounted.current) return;
@@ -123,10 +125,17 @@ function PolicyForm({
         throw new Error("readback");
       if (mounted.current) setFeedback({ error: false, text: c.saved });
     } catch (error) {
+      const needsConfirmation =
+        error instanceof ApiError && error.code === "fresh_passkey_required";
+      if (needsConfirmation) forceConfirmation.current = true;
       if (mounted.current && !fail(error))
         setFeedback({
           error: true,
-          text: written ? c.readbackFailed : errorText(error, t),
+          text: written
+            ? c.readbackFailed
+            : needsConfirmation
+              ? c.confirmRetry
+              : errorText(error, t),
         });
     } finally {
       saving.current = false;
