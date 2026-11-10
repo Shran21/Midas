@@ -301,6 +301,7 @@ pub struct Pending {
     pub next: usize,
     pub store: PathBuf,
     pub state: Option<State>,
+    collect_after_upload: bool,
     /// Wakes the scheduler, for example after the server asked for a full reconciliation.
     pub wake: Arc<Notify>,
 }
@@ -320,6 +321,7 @@ pub fn shared(store: PathBuf) -> Shared {
         next: 0,
         store,
         state,
+        collect_after_upload: false,
         wake: Arc::new(Notify::new()),
     }))
 }
@@ -336,6 +338,7 @@ impl Pending {
             }
             self.plan = None;
             self.next = 0;
+            self.collect_after_upload = false;
             self.wake.notify_one();
             return;
         }
@@ -353,6 +356,9 @@ impl Pending {
         self.state = Some(result);
         self.plan = None;
         self.next = 0;
+        if std::mem::take(&mut self.collect_after_upload) {
+            self.wake.notify_one();
+        }
     }
 }
 
@@ -380,8 +386,13 @@ pub async fn schedule(
             _ = shutdown.wait_for(|stop| *stop) => return,
         }
         wait = CHECK_EVERY;
-        if lock(&shared).plan.is_some() {
-            continue;
+        {
+            let mut pending = lock(&shared);
+            if pending.plan.is_some() {
+                pending.collect_after_upload = true;
+                continue;
+            }
+            pending.collect_after_upload = false;
         }
         let collect = collector.clone();
         let Ok(mut current) = tokio::task::spawn_blocking(move || collect()).await else {
@@ -415,6 +426,51 @@ pub fn staggered() -> Duration {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn refresh_during_an_upload_runs_once_after_the_last_ack() {
+        let store = std::env::temp_dir().join(format!(
+            "midas-deferred-inventory-{}.pb",
+            uuid::Uuid::new_v4()
+        ));
+        let shared = shared(store.clone());
+        let mut initial = Snapshot::new();
+        for n in 0..250 {
+            insert(&mut initial, "software", &format!("package-{n}"), "1");
+        }
+        lock(&shared).plan = plan(None, initial, unix_now(), 1);
+        assert_eq!(lock(&shared).plan.as_ref().unwrap().chunks.len(), 2);
+        let (collected, mut received) = tokio::sync::mpsc::unbounded_channel();
+        let collector: Collector = Arc::new(move || {
+            collected.send(()).unwrap();
+            snapshot(&[("software", "updated", "2")])
+        });
+        let (stop, shutdown) = watch::channel(false);
+        let mut scheduler = Box::pin(schedule(collector, shared.clone(), CHECK_EVERY, shutdown));
+        assert!(futures_util::poll!(&mut scheduler).is_pending());
+        for _ in 0..3 {
+            lock(&shared).wake.notify_one();
+            assert!(futures_util::poll!(&mut scheduler).is_pending());
+        }
+        lock(&shared).acknowledged(true, unix_now());
+        assert!(futures_util::poll!(&mut scheduler).is_pending());
+        assert!(received.try_recv().is_err());
+        lock(&shared).acknowledged(true, unix_now());
+        let runner = tokio::spawn(scheduler);
+        let refreshed = tokio::time::timeout(Duration::from_secs(2), received.recv()).await;
+        let repeated = tokio::time::timeout(Duration::from_millis(50), received.recv()).await;
+        stop.send_replace(true);
+        runner.await.unwrap();
+        let _ = std::fs::remove_file(store);
+        assert!(
+            matches!(refreshed, Ok(Some(()))),
+            "deferred refresh was lost"
+        );
+        assert!(
+            repeated.is_err(),
+            "coalesced refreshes must collect only once"
+        );
+    }
 
     fn snapshot(entries: &[(&str, &str, &str)]) -> Snapshot {
         let mut snapshot = Snapshot::new();

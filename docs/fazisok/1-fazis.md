@@ -58,6 +58,8 @@ A felmentett tételek állapota: a MIDAS-018, MIDAS-023 és MIDAS-024 Backlog �
 
 ### Döntések
 
+A november 10-i CI a leltárfrissítésben ütemezési versenyhelyzetet jelzett. A feltöltés közben érkező frissítési igény elveszhetett az utolsó nyugta előtt. A MIDAS-026 javítása megőrzi és összevonja ezeket az igényeket, majd egyszer újra gyűjt. Külön regressziós teszt igazolja a korábbi hibát és a javítást; az ismételt elfogadás bizonyítéka a [MIDAS-026 eredményénél](https://github.com/Shran21/Midas/issues/27) található.
+
 - **2026. november 10.:** a tízgépes, egyhetes próba kötelező marad, de a projektgazda a MIDAS-086 pilotindítása elé helyezte. Az M1 kapuját nem blokkolja; az M2 a kapu elfogadása után indulhat. A próba nem tekinthető elvégzettnek.
 
 - **2026. november 7.:** a MIDAS-018, -019 és -020, majd a MIDAS-023 és -024 projektgazdai ellenőrzésre vár, de nem akadályozza a későbbi munkát. Sikertelen ellenőrzésnél a MIDAS-034, MIDAS-042, MIDAS-047, MIDAS-059 és az ezekre épülő munka újravizsgálandó.
@@ -152,6 +154,8 @@ Exempt items: MIDAS-018, MIDAS-023 and MIDAS-024 went Backlog → Ready → In p
   - The second half of the fleet measurement ran on battery; a repeat on mains power is advisable.
 
 ### Decisions
+
+The November 10 CI exposed an inventory-refresh scheduling race: a refresh requested during an upload could be lost before its final acknowledgement. The MIDAS-026 fix preserves and coalesces these requests, then collects once. A dedicated regression test demonstrates the previous failure and the fix; repeated acceptance evidence is recorded in [MIDAS-026](https://github.com/Shran21/Midas/issues/27).
 
 - **November 10, 2026:** the owner moved the mandatory ten-device, one-week trial to before the MIDAS-086 pilot. It no longer blocks M1; M2 may start after gate acceptance. The trial is not considered performed.
 

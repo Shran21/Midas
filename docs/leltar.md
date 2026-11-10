@@ -22,6 +22,7 @@ A leltár (fajta, kulcs, érték) elemekből áll, értékenként legfeljebb 256
 ### Ütemezés és változások
 
 - Az első gyűjtés véletlen, legfeljebb egyperces késleltetéssel indul, hogy a gépek ne egyszerre gyűjtsenek; utána 15 percenként fut.
+- Ha egy frissítési kérés vagy az ütemezett gyűjtés folyamatban lévő feltöltésre esik, az agent megjegyzi az igényt. Az utolsó nyugta után egyszer újra gyűjt; több közben érkező kérés összevonódik, és nem indít párhuzamos gyűjtést.
 - **Teljes egyeztetés:** az első alkalommal, majd 24 óránként. Új generációt kap, és darabokban (legfeljebb 200 elem és 32 KiB, így a hosszú, többbájtos nevek sem lépik túl a 64 KiB-os üzenethatárt) megy; a következő darab a nyugta után indul. Az utolsó darab után a szerver törli az adott eszköz minden más generációjú elemét.
 - **Változáscsomag:** a két teljes egyeztetés között csak az új, módosult és eltűnt elemek mennek. A szerver csak akkor alkalmazza, ha a generáció egyezik a tárolttal; különben elutasítja, és az agent azonnal teljes egyeztetést indít.
 - Az agent az utolsó sikeresen nyugtázott leltárt és a teljes egyeztetés idejét a védett állapotmappájában (`inventory.pb`) tárolja. Újraindulás után innen folytatja: változást küld, és a napi teljes egyeztetést az eredeti időponthoz igazítja. Megszakadt küldés nem számít sikeres egyeztetésnek; a következő kapcsolat a nyugtázatlan darabtól folytatja.
@@ -66,6 +67,7 @@ The inventory consists of (kind, key, value) items, each value at most 256 chara
 ### Schedule and changes
 
 - The first collection starts after a random delay of up to one minute so machines do not collect together, then runs every 15 minutes.
+- If a refresh request or scheduled collection arrives during an upload, the agent remembers it and collects once after the final acknowledgement. Requests received during the upload coalesce without starting concurrent collections.
 - **Full reconciliation:** the first time, then every 24 hours. It gets a new generation and is sent in chunks (at most 200 items and 32 KiB, so long multi-byte names stay below the 64 KiB message limit); the next chunk follows the acknowledgement. After the last chunk the server deletes every item of that device from other generations.
 - **Change set:** between full reconciliations only new, changed and removed items are sent. The server applies it only if its generation matches the stored one; otherwise it refuses, and the agent starts a full reconciliation at once.
 - The agent keeps the last fully acknowledged inventory and the time of its full reconciliation in its protected state folder (`inventory.pb`). After a restart it continues from there: it sends changes and keeps the daily full reconciliation on its original schedule. An interrupted upload is not a successful reconciliation; the next connection resumes from the unacknowledged chunk.
