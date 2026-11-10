@@ -12,7 +12,13 @@ use uuid::Uuid;
 use crate::{
     audit::{self, Action, Actor, Event, Outcome},
     auth::sessions::{SessionToken, Sessions},
-    authorization::{AccessError, Permission, Target, unattended::SessionSelection},
+    authorization::{
+        AccessError, Permission, Target,
+        unattended::{
+            Presence as ObservedPresence, SessionObservation, SessionSelection, UnattendedDecision,
+            UnattendedRequest,
+        },
+    },
     database::driver as sqlx,
     enrollment::{Admission, AgentIdentity, Enrollment},
 };
@@ -50,6 +56,17 @@ struct Snapshot {
     connection: Uuid,
     credential: Vec<u8>,
     view: SessionsView,
+    observations: Vec<SessionObservation>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "decision", rename_all = "snake_case")]
+pub enum UnattendedCheck {
+    LocalConsentRequired,
+    Eligible {
+        session: SessionSelection,
+        expires_at: i64,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -164,7 +181,7 @@ impl Pending {
             && valid_sessions(&report.sessions);
         let result = if valid {
             let connection = admission.connection_id();
-            let sessions = report
+            let sessions: Vec<_> = report
                 .sessions
                 .into_iter()
                 .map(|session| SessionView {
@@ -185,13 +202,29 @@ impl Pending {
                     locked: session.locked,
                 })
                 .collect();
-            Ok(Snapshot {
+            let observations = sessions
+                .iter()
+                .map(|session| {
+                    SessionObservation::from_request(
+                        admission,
+                        session.selection.clone(),
+                        match session.presence {
+                            "vacant" => ObservedPresence::Vacant,
+                            "occupied" => ObservedPresence::Occupied,
+                            _ => ObservedPresence::Unknown,
+                        },
+                        self.started,
+                    )
+                })
+                .collect::<Result<Vec<_>>>();
+            observations.map(|observations| Snapshot {
                 connection,
                 credential: admission.credential_fingerprint.clone(),
                 view: SessionsView {
                     connection_id: connection,
                     sessions,
                 },
+                observations,
             })
         } else {
             Err(AccessError::Offline)
@@ -219,6 +252,67 @@ pub(crate) async fn expired(pending: &Option<Pending>) {
 }
 
 impl Enrollment {
+    pub async fn check_unattended(
+        &self,
+        sessions: &Sessions,
+        token: &SessionToken,
+        tenant: Uuid,
+        device: Uuid,
+        request: &UnattendedRequest,
+    ) -> Result<UnattendedCheck> {
+        let target = Target {
+            tenant,
+            device: Some(device),
+        };
+        let operator = self
+            .authorizer
+            .prepare_unattended_request(sessions, token, target, request)
+            .await?;
+        let identity = AgentIdentity { tenant, device };
+        if !self
+            .remote_sessions
+            .active(identity, request.session.connection_id)
+        {
+            self.authorizer
+                .record_unattended_refusal(&operator, target, request, &AccessError::Offline)
+                .await?;
+            return Err(AccessError::Offline);
+        }
+        let snapshot = match self.remote_sessions.query(identity).await {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                self.authorizer
+                    .record_unattended_refusal(&operator, target, request, &error)
+                    .await?;
+                return Err(error);
+            }
+        };
+        let observation = snapshot
+            .view
+            .sessions
+            .iter()
+            .position(|session| session.selection == request.session)
+            .and_then(|index| snapshot.observations.get(index));
+        let decision = self
+            .authorizer
+            .check_unattended_request(sessions, token, target, request, observation)
+            .await?;
+        if !self.remote_sessions.active(identity, snapshot.connection) {
+            return Err(AccessError::Offline);
+        }
+        Ok(match decision {
+            UnattendedDecision::LocalConsentRequired => UnattendedCheck::LocalConsentRequired,
+            UnattendedDecision::Eligible {
+                session,
+                expires_at,
+                ..
+            } => UnattendedCheck::Eligible {
+                session,
+                expires_at,
+            },
+        })
+    }
+
     pub async fn remote_sessions(
         &self,
         sessions: &Sessions,

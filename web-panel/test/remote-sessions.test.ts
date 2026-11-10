@@ -5,13 +5,61 @@ import { deviceActions } from "../src/devices/model.ts";
 import {
   fresh,
   OBSERVATION_LIFETIME,
+  readDecision,
   readSessions,
   selectionKey,
   unavailableReason,
+  validReason,
 } from "../src/remote/model.ts";
 
 const connection = "7f23ce0e-1881-49fd-b426-f937bbfcfa03";
 const generation = "d844c66a-be14-498f-b02c-62fb07f13661";
+test("unattended decisions bind the whole target and expire within the observation window", () => {
+  const selection = {
+    connection_id: connection,
+    os_session_id: "3",
+    generation,
+  };
+  const value = { decision: "eligible", session: selection, expires_at: 120 };
+  assert.deepEqual(readDecision(value, selection, 100000), {
+    kind: "eligible",
+    expires: 120000,
+  });
+  assert.deepEqual(
+    readDecision({ decision: "local_consent_required" }, selection, 100000),
+    { kind: "consent" },
+  );
+  for (const invalid of [
+    null,
+    {},
+    { ...value, expires_at: 100 },
+    { ...value, expires_at: 131 },
+    { ...value, expires_at: NaN },
+    { ...value, expires_at: 120.5 },
+    { ...value, decision: "granted" },
+  ])
+    assert.equal(readDecision(invalid, selection, 100000), null);
+  for (const changed of [
+    { ...selection, connection_id: generation },
+    { ...selection, generation: connection },
+    { ...selection, os_session_id: "4" },
+  ])
+    assert.equal(readDecision(value, changed, 100000), null);
+});
+test("operation reasons use the server's UTF-8 and control character limits", () => {
+  assert.equal(validReason("Planned maintenance"), true);
+  assert.equal(validReason("ő".repeat(256)), true);
+  for (const invalid of [
+    "",
+    " ",
+    "ő".repeat(257),
+    "a\nb",
+    "a\u0085b",
+    "a\u007fb",
+    "a\tb",
+  ])
+    assert.equal(validReason(invalid), false);
+});
 const list = (): RemoteSessions => ({
   connection_id: connection,
   sessions: [

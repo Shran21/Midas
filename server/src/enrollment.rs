@@ -1,7 +1,7 @@
 use crate::database::driver as sqlx;
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Weak},
     time::Instant,
 };
 
@@ -250,11 +250,40 @@ pub struct Admission {
     connection_id: Uuid,
     pub(crate) credential_fingerprint: Vec<u8>,
     live: Live,
+    lifetime: Arc<()>,
 }
 
 impl Admission {
     pub fn connection_id(&self) -> Uuid {
         self.connection_id
+    }
+
+    pub(crate) fn evidence(&self) -> AgentEvidence {
+        AgentEvidence {
+            identity: self.identity,
+            credential_fingerprint: self.credential_fingerprint.clone(),
+            lifetime: Arc::downgrade(&self.lifetime),
+            live: Arc::downgrade(&self.live),
+        }
+    }
+}
+
+pub(crate) struct AgentEvidence {
+    pub identity: AgentIdentity,
+    pub credential_fingerprint: Vec<u8>,
+    lifetime: Weak<()>,
+    live: Weak<Mutex<HashMap<Uuid, watch::Sender<Signal>>>>,
+}
+
+impl AgentEvidence {
+    pub fn is_live(&self) -> bool {
+        self.lifetime.strong_count() > 0
+            && self.live.upgrade().is_some_and(|live| {
+                live.lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .get(&self.identity.device)
+                    .is_some_and(|sender| !sender.borrow().revoked)
+            })
     }
 }
 
@@ -720,6 +749,7 @@ impl Enrollment {
             connection_id: Uuid::new_v4(),
             credential_fingerprint: fingerprint(certificate),
             live: self.live.clone(),
+            lifetime: Arc::new(()),
         };
         // A revocation between the first lookup and registration is caught here.
         (self.identify(certificate).await.ok()?? == identity && !admission.signal.borrow().revoked)

@@ -296,6 +296,36 @@ pub async fn verify(database: &Database, admin: &mut PgConnection) {
         }
         other => panic!("{other:?}"),
     }
+    let disconnected = agents.admit(&certificate.der).await.unwrap();
+    let old_request = UnattendedRequest {
+        session: SessionSelection {
+            connection_id: disconnected.connection_id(),
+            ..selected.clone()
+        },
+        mode: request.mode,
+        uac: request.uac,
+        reason: request.reason.clone(),
+    };
+    let stale = SessionObservation::from_agent(
+        &disconnected,
+        old_request.session.clone(),
+        Presence::Vacant,
+    )
+    .unwrap();
+    drop(disconnected);
+    assert!(matches!(
+        policy
+            .check_unattended_request(web.sessions(), &token, target, &old_request, Some(&stale))
+            .await,
+        Err(AccessError::Offline)
+    ));
+    assert!(matches!(
+        policy
+            .check_unattended_request(web.sessions(), &token, target, &request, Some(&vacant))
+            .await
+            .unwrap(),
+        UnattendedDecision::Eligible { .. }
+    ));
     for permission in [
         Permission::RemoteAdmin,
         Permission::RemoteUacInteract,

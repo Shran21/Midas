@@ -344,6 +344,12 @@ Ezek még nem vállalt funkciók, mind Backlogban maradnak. Külön döntés né
 - **Követés:** a próba a MIDAS-086 külön elfogadási feltétele; a MIDAS-087 zárásához a jegyzőkönyve is kell. A [próbamenet](meresek/tesztflotta.md) rögzíti az elvárt bizonyítékot. A próba még nem történt meg.
 - **Hatás:** az M1 kapuja a többi ellenőrzött feltétellel lezárható, utána az M2 munkája indulhat. A próba sikertelensége blokkolja a pilot indítását, és az érintett megvalósításokat újra kell vizsgálni. A korábbi öt projektgazdai ellenőrzés kivétele és minden más fázisszabály változatlan.
 
+**2026. november 10. · Kézi elfogadás a fejlesztés végén**
+
+2026. november 10., későbbi projektgazdai döntés: a projektgazda minden kézi ellenőrzést a fejlesztés végén végez el. Addig minden megvalósítható fejlesztés folytatható. A kész, automatizáltan ellenőrzött feladat és fáziskapu In review marad, ha már csak kézi elfogadás hiányzik; ez önmagában nem akadályozza a függő fejlesztés vagy a következő fázis előkészítését és megvalósítását. A műszaki függőségek, a kódellenőrzés és az adott commit sikeres Windows, Linux és Security CI-je továbbra is szükséges. A részben megvalósított feladat In progress marad. Kézi próba nélkül nem állítható Done vagy teljes elfogadás; a pilot, élesítés és végső fáziszárás előtt minden kötelező kézi bizonyítékot pótolni kell, beleértve a tíz vegyes gép egyhetes próbáját. Sikertelen próba esetén az érintett megvalósítás és ráépülő munka újravizsgálandó. Ez felülírja a kézi ellenőrzési kivétel korábbi, öt feladatra korlátozott hatályát; az öt státusz és az előzmények megőrzése változatlan.
+
+[Végső kézi ellenőrzések összesítője](vegso-ellenorzes.md).
+
 ### Lényeges változások a régi vázlathoz képest
 
 - F2-01: a korai WebRTC-megvalósíthatóság M0 (MIDAS-017), az UAC-próba 2026. november 7. óta M1 (MIDAS-018); a kész vezérlés M2.
@@ -696,6 +702,12 @@ These are uncommitted proposals and remain Backlog. They need a separate decisio
 - **Decision:** the owner authorized development to continue. The one-week trial with ten mixed devices remains mandatory, moving from MIDAS-040 to a prerequisite for starting the MIDAS-086 pilot.
 - **Tracking:** MIDAS-086 has a separate acceptance criterion; MIDAS-087 also requires its record. The [trial procedure](meresek/tesztflotta.md#english) defines the evidence. The trial has not been performed.
 - **Effect:** M1 can close once its other conditions are verified, allowing M2 to start. A failed trial blocks the pilot and requires re-checking affected implementations. The earlier five owner-verification exceptions and all other phase rules remain unchanged.
+
+**November 10, 2026 · Manual acceptance at the end of development**
+
+November 10, 2026, later owner decision: the owner performs all manual checks at the end of development. Continue every implementable development task meanwhile. Completed, automatically verified tasks and phase gates stay In review when only manual acceptance remains; this alone does not block preparing and implementing dependent work or the next phase. Technical dependencies, code review and successful Windows, Linux and Security CI on the exact commit remain required. Partially implemented tasks stay In progress. Do not claim Done or full acceptance without the required manual trial; all mandatory manual evidence, including the one-week trial with ten mixed devices, is required before pilot, production rollout and final phase acceptance. Failed trials require re-checking affected implementations and downstream work. This supersedes the previous limitation of the manual-verification exception to five tasks; all five statuses and their genuine history remain required.
+
+[Final manual verification record](vegso-ellenorzes.md#english).
 
 ### Material changes from the earlier drafts
 

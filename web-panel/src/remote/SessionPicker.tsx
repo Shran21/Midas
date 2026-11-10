@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { ApiError, api, type DeviceSummary, type RemoteSessions } from "../api";
 import { Icon } from "../Icon";
 import type { Language } from "../i18n";
@@ -10,6 +10,7 @@ import {
   selectionKey,
   unavailableReason,
 } from "./model";
+import { UnattendedCheck } from "./UnattendedCheck";
 
 type Props = {
   tenant: string;
@@ -18,6 +19,7 @@ type Props = {
   language: Language;
   unavailable: boolean;
   fail: (error: unknown) => boolean;
+  confirmIdentity: (force?: boolean) => Promise<string>;
 };
 
 type State =
@@ -64,14 +66,22 @@ export function SessionPicker(props: Props) {
   );
 }
 
-function Picker({ tenant, device, csrf, language, fail }: Props) {
+function Picker({
+  tenant,
+  device,
+  csrf,
+  language,
+  fail,
+  confirmIdentity,
+}: Props) {
   const c = sessionCopy[language];
   const id = useId();
   const [state, setState] = useState<State>({ kind: "idle" });
   const request = useRef<AbortController | null>(null);
   const requestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshButton = useRef<HTMLButtonElement>(null);
-  const choices = useRef<HTMLFieldSetElement>(null);
+  const selectionArea = useRef<HTMLDivElement>(null);
+  const selectionFocused = useRef(false);
   const ready =
     state.kind === "ready" && fresh(state.started, performance.now())
       ? state
@@ -80,6 +90,14 @@ function Picker({ tenant, device, csrf, language, fail }: Props) {
     (session) => selectionKey(session.selection) === ready.selected,
   );
   const started = state.kind === "ready" ? state.started : null;
+  const isReady = ready !== null;
+
+  useLayoutEffect(() => {
+    if (!isReady && selectionFocused.current) {
+      selectionFocused.current = false;
+      refreshButton.current?.focus();
+    }
+  }, [isReady]);
 
   useEffect(() => {
     const clear = () => {
@@ -104,7 +122,7 @@ function Picker({ tenant, device, csrf, language, fail }: Props) {
     if (started === null) return;
     const timer = setTimeout(
       () => {
-        if (choices.current?.contains(document.activeElement))
+        if (selectionArea.current?.contains(document.activeElement))
           refreshButton.current?.focus();
         setState((previous) =>
           previous.kind === "ready" && previous.started === started
@@ -227,12 +245,18 @@ function Picker({ tenant, device, csrf, language, fail }: Props) {
         </div>
       )}
       {ready && ready.catalogue.sessions.length > 0 && (
-        <>
-          <fieldset
-            ref={choices}
-            className="remote-list"
-            aria-describedby={`${id}-validity`}
-          >
+        <div
+          ref={selectionArea}
+          className="remote-target"
+          onFocusCapture={() => {
+            selectionFocused.current = true;
+          }}
+          onBlurCapture={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget))
+              selectionFocused.current = false;
+          }}
+        >
+          <fieldset className="remote-list" aria-describedby={`${id}-validity`}>
             <legend>{c.choose}</legend>
             {ready.catalogue.sessions.map((session) => {
               const key = selectionKey(session.selection);
@@ -313,7 +337,22 @@ function Picker({ tenant, device, csrf, language, fail }: Props) {
           <p id={`${id}-validity`} className="muted remote-validity">
             {c.validity}
           </p>
-        </>
+          {selected &&
+            device.kind === "server" &&
+            device.permissions.includes("remote.control") &&
+            device.permissions.includes("remote.unattended") && (
+              <UnattendedCheck
+                key={`${selectionKey(selected.selection)}/${device.permissions.join(",")}`}
+                tenant={tenant}
+                device={device}
+                session={selected.selection}
+                csrf={csrf}
+                language={language}
+                fail={fail}
+                confirmIdentity={confirmIdentity}
+              />
+            )}
+        </div>
       )}
     </>
   );

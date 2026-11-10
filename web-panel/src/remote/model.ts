@@ -37,6 +37,40 @@ function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+export function validReason(value: string) {
+  return (
+    value.trim().length > 0 &&
+    new TextEncoder().encode(value).length <= 512 &&
+    !Array.from(value).some((char) => {
+      const code = char.codePointAt(0) ?? 0;
+      return code < 32 || (code >= 127 && code <= 159);
+    })
+  );
+}
+
+export function readDecision(
+  value: unknown,
+  selection: SessionSelection,
+  now: number,
+) {
+  if (!record(value) || !Number.isFinite(now)) return null;
+  if (value.decision === "local_consent_required")
+    return { kind: "consent" as const };
+  if (
+    value.decision !== "eligible" ||
+    !record(value.session) ||
+    value.session.connection_id !== selection.connection_id ||
+    value.session.os_session_id !== selection.os_session_id ||
+    value.session.generation !== selection.generation ||
+    typeof value.expires_at !== "number" ||
+    !Number.isSafeInteger(value.expires_at) ||
+    value.expires_at * 1000 <= now ||
+    value.expires_at * 1000 > now + OBSERVATION_LIFETIME
+  )
+    return null;
+  return { kind: "eligible" as const, expires: value.expires_at * 1000 };
+}
+
 function uuid(value: unknown): value is string {
   return (
     typeof value === "string" &&

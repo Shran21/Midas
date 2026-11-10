@@ -201,6 +201,10 @@ pub fn router(state: Arc<WebAuth>) -> Router {
             post(remote_sessions),
         )
         .route(
+            "/api/tenants/{id}/devices/{device}/unattended-check",
+            post(check_unattended),
+        )
+        .route(
             "/api/tenants/{id}/devices/{device}/metrics",
             get(device_metrics),
         )
@@ -533,6 +537,19 @@ struct NewOverride {
 #[derive(Serialize)]
 struct Created {
     id: Uuid,
+}
+
+async fn check_unattended(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((tenant, device)): Path<(Uuid, Uuid)>,
+    Json(request): Json<crate::authorization::unattended::UnattendedRequest>,
+) -> Result<Json<crate::remote_sessions::UnattendedCheck>> {
+    Ok(Json(
+        enrollment(&state)?
+            .check_unattended(&state.sessions, &context.token, tenant, device, &request)
+            .await?,
+    ))
 }
 
 async fn remote_sessions(

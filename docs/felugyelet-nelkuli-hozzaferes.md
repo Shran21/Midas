@@ -4,7 +4,7 @@
 
 ## Magyar
 
-A MIDAS-041 jelenlegi megvalósítása a szerveres szabályzat tárolását, webes szerkesztőjét, adminisztrációs API-ját, belső döntési szolgáltatását, a Windows-munkamenetek hiteles agentcsatornán történő lekérdezését és webes kijelölését tartalmazza. Távoli kép- vagy beviteli kapcsolatot még nem indít. A natív megfigyelés bekötése a döntésbe, az aláírt, egyszer használható felhatalmazás és a tényleges helyi jóváhagyás még szükséges; a feladat ezért nem lezárt.
+A MIDAS-041 jelenlegi megvalósítása a szerveres szabályzat tárolását, webes szerkesztőjét, adminisztrációs API-ját, belső döntési szolgáltatását, a Windows-munkamenetek hiteles agentcsatornán történő lekérdezését és webes kijelölését, valamint a friss agentmegfigyelésen alapuló hozzáférés-ellenőrzést tartalmazza. Távoli kép- vagy beviteli kapcsolatot még nem indít. Az aláírt, egyszer használható felhatalmazás és a tényleges helyi jóváhagyás még szükséges; a feladat ezért nem lezárt.
 
 ### Beállítás
 
@@ -47,7 +47,7 @@ A lista a felhasználót, munkamenetszámot, konzolt vagy állomásnevet, jelenl
 
 Nincs automatikus munkamenet-lekérdezés. A lista és a kijelölés legfeljebb 30 másodpercig marad meg, a kérés indításától, monoton órával mérve. Ez megjelenítési érvényesség, nem végrehajtási engedély. Új lekérés, hiba, lap- vagy célváltás, böngészős munkamenetcsere, háttérbe helyezés, illetve észlelt kapcsolatvesztés, képességhiány vagy a megtekintési jog elvesztése törli a korábbi adatot és kijelölést. A megszakított kérés késői válasza nem töltheti vissza. Új agentkapcsolatból érkező lista új kijelölést kér; a böngésző nem figyeli folyamatosan az OS-munkamenetek változását, ezért későbbi kapcsolatindítás előtt kötelező a friss, szerveroldali ellenőrzés.
 
-A lista billentyűzettel is kezelhető. Lejáráskor a benne lévő fókusz a frissítőgombra kerül, keskeny nézetben az aktív eszközlap látható marad. A felület magyarul és angolul, világos és sötét módban működik. A tényleges kapcsolatindítás még nem érhető el; a kijelölés jelenleg csak a webes nézetben él, nem kerül helyi tárolóba vagy végrehajtási kérésbe.
+A lista billentyűzettel is kezelhető. Lejáráskor a benne lévő fókusz a frissítőgombra kerül, keskeny nézetben az aktív eszközlap látható marad. A felület magyarul és angolul, világos és sötét módban működik. A tényleges kapcsolatindítás még nem érhető el; a kijelölés jelenleg csak a webes nézetben él, nem kerül helyi tárolóba vagy végrehajtási kérésbe. Szerverprofil és megfelelő vezérlési/unattended jogosultság mellett a kijelölt cél ellenőrizhető: a kezelő megadja a módot, az UAC-igényt és az indoklást. A pozitív eredmény lejár, szerkesztéskor eltűnik; cél-, jogosultság- vagy hitelesítésváltás és a lista lejárása az egész ellenőrző űrlapot törli. Lejárt passkey-hitelesítésnél a felület megerősítést kínál, utána új célkijelölés szükséges.
 
 ### Windows-munkamenetek lekérdezése
 
@@ -78,6 +78,14 @@ A `remote.sessions` képességet jelenleg csak az eseményértesítésekre felir
 
 Natív szerződés: [WTS-munkamenetállapotok](https://learn.microsoft.com/en-us/windows/win32/api/wtsapi32/ne-wtsapi32-wts_connectstate_class), [munkamenet-információ és zárolási jelzők](https://learn.microsoft.com/en-us/windows/win32/api/wtsapi32/ns-wtsapi32-wtsinfoex_level1_w).
 
+### Hozzáférés ellenőrzése az adminpanelről
+
+A `POST /api/tenants/{id}/devices/{device}/unattended-check` a `mode` (`normal` vagy `administrative`), `uac`, `reason` és `session` mezőket fogadja. A `session` a fenti háromelemű kijelölés. Ismeretlen mező, például a böngésző által beküldött `presence`, elutasított. Origin- és CSRF-védelem kötelező. A szerver a jogosultságot és a friss passkeyt még a natív lekérés előtt ellenőrzi, majd az agenttől új listát kér. Csak az azonos kapcsolatú, munkamenet-azonosítójú és generációjú cél fogadható el.
+
+Sikeres ellenőrzéskor a válasz `decision: "eligible"`, `session` és `expires_at` mezőket tartalmaz, vagy kizárólag `decision: "local_consent_required"` eredményt ad. Egyik sem végrehajtható felhatalmazás. Ismeretlen, eltűnt, lecserélt vagy megszakadt cél `409`; nem engedélyezett kérés `404`; lejárt passkey `403` és `fresh_passkey_required`; auditálási hiba `503`. A tanúsítvány, jogosultság és szabályzat a natív válasz után ismét ellenőrzött. Az elutasított előzetes jogosultsági ellenőrzés és a sikertelen agentlekérés is auditált.
+
+A megfigyelés élettartama már a szerveroldali lekérés kezdetén indul. A kapcsolat élettartamát csak gyenge hivatkozás követi: a megfigyelés nem tartja életben a régi kapcsolatot. Megszakadáskor a megfigyelés akkor is érvénytelen, ha ugyanannak a gépnek másik kapcsolata még él. Az adatbázis-tranzakció lezárása után is szükséges a kapcsolat és a frissesség ellenőrzése.
+
 ### Munkamenet-döntés
 
 A belső `Authorizer::check_unattended_request` megköveteli mindkét kapcsolót, a szerverprofilt, a megtekintési és vezérlési jogokat, a külön unattended jogot, öt percen belüli passkey-hitelesítést, az indoklást és a kijelölt munkamenetet. A rendszergazdai mód és az UAC további külön jogosultságot kér. A jelenlegi jogosultságokat minden döntésnél újraolvassa.
@@ -86,13 +94,13 @@ Az indoklás nem lehet üres, legfeljebb 512 UTF-8 bájtos lehet, és nem tartal
 
 A jelenlétet csak az igazolt agentcsatorna megfigyelése adhatja; a böngészőből nem fogad jelenlétállítást. A megfigyelés az ügyfélhez, géphez, agentkapcsolathoz és az operációs rendszer munkamenetének egyedi generációjához kötött. Harminc másodpercnél régebbi vagy jövőbeli megfigyelés, ismeretlen jelenlét, visszavont kapcsolat és eltérő kijelölés nem adhat pozitív döntést. A döntés újraellenőrzi a konkrét agenttanúsítvány lejáratát és visszavonását is. Újracsatlakozáskor új kapcsolat-azonosító keletkezik.
 
-A foglalt cél `LocalConsentRequired` eredményt ad, amiből nem indulhat unattended kapcsolat. A natív megfigyelőnek a zárolt és a leválasztott, de bejelentkezett felhasználó munkamenetét is foglaltnak kell jelentenie. Üres cél esetén az aktuális karbantartási ablak is kötelező. Az `Eligible` eredmény legfeljebb 30 másodpercig, de az ablak, a böngészős munkamenet és a friss passkey határidejénél nem tovább érvényes. A kérés eredménye, módja, UAC-igénye, érvényes indoklása, kijelölt célja és lejárata auditálható.
+A foglalt cél `LocalConsentRequired` eredményt ad, amiből nem indulhat unattended kapcsolat. A natív megfigyelőnek a zárolt és a leválasztott, de bejelentkezett felhasználó munkamenetét is foglaltnak kell jelentenie. Üres cél esetén az aktuális karbantartási ablak is kötelező. Az `Eligible` eredmény a megfigyelésből hátralévő, legfeljebb 30 másodpercig, de az ablak, a böngészős munkamenet és a friss passkey határidejénél nem tovább érvényes. A kérés eredménye, módja, UAC-igénye, érvényes indoklása, kijelölt célja és lejárata auditálható.
 
 Ez szabályzatdöntés, nem végrehajtható felhatalmazás. A későbbi aláírt felhatalmazás kiadásánál és felhasználásánál újra kell ellenőrizni a jogosultságot, szabályzatot, célmunkamenetet, lejáratot és visszavonást. Nincs HTTP-végpont, amely böngésző által megadott „üres munkamenet” alapján kapcsolatot indítana.
 
 ## English
 
-The current MIDAS-041 implementation provides server-policy storage, a web editor, an administration API, an internal decision service, Windows session queries over the authenticated agent channel and web target selection. It does not start remote media or input. Native observation integration into the decision, signed single-use grants and actual local consent remain; the task stays open.
+The current MIDAS-041 implementation provides server-policy storage, a web editor, an administration API, an internal decision service, Windows session queries over the authenticated agent channel and web target selection, plus access checks based on fresh agent observations. It does not start remote media or input. Signed single-use grants and actual local consent remain; the task stays open.
 
 ### Configuration
 
@@ -139,6 +147,16 @@ Only the Windows service with session notifications enabled currently advertises
 
 Native contracts: [WTS session states](https://learn.microsoft.com/en-us/windows/win32/api/wtsapi32/ne-wtsapi32-wts_connectstate_class), [session information and lock flags](https://learn.microsoft.com/en-us/windows/win32/api/wtsapi32/ns-wtsapi32-wtsinfoex_level1_w).
 
+### Access check from the administration panel
+
+`POST /api/tenants/{id}/devices/{device}/unattended-check` accepts `mode` (`normal` or `administrative`), `uac`, `reason` and `session`, with the three-part selection illustrated above. Unknown fields, including browser-supplied `presence`, are rejected. Origin and CSRF validation are required. The server checks permissions and fresh passkey authentication before querying the agent, then requests a new native list. The connection, session ID and generation must all match.
+
+A successful response contains `decision: "eligible"`, `session` and `expires_at`, or only `decision: "local_consent_required"`. Neither is an executable grant. Unknown, missing, replaced or disconnected targets return `409`; disallowed requests return `404`; stale passkeys return `403` with `fresh_passkey_required`; audit failures return `503`. Credentials, authorization and policy are rechecked after the native response. Refused preliminary authorization and failed agent queries are audited too.
+
+Observation lifetime starts when the server sends the native request. A weak reference tracks connection lifetime: retaining an observation cannot keep an old connection alive. Disconnection invalidates it even if another connection for the same device remains active. Connection liveness and freshness are checked again after committing the database transaction.
+
+For server profiles with control and unattended permissions, the selected target has a form for mode, UAC and reason. Positive results expire and disappear on editing; target, permission or authentication changes and catalogue expiry clear the form. Stale passkeys offer identity confirmation followed by fetching and selecting the target again.
+
 ### Session decision
 
 The internal `Authorizer::check_unattended_request` requires both opt-ins, a server device, viewing and control permissions, dedicated unattended permission, passkey authentication within five minutes, a reason and explicit session selection. Administrative mode and UAC require their additional permissions. Every decision reads current authorization.
@@ -147,6 +165,6 @@ The reason must be nonblank, at most 512 UTF-8 bytes, and contain no control cha
 
 Presence comes from the verified agent channel, never a browser assertion. The observation binds customer, device, agent connection and the OS session's unique generation. Observations at least 30 seconds old or in the future, unknown presence, revoked connections and mismatched selections cannot authorize access. Each decision also rechecks the specific agent certificate's expiry and revocation. Reconnection creates a new connection identifier.
 
-An occupied target returns `LocalConsentRequired`, which cannot start an unattended session. The native observer must also report locked and disconnected sessions with signed-in users as occupied. A vacant target additionally requires the current maintenance window. `Eligible` expires within 30 seconds and no later than the maintenance window, browser session or fresh-passkey deadline. The decision, mode, UAC request, valid reason, selected target and expiry are audited.
+An occupied target returns `LocalConsentRequired`, which cannot start an unattended session. The native observer must also report locked and disconnected sessions with signed-in users as occupied. A vacant target additionally requires the current maintenance window. `Eligible` expires within the remaining observation lifetime, at most 30 seconds and no later than the maintenance window, browser session or fresh-passkey deadline. The decision, mode, UAC request, valid reason, selected target and expiry are audited.
 
 This is a policy decision, not an executable grant. Issuing and consuming the later signed grant must revalidate permissions, policy, target session, expiry and revocation. There is no HTTP endpoint that starts a connection from a browser-supplied claim of a vacant session.

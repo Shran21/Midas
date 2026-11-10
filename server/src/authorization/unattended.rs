@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
-use crate::enrollment::Admission;
+use crate::enrollment::{Admission, AgentEvidence};
 
 use super::*;
 
@@ -71,37 +71,76 @@ pub enum Presence {
 }
 
 /// Created only from the authenticated agent channel, never from a browser's presence claim.
-pub struct SessionObservation<'a> {
-    admission: &'a Admission,
+pub struct SessionObservation {
+    source: AgentEvidence,
     selection: SessionSelection,
     presence: Presence,
     received_at: Instant,
 }
 
-impl<'a> SessionObservation<'a> {
+impl SessionObservation {
     pub fn from_agent(
-        admission: &'a Admission,
+        admission: &Admission,
         selection: SessionSelection,
         presence: Presence,
+    ) -> Result<Self> {
+        Self::from_request(admission, selection, presence, Instant::now())
+    }
+
+    pub(crate) fn from_request(
+        admission: &Admission,
+        selection: SessionSelection,
+        presence: Presence,
+        started: Instant,
     ) -> Result<Self> {
         if !selection.valid() || selection.connection_id != admission.connection_id() {
             return Err(AccessError::InvalidInput);
         }
         Ok(Self {
-            admission,
+            source: admission.evidence(),
             selection,
             presence,
-            received_at: Instant::now(),
+            received_at: started,
         })
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct UnattendedRequest {
     pub mode: RemoteMode,
     pub uac: bool,
     pub reason: String,
     pub session: SessionSelection,
+}
+
+impl UnattendedRequest {
+    fn validate(&self) -> Result<()> {
+        if !self.session.valid()
+            || self.reason.trim().is_empty()
+            || self.reason.len() > 512
+            || self.reason.chars().any(char::is_control)
+        {
+            return Err(AccessError::InvalidInput);
+        }
+        Ok(())
+    }
+
+    fn permissions(&self) -> Vec<Permission> {
+        let mut permissions = vec![
+            Permission::DeviceRead,
+            Permission::RemoteView,
+            Permission::RemoteControl,
+            Permission::RemoteUnattended,
+        ];
+        if matches!(self.mode, RemoteMode::Administrative) {
+            permissions.push(Permission::RemoteAdmin);
+        }
+        if self.uac {
+            permissions.push(Permission::RemoteUacInteract);
+        }
+        permissions
+    }
 }
 
 /// A policy result, not a signed or executable grant. Execution must revalidate it.
@@ -118,14 +157,14 @@ pub enum UnattendedDecision {
 fn observed_presence(
     target: Target,
     request: &UnattendedRequest,
-    observation: &SessionObservation<'_>,
+    observation: &SessionObservation,
     now: Instant,
 ) -> Result<Presence> {
-    if observation.admission.signal.borrow().revoked {
+    if !observation.source.is_live() {
         return Err(AccessError::Offline);
     }
-    if observation.admission.identity.tenant != target.tenant
-        || Some(observation.admission.identity.device) != target.device
+    if observation.source.identity.tenant != target.tenant
+        || Some(observation.source.identity.device) != target.device
         || request.session != observation.selection
     {
         return Err(AccessError::Denied);
@@ -143,46 +182,79 @@ fn observation_fresh(received_at: Instant, now: Instant) -> bool {
 }
 
 impl Authorizer {
+    pub(crate) async fn prepare_unattended_request(
+        &self,
+        sessions: &Sessions,
+        token: &SessionToken,
+        target: Target,
+        request: &UnattendedRequest,
+    ) -> Result<SessionInfo> {
+        let identity = sessions.validate(token, false).await?;
+        let result = self
+            .evaluate(&identity, target, &request.permissions(), true)
+            .await
+            .and_then(|_| request.validate());
+        if let Err(error) = result {
+            self.record_unattended_refusal(&identity, target, request, &error)
+                .await?;
+            return Err(error);
+        }
+        Ok(identity)
+    }
+
+    pub(crate) async fn record_unattended_refusal(
+        &self,
+        identity: &SessionInfo,
+        target: Target,
+        request: &UnattendedRequest,
+        error: &AccessError,
+    ) -> Result<()> {
+        let label = match error {
+            AccessError::FreshPasskeyRequired => "fresh_passkey_required",
+            AccessError::InvalidInput => "invalid_request",
+            AccessError::Offline | AccessError::Conflict => "session_unavailable",
+            _ => "denied",
+        };
+        let mut event = Event::new(
+            Action::RemoteRequest,
+            Outcome::Denied,
+            Actor::session(identity),
+        )
+        .detail("unattended", true)
+        .detail("mode", json!(request.mode))
+        .detail("uac", request.uac)
+        .detail("result", label);
+        event.tenant = Some(target.tenant);
+        event.device = target.device;
+        self.record_decision(&event).await
+    }
+
     pub async fn check_unattended_request(
         &self,
         sessions: &Sessions,
         token: &SessionToken,
         target: Target,
         request: &UnattendedRequest,
-        observation: Option<&SessionObservation<'_>>,
+        observation: Option<&SessionObservation>,
     ) -> Result<UnattendedDecision> {
         let identity = sessions.validate(token, false).await?;
         let mut tx = self.unattended_tx(target.tenant).await?;
-        let mut permissions = vec![
-            Permission::DeviceRead,
-            Permission::RemoteView,
-            Permission::RemoteControl,
-            Permission::RemoteUnattended,
-        ];
-        if matches!(request.mode, RemoteMode::Administrative) {
-            permissions.push(Permission::RemoteAdmin);
-        }
-        if request.uac {
-            permissions.push(Permission::RemoteUacInteract);
-        }
         let result = async {
-            let access = Self::evaluate_in(&mut tx, &identity, target, &permissions, true).await?;
-            if !request.session.valid() || request.reason.trim().is_empty() || request.reason.len() > 512
-                || request.reason.chars().any(char::is_control)
-            {
-                return Err(AccessError::InvalidInput);
-            }
+            let access = Self::evaluate_in(&mut tx, &identity, target, &request.permissions(), true).await?;
+            request.validate()?;
             let observation = observation.ok_or(AccessError::Offline)?;
             let presence = observed_presence(target, request, observation, Instant::now())?;
             let active: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM midas.devices d JOIN midas.agent_credentials c ON c.tenant_id=d.tenant_id AND c.device_id=d.id WHERE d.tenant_id=$1 AND d.id=$2 AND d.enrollment='active' AND c.fingerprint=$3 AND c.revoked_at IS NULL AND c.expires_at > clock_timestamp())")
-                .bind(target.tenant).bind(target.device).bind(&observation.admission.credential_fingerprint).fetch_one(&mut *tx).await?;
+                .bind(target.tenant).bind(target.device).bind(&observation.source.credential_fingerprint).fetch_one(&mut *tx).await?;
             if !active { return Err(AccessError::Offline); }
             if presence == Presence::Occupied { return Ok(UnattendedDecision::LocalConsentRequired); }
             let policy = device_policy(&mut tx, target).await?;
             let (now, session_deadline): (i64, i64) = sqlx::query_as("SELECT floor(extract(epoch FROM clock_timestamp()))::bigint, floor(extract(epoch FROM least(expires_at,idle_expires_at,authenticated_at+interval '5 minutes')))::bigint FROM midas.browser_sessions WHERE id=$1")
                 .bind(identity.id).fetch_one(&mut *tx).await?;
             let window = policy.maintenance_window.filter(|w| w.contains(now)).ok_or(AccessError::Denied)?;
-            let expiry = (now + 30).min(window.ends_at).min(session_deadline);
+            let remaining = Duration::from_secs(30).checked_sub(observation.received_at.elapsed()).ok_or(AccessError::Offline)?.as_secs() as i64;
+            if remaining == 0 { return Err(AccessError::Offline); }
+            let expiry = (now + remaining).min(window.ends_at).min(session_deadline);
             if expiry <= now { return Err(AccessError::FreshPasskeyRequired); }
             Ok(UnattendedDecision::Eligible { access, session: request.session.clone(), expires_at: expiry })
         }.await;
@@ -205,6 +277,12 @@ impl Authorizer {
         event.tenant = Some(target.tenant);
         event.device = target.device;
         if result.is_ok() {
+            observed_presence(
+                target,
+                request,
+                observation.ok_or(AccessError::Offline)?,
+                Instant::now(),
+            )?;
             event = event
                 .detail("reason", request.reason.trim())
                 .detail("session", json!(request.session));
@@ -213,6 +291,12 @@ impl Authorizer {
             }
             audit::append_tenant(&mut tx, &event).await?;
             tx.commit().await?;
+            observed_presence(
+                target,
+                request,
+                observation.ok_or(AccessError::Offline)?,
+                Instant::now(),
+            )?;
         } else {
             drop(tx);
             self.record_decision(&event).await?;

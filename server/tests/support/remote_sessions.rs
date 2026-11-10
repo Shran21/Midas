@@ -253,6 +253,7 @@ pub async fn verify(ctx: Context<'_>, admin: &mut PgConnection) {
     }
     let count: i64 = sqlx::query_scalar("SELECT count(*) FROM midas.tenant_audit WHERE tenant_id=$1 AND device_id=$2 AND action='remote.sessions_read' AND details->>'count'='1' AND NOT details::text LIKE '%EXAMPLE%'").bind(ctx.tenant).bind(ctx.device).fetch_one(&mut *admin).await.unwrap();
     assert_eq!(count, 2);
+    super::remote_decisions::verify(&ctx, admin, &mut socket, connection, operator).await;
     let _ = socket.close(None).await;
 
     let generation = Uuid::new_v4();

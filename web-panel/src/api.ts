@@ -448,6 +448,24 @@ export const api = {
     }),
   health: (tenant: string, device: string) =>
     request<HealthView>(`${devicePath(tenant, device)}/health`),
+  checkUnattended: (
+    tenant: string,
+    device: string,
+    body: {
+      mode: "normal" | "administrative";
+      uac: boolean;
+      reason: string;
+      session: SessionSelection;
+    },
+    csrf: string,
+    signal: AbortSignal,
+  ) =>
+    request<unknown>(`${devicePath(tenant, device)}/unattended-check`, {
+      method: "POST",
+      body,
+      csrf,
+      signal,
+    }),
   inventory: (tenant: string, device: string) =>
     request<InventoryView>(`${devicePath(tenant, device)}/inventory`),
   policy: (tenant: string, device: string) =>

@@ -4276,6 +4276,22 @@
         "hu": "Sikertelen próbánál a MIDAS-025, MIDAS-027, MIDAS-033, MIDAS-034, MIDAS-039, MIDAS-041, MIDAS-042, MIDAS-047, MIDAS-078 és az ezekre épülő munka újravizsgálandó.",
         "en": "If a trial fails, re-check MIDAS-025, MIDAS-027, MIDAS-033, MIDAS-034, MIDAS-039, MIDAS-041, MIDAS-042, MIDAS-047, MIDAS-078 and work built on them."
       }
+    },
+    {
+      "date": "2026-11-10",
+      "kind": "manual_acceptance_deferred",
+      "scope": "all committed tasks and phase gates",
+      "decided_by": "project owner",
+      "rule": {
+        "hu": "2026. november 10., későbbi projektgazdai döntés: a projektgazda minden kézi ellenőrzést a fejlesztés végén végez el. Addig minden megvalósítható fejlesztés folytatható. A kész, automatizáltan ellenőrzött feladat és fáziskapu In review marad, ha már csak kézi elfogadás hiányzik; ez önmagában nem akadályozza a függő fejlesztés vagy a következő fázis előkészítését és megvalósítását. A műszaki függőségek, a kódellenőrzés és az adott commit sikeres Windows, Linux és Security CI-je továbbra is szükséges. A részben megvalósított feladat In progress marad. Kézi próba nélkül nem állítható Done vagy teljes elfogadás; a pilot, élesítés és végső fáziszárás előtt minden kötelező kézi bizonyítékot pótolni kell, beleértve a tíz vegyes gép egyhetes próbáját. Sikertelen próba esetén az érintett megvalósítás és ráépülő munka újravizsgálandó. Ez felülírja a kézi ellenőrzési kivétel korábbi, öt feladatra korlátozott hatályát; az öt státusz és az előzmények megőrzése változatlan.",
+        "en": "November 10, 2026, later owner decision: the owner performs all manual checks at the end of development. Continue every implementable development task meanwhile. Completed, automatically verified tasks and phase gates stay In review when only manual acceptance remains; this alone does not block preparing and implementing dependent work or the next phase. Technical dependencies, code review and successful Windows, Linux and Security CI on the exact commit remain required. Partially implemented tasks stay In progress. Do not claim Done or full acceptance without the required manual trial; all mandatory manual evidence, including the one-week trial with ten mixed devices, is required before pilot, production rollout and final phase acceptance. Failed trials require re-checking affected implementations and downstream work. This supersedes the previous limitation of the manual-verification exception to five tasks; all five statuses and their genuine history remain required."
+      },
+      "dependencies_preserved": true,
+      "manual_evidence_required_before": [
+        "MIDAS-086 pilot",
+        "production rollout",
+        "final phase acceptance"
+      ]
     }
   ]
 }
