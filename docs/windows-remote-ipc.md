@@ -4,7 +4,7 @@
 
 ## Magyar
 
-A `service/src/win/remote_ipc/` a távsegítési vezérlőüzenetek helyi csatornáját valósítja meg. Különálló a tálcaikon csak állapotolvasásra használt csövétől. A szolgáltatás még nem indít vele segédfolyamatokat, és a csatorna nincs bekötve az aláírt engedélyek natív végrehajtójába. Önmagában nem indít távvezérlést.
+A `service/src/win/remote_ipc/` a távsegítési vezérlőüzenetek helyi csatornáját valósítja meg. Különálló a tálcaikon csak állapotolvasásra használt csövétől. A szolgáltatás még nem indít vele segédfolyamatokat, és a csatorna nincs bekötve az aláírt engedélyek natív végrehajtójába. Önmagában nem indít távvezérlést. Az előkészített indítókönyvtár külön kezeli a [segédfolyamatok életciklusát](windows-worker-lifecycle.md).
 
 ### Folyamat és szerep
 
@@ -32,11 +32,11 @@ A folyamatkezelőhöz lekérdezési és szinkronizálási jog, a folyamat elsőd
 
 A normál segéd bemenete továbbra is nem megbízható adat: a saját felhasználója módosíthatja vagy befolyásolhatja a folyamatát. Nem állíthat jogosultságot, helyi jelenlétet vagy asztalt, és nem kaphat csatornakulcsot vagy biztonságos asztalról származó képet. A védett végrehajtónak minden tényleges műveletnél külön ellenőriznie kell az aláírt engedélyt, a kijelölt Windows-munkamenet generációját, az aktuális asztalt és a leállítást. A csatorna ellenőrzése nem ad végrehajtási engedélyt; a már kézbesített üzenetet is újra kell ellenőrizni végrehajtáskor. A helyi rendszergazda/SYSTEM kompromittálása kívül esik ezen IPC-határ védelmén.
 
-Az automatizált Windows-próbák valódi helyi csövekkel és tesztfolyamatokkal ellenőrzik az adatcserét, másik folyamat és hamis szerver elutasítását, a folyamat megszűnését, a hibás/hosszú kereteket és a megszakítást. A szerepszabályok külön negatív teszteket kapnak; a tesztcsatorna a tesztfolyamat saját jogaival fut. Ez nem igazolja a tényleges SYSTEM–normál felhasználó határt, az RDP-t vagy az UAC-t. A védett indítás, a külön végrehajtók, az asztalváltás és a teljes telepített működés még megvalósítást és a fejlesztés végi kézi próbát igényel.
+Az automatizált Windows-próbák valódi helyi csövekkel és tesztfolyamatokkal ellenőrzik az adatcserét, másik folyamat és hamis szerver elutasítását, a folyamat megszűnését, a hibás/hosszú kereteket és a megszakítást. A szerepszabályok külön negatív teszteket kapnak; a tesztcsatorna a tesztfolyamat saját jogaival fut. Ez nem igazolja a tényleges SYSTEM–normál felhasználó határt, az RDP-t vagy az UAC-t. Az indítókönyvtár életcikluskezelése elkészült; a védett kezdeti átadás, a külön végrehajtók, az asztalváltás és a teljes telepített működés még megvalósítást és a fejlesztés végi kézi próbát igényel.
 
 ## English
 
-`service/src/win/remote_ipc/` implements local transport for remote-support control messages, separate from the tray's status-only pipe. The service does not launch workers through it yet, and it is not connected to signed-grant native execution. It cannot start remote control by itself.
+`service/src/win/remote_ipc/` implements local transport for remote-support control messages, separate from the tray's status-only pipe. The service does not launch workers through it yet, and it is not connected to signed-grant native execution. It cannot start remote control by itself. The prepared launcher library separately manages [worker lifetimes](windows-worker-lifecycle.md#english).
 
 ### Process and role
 
@@ -60,4 +60,4 @@ Process handles need query and synchronize rights; the primary process token nee
 
 Ordinary-worker input remains untrusted because its user may modify or influence that process. It cannot assert authorization, presence or desktop identity, and must not receive channel keys or secure-desktop frames. Before each actual operation, the protected executor must separately verify the signed lease, selected Windows session generation, current desktop and cancellation. Channel verification does not authorize execution; already delivered messages need revalidation at execution time. Local administrator/SYSTEM compromise is outside this IPC boundary.
 
-Automated Windows checks use real local pipes and test processes for exchange, wrong-process/server rejection, process exit, malformed/oversized frames and cancellation. Role rules have separate negative tests; test channels run with the test process's own privileges. They do not establish the real SYSTEM-to-standard-user boundary or validate RDP/UAC. Protected startup, separate executors, desktop switching and the installed end-to-end flow still require implementation and final manual trials.
+Automated Windows checks use real local pipes and test processes for exchange, wrong-process/server rejection, process exit, malformed/oversized frames and cancellation. Role rules have separate negative tests; test channels run with the test process's own privileges. They do not establish the real SYSTEM-to-standard-user boundary or validate RDP/UAC. Launcher lifetime management is implemented; protected bootstrap, separate executors, desktop switching and the installed end-to-end flow still require implementation and final manual trials.

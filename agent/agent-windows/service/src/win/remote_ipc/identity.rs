@@ -114,7 +114,7 @@ struct Snapshot {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct Token {
+pub(super) struct Token {
     id: u64,
     modified: u64,
     logon: u64,
@@ -162,7 +162,13 @@ impl Snapshot {
     }
 
     fn allows(&self, role: &Role) -> bool {
-        let token = &self.token;
+        self.token.allows(role)
+    }
+}
+
+impl Token {
+    pub(super) fn allows(&self, role: &Role) -> bool {
+        let token = self;
         if token.ui_access || token.app_container {
             return false;
         }
@@ -194,7 +200,7 @@ fn luid(value: LUID) -> u64 {
 }
 
 impl Token {
-    fn read(token: &OwnedHandle) -> io::Result<Self> {
+    pub(super) fn read(token: &OwnedHandle) -> io::Result<Self> {
         let token = token.as_raw_handle() as HANDLE;
         let before = statistics(token)?;
         if before.TokenType != TokenPrimary {

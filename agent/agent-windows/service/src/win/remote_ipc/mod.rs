@@ -1,6 +1,7 @@
 //! Process-bound control IPC. A verified peer is not a remote-session grant or desktop authorization.
 
 mod identity;
+pub mod launch;
 pub use identity::{Peer, Worker};
 
 use std::{
