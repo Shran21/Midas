@@ -43,5 +43,5 @@ security:
     gitleaks git --redact --no-banner --log-opts=HEAD
     cargo audit --file Cargo.lock --deny warnings
     cargo deny --locked --all-features check
-    pnpm test:dependencies
+    pnpm audit:vendored
     pnpm audit --audit-level low

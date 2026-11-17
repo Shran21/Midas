@@ -46,5 +46,5 @@ jobs:
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Audit frontend dependencies
         run: pnpm audit --audit-level low
-      - name: Verify patched build dependency
-        run: pnpm test:dependencies
+      - name: Audit vendored dependencies
+        run: pnpm audit:vendored

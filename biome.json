@@ -8,7 +8,8 @@
       "shared/**",
       "!**/node_modules",
       "!**/dist",
-      "!web-panel/vendor"
+      "!web-panel/vendor",
+      ".github/scripts/*.mjs"
     ]
   },
   "formatter": {
