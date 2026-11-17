@@ -1,0 +1,33 @@
+{
+  "package": "rustls-acme",
+  "version": "0.15.4",
+  "checksum": "64f24daec4ed0dfe6327bcb2b8045bf1d1cb4835e4f824d4cf487140f4b0cee4",
+  "source": "https://crates.io/api/v1/crates/rustls-acme/0.15.4/download",
+  "files": {
+    "Cargo.toml": "46e79aa8e43c9fda35859779800d18486b7b66c14b00af9c5e17f7472adaf201",
+    "LICENSE-APACHE": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+    "LICENSE-MIT": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+    "README.md": "8cdfbb7acdf58130b3a0c1aafaaba0d7d255bf316793ebf225aa3eb2e416ea38",
+    "rustfmt.toml": "b0edad02525fa19f8e0f24263ed893a6c1087b7ae4f3d56f6228f49528026a9e",
+    "src/acceptor.rs": "da2b45fc100ef423e4b0fa1f3ec2eee7b9318987cde98d60f47bb5f047c8a43b",
+    "src/acme.rs": "353db1080dfadfb4d59dd2a22ca674b0b45531594ec9fb20e4274a7c9ccd5d74",
+    "src/axum.rs": "c18cfd7998c3b4d2a70b5162022ba7b0b4086260ba10a7aee67b377216a48d8f",
+    "src/cache.rs": "fea3f529501a5b533bc0675cef1262e57fbc1fcef49bec69c989d5260a8ce5f5",
+    "src/config.rs": "e2f0c13257dfffb6520d522d5528fa873e460497b1cfbe54e3abd7e98e59ad61",
+    "src/helpers.rs": "99332a2ccc5ce69acd34fbd8c0c30d6b4bc65192c9fcf202bd5600616835c497",
+    "src/https_helper.rs": "fc0d6e1324ac7dbcc36c6cd3a374555e9d1794f60f23b85423a003b9599f21a5",
+    "src/incoming.rs": "3123f5887ed3927cba0e05666d3a9f701eef6e0d251068a1a818798188214f2b",
+    "src/jose.rs": "8e654ceffda809e3137bbc932f721393927613121249d658a7d9fc94040fe56e",
+    "src/lib.rs": "cfe0b0d1f88f5a79084ded591de58d67056e049c00cb8fa46b884af5f4bbdad1",
+    "src/resolver.rs": "67c5d742e759ec2a8d4004714ae9894251200714a7eec4952f5832a330c7d0bc",
+    "src/state.rs": "90b0d8398ceecbcb50eb79d3a74c60d7afdf25721e06372cc4d160234943c2c1",
+    "src/tokio.rs": "7775577dc876a1048fce7058d8d43011c3ca84be93e3fc604e57c65e088232c7",
+    "src/tower.rs": "4d993d05b9ffd92635e4401531c85108c5b768c755707775dd7710a1af685ee1",
+    "src/caches/boxed.rs": "2bcd9cd266349d83423b504569fc82e447037fa6792a8376429b62472f703b94",
+    "src/caches/composite.rs": "a98b8581487a0dd1da4b7fbd2b1464f0a210811272e727da3159a3ed1f791bc8",
+    "src/caches/dir.rs": "24ad916a64a5da459363633bd84eda78f401159c66f375af976987c001587d14",
+    "src/caches/mod.rs": "13b0e8ee27703583363ee74400335a7a6e2b874889524a587725bafeb7431bba",
+    "src/caches/no.rs": "bdb773e4b74591c3b90afde92b90accbab42dcc84d758ddbd39e5f89e5e85eb3",
+    "src/caches/test.rs": "4e8fa8495d1099cf344e0a794063fb067d6ca710f1327f0d72ec5f8fd4826d15"
+  }
+}

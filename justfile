@@ -18,6 +18,7 @@ build:
 
 test:
     cargo test --workspace --locked
+    cargo test -p rustls-acme --lib --locked
     pnpm typecheck
     pnpm test:web
 
@@ -42,4 +43,5 @@ security:
     gitleaks git --redact --no-banner --log-opts=HEAD
     cargo audit --file Cargo.lock --deny warnings
     cargo deny --locked --all-features check
+    pnpm test:dependencies
     pnpm audit --audit-level low

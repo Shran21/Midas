@@ -9,6 +9,7 @@ members = [
   "agent/agent-windows/media-prototype",
   "agent/agent-windows/uac-prototype",
 ]
+exclude = ["server/vendor/rustls-acme"]
 resolver = "3"
 
 [workspace.package]
@@ -116,3 +117,6 @@ debug = false
 [profile.release]
 lto = "thin"
 strip = "debuginfo"
+
+[patch.crates-io]
+rustls-acme = { path = "server/vendor/rustls-acme" }
