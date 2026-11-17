@@ -3,6 +3,7 @@
 
 pub mod health;
 pub mod inventory;
+pub mod remote_ipc;
 pub mod service;
 pub mod tray;
 
