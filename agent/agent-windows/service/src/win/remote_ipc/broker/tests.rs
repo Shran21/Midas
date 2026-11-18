@@ -12,8 +12,9 @@ use windows_sys::Win32::{
         RemoteDesktop::WTSGetActiveConsoleSessionId,
         Threading::{
             CreateEventW, EVENT_MODIFY_STATE, GetCurrentProcess, OpenEventW, OpenProcess,
-            OpenProcessToken, PROCESS_CREATE_PROCESS, PROCESS_DUP_HANDLE, PROCESS_TERMINATE,
-            PROCESS_VM_OPERATION, PROCESS_VM_READ, PROCESS_VM_WRITE, SetEvent, WaitForSingleObject,
+            OpenProcessToken, PROCESS_CREATE_PROCESS, PROCESS_DUP_HANDLE,
+            PROCESS_QUERY_INFORMATION, PROCESS_TERMINATE, PROCESS_VM_OPERATION, PROCESS_VM_READ,
+            PROCESS_VM_WRITE, SetEvent, WaitForSingleObject,
         },
     },
 };
@@ -322,11 +323,12 @@ fn isolated_system_query_access() {
             .unwrap()
         );
         println!("selected logon queried the actual SYSTEM token");
-        drop(process_access(pid, PROCESS_QUERY_INFORMATION).expect("query native process session"));
         let opened =
             process_access(pid, PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE).unwrap();
-        let verified = Peer::broker(opened, &image).unwrap();
+        let verified =
+            Peer::broker(opened, &image).expect("pin actual companion identity and session");
         verified.check(pid).unwrap();
+        println!("selected logon pinned and rechecked the actual companion identity and session");
         assert_eq!(
             current,
             Token::read(&token_access(&process, TOKEN_QUERY).unwrap()).unwrap()
@@ -347,6 +349,7 @@ fn isolated_system_query_access() {
             refused(token_access(&process, rights));
         }
         for rights in [
+            PROCESS_QUERY_INFORMATION,
             PROCESS_DUP_HANDLE,
             PROCESS_CREATE_PROCESS,
             PROCESS_TERMINATE,
@@ -359,6 +362,7 @@ fn isolated_system_query_access() {
             refused(process_access(pid, rights));
         }
     }
+    println!("selected logon cannot modify the companion process or token");
     {
         let _guard = Impersonation::enter(&other_logon);
         refused(token_access(&process, TOKEN_QUERY));
@@ -368,6 +372,7 @@ fn isolated_system_query_access() {
         ));
         assert!(pinned.check(pid).is_err());
     }
+    println!("the other logon cannot query the companion process or token");
     pinned.check(pid).unwrap();
     assert_eq!(source, Token::read(&original).unwrap());
     let ready = ready_event(pid);
