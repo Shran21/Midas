@@ -201,6 +201,7 @@ fn isolated_system_query_access() {
     assert_eq!(std::env::var("GITHUB_ACTIONS").as_deref(), Ok("true"));
     let image = std::env::current_exe().unwrap();
     let owner = Broker::initialize(&image).unwrap();
+    println!("service identity prepared");
     let original = current_token(TOKEN_QUERY).unwrap();
     let source = Token::read(&original).unwrap();
     // SAFETY: reads the existing console session without modifying it.
@@ -211,7 +212,9 @@ fn isolated_system_query_access() {
     );
     let user_token = logon(session);
     let other_logon = logon(session);
+    println!("two standard-user logons acquired");
     let user = user_process(&user_token, &image);
+    println!("suspended user fixture created");
     let role = Token::read(&user_token)
         .unwrap()
         .user_worker(session)
@@ -227,6 +230,7 @@ fn isolated_system_query_access() {
     )
     .unwrap();
     let process = child.process.query_handle().unwrap();
+    println!("suspended SYSTEM companion created");
     let pid = child.process.pid().unwrap();
     let pinned = child.peer().unwrap();
     let current = Token::read(&token_access(&process, TOKEN_QUERY).unwrap()).unwrap();

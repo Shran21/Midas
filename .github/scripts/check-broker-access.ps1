@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') {
     throw 'This SYSTEM trial requires a disposable GitHub-hosted Windows runner.'
 }
-$artifacts = & cargo test -p midas-agent-windows --lib --no-run --message-format=json
+$artifacts = & cargo test --workspace --all-targets --locked --no-run --message-format=json
 if ($LASTEXITCODE -ne 0) { throw 'Cannot build the Windows test fixture.' }
 $binary = @($artifacts | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object {
     $_.reason -eq 'compiler-artifact' -and $_.profile.test -and $_.target.name -eq 'midas_agent_windows'
@@ -41,8 +41,14 @@ try {
     $env:GITHUB_ACTIONS = 'true'
     $env:MIDAS_SYSTEM_TRIAL_USER = $name
     $env:MIDAS_SYSTEM_TRIAL_PASSWORD = $secret
-    & (Join-Path $PSScriptRoot 'trial.exe') --exact win::remote_ipc::broker::tests::isolated_system_query_access --ignored --nocapture *> $log
-    $code = $LASTEXITCODE
+    $output = Join-Path $PSScriptRoot 'trial.stdout'
+    $errors = Join-Path $PSScriptRoot 'trial.stderr'
+    $process = Start-Process -FilePath (Join-Path $PSScriptRoot 'trial.exe') -WindowStyle Hidden -Wait -PassThru `
+        -ArgumentList @('--exact', 'win::remote_ipc::broker::tests::isolated_system_query_access', '--ignored', '--nocapture') `
+        -RedirectStandardOutput $output -RedirectStandardError $errors
+    $code = $process.ExitCode
+    Get-Content -LiteralPath $output, $errors | Set-Content -LiteralPath $log
+    "Test process exit code: $code" | Add-Content -LiteralPath $log
 } catch {
     $_.Exception.Message | Add-Content -LiteralPath $log
 } finally {
