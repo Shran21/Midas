@@ -16,7 +16,9 @@ A külön közvetítő létrehozásakor már saját, egyfolyamatos Job Objectben
 
 ### Ellenőrzés és korlátok
 
-A helyi próbák hozzá nem rendelt tokenmásolatot használnak, és ellenőrzik a normál folyamat elutasítását, a forrás változatlanságát és a kezelő öröklésének tiltását.
+A folyamat létrehozása után az indító külön megnyitja a még felfüggesztett közvetítő tényleges elsődleges tokenjét. Ellenőrzi, hogy az különbözik a szolgáltatás tokenjétől, beállítja a védett hozzáférési listát, majd visszaolvassa azt. Bármely eltérés megszakítja az indítást. Ez nem módosít tokenjogosultságot, integritási szintet vagy munkamenetet.
+
+A helyi próbák hozzá nem rendelt tokenmásolatot használnak, és ellenőrzik a normál folyamat elutasítását, a forrás és jogosultságainak változatlanságát, a hozzáférési lista pontos visszaolvasását, a lekérdezési joggal végzett módosítás elutasítását és a kezelő öröklésének tiltását.
 
 Az elkülönített Windows-CI külön SYSTEM-próbát futtat egy ideiglenes standard fiók két valódi bejelentkezésével. A kiválasztott bejelentkezés megszemélyesítése mellett natív Windows-hozzáférési próbák ellenőrzik a folyamat és az aktuális token lekérdezését; a módosító jogok és a másik bejelentkezés elutasítását is megkövetelik. A másik bejelentkezés a korábban rögzített `Peer` ellenőrzését sem kerülheti meg. A próba ellenőrzi az indítást, a munkamenetjelzés utáni leállítást és az elavult előkészítés elutasítását. A munkamenetjelzést itt tesztforrás adja: ez nem helyettesíti a végső WTS/RDP-kézi próbát. A tesztfeladatot, fiókot és fájlokat a CI eltávolítja; a fejlesztői gépen ilyen rendszerszintű próba nem fut.
 
@@ -38,7 +40,9 @@ At creation, the companion already belongs to its own one-process job. It remain
 
 ### Verification and limits
 
-Local tests use unassigned token copies and check refusal of an ordinary process, unchanged source identity and non-inheritance.
+After process creation the launcher separately opens the suspended companion's actual primary token. It verifies that this is distinct from the service token, sets the protected access list and reads it back. Any mismatch aborts startup. Token privileges, integrity level and session remain unchanged.
+
+Local tests use an unassigned token copy and check ordinary-process refusal, unchanged source identity and privileges, exact access-list readback, refusal of changes through a query-only handle, and non-inherited handles.
 
 Isolated Windows CI runs a SYSTEM trial with two real logons of one temporary standard account. Native Windows access checks while impersonating the selected logon verify process and current-token queries; modifying rights and the other logon must be refused. The other logon cannot reuse an already pinned `Peer` either. The trial covers resume, shutdown after session invalidation and stale preparation refusal. Session events use a test source here, so final manual WTS/RDP trials remain necessary. CI removes its task, account and files; no such system-level trial runs on the development machine.
 

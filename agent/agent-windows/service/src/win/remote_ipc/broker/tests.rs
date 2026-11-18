@@ -38,7 +38,7 @@ fn ordinary_process_cannot_prepare_a_system_companion() {
 fn duplication_creates_a_separate_noninherited_token_without_changing_its_source() {
     let source = current_token(TOKEN_QUERY | TOKEN_DUPLICATE).unwrap();
     let before = Token::read(&source).unwrap();
-    let mut attributes = access("S-1-5-5-123-456", TOKEN_QUERY).unwrap();
+    let mut attributes = access("S-1-5-5-123-456", TOKEN_QUERY, TOKEN_ALL_ACCESS).unwrap();
     let copy = copy(&source, &mut attributes).unwrap();
     let after = Token::read(&copy).unwrap();
     assert!(before.same_logon(&after));
@@ -56,6 +56,71 @@ fn duplication_creates_a_separate_noninherited_token_without_changing_its_source
         flags & windows_sys::Win32::Foundation::HANDLE_FLAG_INHERIT,
         0
     );
+}
+
+#[test]
+fn token_acl_update_is_scoped_read_back_and_requires_write_dac() {
+    use super::super::identity::privileges;
+    use windows_sys::Win32::Foundation::DuplicateHandle;
+
+    let source = current_token(TOKEN_QUERY | TOKEN_DUPLICATE | 0x0002_0000).unwrap();
+    let original = Token::read(&source).unwrap();
+    let original_acl = read_dacl(&source).unwrap();
+    let original_privileges = privileges(&source).unwrap();
+    let mut raw = ptr::null_mut();
+    assert_ne!(
+        // SAFETY: creates an unassigned token copy; the current process token is not changed.
+        unsafe {
+            DuplicateTokenEx(
+                source.as_raw_handle(),
+                TOKEN_QUERY | 0x0006_0000,
+                ptr::null(),
+                SecurityIdentification,
+                TokenPrimary,
+                &mut raw,
+            )
+        },
+        0
+    );
+    // SAFETY: successful duplication returned this owned token copy.
+    let token = unsafe { OwnedHandle::from_raw_handle(raw) };
+    let before = Token::read(&token).unwrap();
+    assert!(!before.same_primary_identity(&original));
+    let attributes = access("S-1-5-5-123-456", TOKEN_QUERY, TOKEN_ALL_ACCESS).unwrap();
+    replace_dacl(&token, &attributes).unwrap();
+    let configured = read_dacl(&token).unwrap();
+    assert!(configured.1, "DACL must remain protected");
+    assert_ne!(configured, original_acl);
+    assert_eq!(before, Token::read(&token).unwrap());
+    assert_eq!(privileges(&token).unwrap(), original_privileges);
+
+    let mut raw = ptr::null_mut();
+    assert_ne!(
+        // SAFETY: reduces an existing handle's rights without changing either token object.
+        unsafe {
+            DuplicateHandle(
+                GetCurrentProcess(),
+                token.as_raw_handle(),
+                GetCurrentProcess(),
+                &mut raw,
+                TOKEN_QUERY,
+                0,
+                0,
+            )
+        },
+        0
+    );
+    // SAFETY: successful duplication returned one owned query-only handle.
+    let query = unsafe { OwnedHandle::from_raw_handle(raw) };
+    let forbidden = access("S-1-5-5-123-789", TOKEN_ALL_ACCESS, TOKEN_ALL_ACCESS).unwrap();
+    assert_eq!(
+        replace_dacl(&query, &forbidden).unwrap_err().raw_os_error(),
+        Some(ERROR_ACCESS_DENIED as i32)
+    );
+    assert_eq!(read_dacl(&token).unwrap(), configured);
+    assert_eq!(Token::read(&source).unwrap(), original);
+    assert_eq!(read_dacl(&source).unwrap(), original_acl);
+    assert_eq!(privileges(&source).unwrap(), original_privileges);
 }
 
 #[test]
