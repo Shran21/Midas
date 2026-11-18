@@ -11,7 +11,8 @@ use windows_sys::Win32::{
         TOKEN_QUERY, TokenPrimary,
     },
     System::Threading::{
-        CreateProcessAsUserW, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
+        CreateProcessAsUserW, PROCESS_QUERY_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION,
+        PROCESS_SYNCHRONIZE,
     },
 };
 
@@ -166,7 +167,7 @@ impl Preparation {
         self.check()?;
         access(
             self.user.user_logon_sid()?,
-            PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE,
+            PROCESS_QUERY_INFORMATION | PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE,
         )
     }
 }

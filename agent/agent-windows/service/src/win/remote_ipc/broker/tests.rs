@@ -249,6 +249,15 @@ fn isolated_system_query_access() {
     assert!(current.allows(&Role::Broker));
     {
         let _guard = Impersonation::enter(&user_token);
+        assert_eq!(
+            current,
+            Token::read(
+                &token_access(&process, TOKEN_QUERY).expect("query actual companion token")
+            )
+            .unwrap()
+        );
+        println!("selected logon queried the actual SYSTEM token");
+        drop(process_access(pid, PROCESS_QUERY_INFORMATION).expect("query native process session"));
         let opened =
             process_access(pid, PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE).unwrap();
         let verified = Peer::broker(opened, &image).unwrap();

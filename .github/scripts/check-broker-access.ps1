@@ -56,10 +56,13 @@ try {
     $process = Start-Process -FilePath (Join-Path $PSScriptRoot 'trial.exe') -WindowStyle Hidden -PassThru `
         -ArgumentList @('--exact', 'win::remote_ipc::broker::tests::isolated_system_query_access', '--ignored', '--nocapture') `
         -RedirectStandardOutput $output -RedirectStandardError $errors
+    $null = $process.Handle
     $process.Id | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'native-pid.txt')
     if (-not $process.WaitForExit(120000)) { $process.Kill(); $process.WaitForExit(); throw 'Native trial timed out.' }
     $process.WaitForExit()
-    $code = $process.ExitCode
+    $exitCode = $process.ExitCode
+    if ($null -eq $exitCode) { throw 'Native process exit code unavailable.' }
+    $code = [int]$exitCode
     Get-Content -LiteralPath $output, $errors | Set-Content -LiteralPath $log
     "Test process exit code: $code" | Add-Content -LiteralPath $log
 } catch {
@@ -116,7 +119,7 @@ try {
     }
     $log = Join-Path $resolvedRoot 'trial.log'
     if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log }
-    if (-not (Test-Path -LiteralPath $result) -or (Get-Content -LiteralPath $result -Raw).Trim() -ne '0') { throw 'SYSTEM broker access trial failed.' }
+    if (-not (Test-Path -LiteralPath $result) -or ([string](Get-Content -LiteralPath $result -Raw)).Trim() -ne '0') { throw 'SYSTEM broker access trial failed.' }
     if ((Get-Content -LiteralPath $log -Raw) -notmatch '1 passed; 0 failed; 0 ignored') { throw 'SYSTEM trial did not execute.' }
 } finally {
     if ($registered) {
