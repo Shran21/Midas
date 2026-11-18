@@ -36,9 +36,12 @@ impl Broker {
     pub fn initialize(installed_image: &Path) -> io::Result<Self> {
         no_impersonation()?;
         let token = current_token(TOKEN_QUERY | TOKEN_ADJUST_PRIVILEGES)?;
-        let before = Token::read(&token)?;
+        let before = stage("read service token", Token::read(&token))?;
         if !before.allows(&Role::Broker) {
-            return Err(denied());
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "service requires SYSTEM at system integrity in session zero",
+            ));
         }
         let exclusive = Exclusive::acquire(&ACTIVE)?;
         let required = [
@@ -46,13 +49,19 @@ impl Broker {
             lookup(SE_ASSIGNPRIMARYTOKEN_NAME)?,
             lookup(SE_INCREASE_QUOTA_NAME)?,
         ];
-        let mut adjustment = Adjustment::enable(token, &required)?;
+        let mut adjustment = stage(
+            "enable service worker privileges",
+            Adjustment::enable(token, &required),
+        )?;
         let result = (|| {
             no_impersonation()?;
             if !before.same_primary_identity(&Token::read(&adjustment.token)?) {
                 return Err(denied());
             }
-            let peer = Peer::broker(current_process()?, installed_image)?;
+            let peer = stage(
+                "pin service broker",
+                Peer::broker(current_process()?, installed_image),
+            )?;
             enabled(&adjustment.token, &required)?;
             if Token::read(&current_token(TOKEN_QUERY)?)? != Token::read(&adjustment.token)? {
                 return Err(denied());
@@ -85,6 +94,10 @@ impl Broker {
         self.adjustment.restore()?;
         identity
     }
+}
+
+fn stage<T>(name: &str, result: io::Result<T>) -> io::Result<T> {
+    result.map_err(|error| io::Error::new(error.kind(), format!("{name}: {error}")))
 }
 
 struct Exclusive(&'static AtomicBool);

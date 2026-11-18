@@ -13,10 +13,10 @@ use windows_sys::Win32::{
     Foundation::{HANDLE, LUID, LocalFree, WAIT_TIMEOUT},
     Security::{
         Authorization::ConvertSidToStringSidW, GetTokenInformation, LUID_AND_ATTRIBUTES, PSID,
-        TOKEN_ELEVATION, TOKEN_GROUPS, TOKEN_INFORMATION_CLASS, TOKEN_MANDATORY_LABEL,
-        TOKEN_PRIVILEGES, TOKEN_QUERY, TOKEN_STATISTICS, TOKEN_USER, TokenElevation,
-        TokenElevationType, TokenElevationTypeDefault, TokenElevationTypeFull,
-        TokenElevationTypeLimited, TokenIntegrityLevel, TokenIsAppContainer, TokenLogonSid,
+        SID_AND_ATTRIBUTES, TOKEN_ELEVATION, TOKEN_GROUPS, TOKEN_INFORMATION_CLASS,
+        TOKEN_MANDATORY_LABEL, TOKEN_PRIVILEGES, TOKEN_QUERY, TOKEN_STATISTICS, TOKEN_USER,
+        TokenElevation, TokenElevationType, TokenElevationTypeDefault, TokenElevationTypeFull,
+        TokenElevationTypeLimited, TokenGroups, TokenIntegrityLevel, TokenIsAppContainer,
         TokenPrimary, TokenPrivileges, TokenSessionId, TokenStatistics, TokenUIAccess, TokenUser,
     },
     System::{
@@ -30,6 +30,7 @@ use windows_sys::Win32::{
 use super::denied;
 
 const SYSTEM: &str = "S-1-5-18";
+const SE_GROUP_LOGON_ID: u32 = 0xc000_0000;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Worker {
@@ -287,21 +288,14 @@ impl Token {
         }
         let user = Buffer::query(token, TokenUser)?;
         let integrity = Buffer::query(token, TokenIntegrityLevel)?;
-        let groups = Buffer::query(token, TokenLogonSid)?;
         // SAFETY: each buffer is aligned, size checked and filled by the corresponding token query.
-        let (user, integrity, group_count) = unsafe {
+        let (user, integrity) = unsafe {
             (
                 sid(user.read::<TOKEN_USER>()?.User.Sid)?,
                 sid(integrity.read::<TOKEN_MANDATORY_LABEL>()?.Label.Sid)?,
-                groups.read::<u32>()?,
             )
         };
-        let logon_sid = match group_count {
-            0 => None,
-            // SAFETY: TokenLogonSid returned one group and its backing buffer remains alive.
-            1 => Some(unsafe { sid(groups.read::<TOKEN_GROUPS>()?.Groups[0].Sid)? }),
-            _ => return Err(denied()),
-        };
+        let logon_sid = logon_sid(token)?;
         let value = Self {
             id: luid(before.TokenId),
             modified: luid(before.ModifiedId),
@@ -336,30 +330,41 @@ fn statistics(token: HANDLE) -> io::Result<TOKEN_STATISTICS> {
     unsafe { Buffer::query(token, TokenStatistics)?.read() }
 }
 
+fn logon_sid(token: HANDLE) -> io::Result<Option<String>> {
+    let groups = Buffer::query(token, TokenGroups)?;
+    // SAFETY: TokenGroups begins with a DWORD count followed by the aligned native group array.
+    let entries = unsafe {
+        groups.array::<SID_AND_ATTRIBUTES>(
+            std::mem::offset_of!(TOKEN_GROUPS, Groups),
+            groups.read::<u32>()? as usize,
+        )?
+    };
+    single_logon(entries)?
+        .map(|group| {
+            // SAFETY: the selected entry and SID belong to the live native TokenGroups buffer.
+            unsafe { sid(group.Sid) }
+        })
+        .transpose()
+}
+
+fn single_logon(groups: &[SID_AND_ATTRIBUTES]) -> io::Result<Option<&SID_AND_ATTRIBUTES>> {
+    let mut logons = groups
+        .iter()
+        .filter(|group| group.Attributes & SE_GROUP_LOGON_ID == SE_GROUP_LOGON_ID);
+    let selected = logons.next();
+    if logons.next().is_some() {
+        return Err(denied());
+    }
+    Ok(selected)
+}
+
 pub(super) fn privileges(token: &OwnedHandle) -> io::Result<Vec<(u64, u32)>> {
     let buffer = Buffer::query(token.as_raw_handle(), TokenPrivileges)?;
     // SAFETY: TOKEN_PRIVILEGES starts with a DWORD count, checked by read.
     let count = unsafe { buffer.read::<u32>()? } as usize;
     let offset = std::mem::offset_of!(TOKEN_PRIVILEGES, Privileges);
-    let end = count
-        .checked_mul(size_of::<LUID_AND_ATTRIBUTES>())
-        .and_then(|size| offset.checked_add(size))
-        .ok_or_else(denied)?;
-    if end > buffer.length {
-        return Err(denied());
-    }
-    // SAFETY: the native array is aligned within the live query buffer and its full extent was checked.
-    let entries = unsafe {
-        std::slice::from_raw_parts(
-            buffer
-                .words
-                .as_ptr()
-                .cast::<u8>()
-                .add(offset)
-                .cast::<LUID_AND_ATTRIBUTES>(),
-            count,
-        )
-    };
+    // SAFETY: TokenPrivileges contains this native array; array checks its alignment and extent.
+    let entries = unsafe { buffer.array::<LUID_AND_ATTRIBUTES>(offset, count)? };
     Ok(entries
         .iter()
         .map(|entry| (luid(entry.Luid), entry.Attributes))
@@ -383,10 +388,17 @@ impl Buffer {
     fn query(token: HANDLE, class: TOKEN_INFORMATION_CLASS) -> io::Result<Self> {
         let mut length = 0;
         // SAFETY: a null/zero buffer queries the required length of this valid token.
-        unsafe {
+        let sized = unsafe {
             GetTokenInformation(token, class, ptr::null_mut(), 0, &mut length);
+            io::Error::last_os_error()
+        };
+        if length == 0 {
+            return Err(io::Error::new(
+                sized.kind(),
+                format!("token information {class}: {sized}"),
+            ));
         }
-        if length == 0 || length > 65_536 {
+        if length > 65_536 {
             return Err(denied());
         }
         let mut words = vec![0usize; (length as usize).div_ceil(size_of::<usize>())];
@@ -416,6 +428,26 @@ impl Buffer {
         }
         // SAFETY: the caller supplies the queried token type; size and alignment are checked above.
         Ok(unsafe { self.words.as_ptr().cast::<T>().read() })
+    }
+
+    unsafe fn array<T>(&self, offset: usize, count: usize) -> io::Result<&[T]> {
+        let end = count
+            .checked_mul(size_of::<T>())
+            .and_then(|size| offset.checked_add(size))
+            .ok_or_else(denied)?;
+        if end > self.length
+            || align_of::<T>() > align_of::<usize>()
+            || !offset.is_multiple_of(align_of::<T>())
+        {
+            return Err(denied());
+        }
+        // SAFETY: caller supplies the queried native type; alignment, multiplication and extent are checked.
+        Ok(unsafe {
+            std::slice::from_raw_parts(
+                self.words.as_ptr().cast::<u8>().add(offset).cast::<T>(),
+                count,
+            )
+        })
     }
 }
 

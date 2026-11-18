@@ -1,4 +1,5 @@
 use super::*;
+use windows_sys::Win32::Security::TokenLogonSid;
 use windows_sys::Win32::System::Threading::{
     OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
 };
@@ -34,6 +35,63 @@ pub(crate) fn peer(process: OwnedHandle) -> Peer {
 
 pub(crate) fn local() -> Peer {
     peer(process(std::process::id()))
+}
+
+#[test]
+fn group_scan_matches_the_native_logon_sid_query_for_the_test_user() {
+    let token = super::super::tokens::current_token(TOKEN_QUERY).unwrap();
+    let groups = Buffer::query(token.as_raw_handle(), TokenLogonSid).unwrap();
+    // SAFETY: the ordinary test account has exactly one native logon SID in this query buffer.
+    let expected = unsafe {
+        assert_eq!(groups.read::<u32>().unwrap(), 1);
+        sid(groups.read::<TOKEN_GROUPS>().unwrap().Groups[0].Sid).unwrap()
+    };
+    assert_eq!(logon_sid(token.as_raw_handle()).unwrap(), Some(expected));
+}
+
+#[test]
+fn tokens_without_a_logon_group_are_distinct_from_ambiguous_logon_groups() {
+    let ordinary = SID_AND_ATTRIBUTES::default();
+    let partial = SID_AND_ATTRIBUTES {
+        Attributes: 0x8000_0000,
+        ..ordinary
+    };
+    let logon = SID_AND_ATTRIBUTES {
+        Attributes: SE_GROUP_LOGON_ID | 7,
+        ..ordinary
+    };
+    assert!(single_logon(&[]).unwrap().is_none());
+    assert!(single_logon(&[ordinary, partial]).unwrap().is_none());
+    assert_eq!(
+        single_logon(&[ordinary, logon])
+            .unwrap()
+            .unwrap()
+            .Attributes,
+        logon.Attributes
+    );
+    assert!(single_logon(&[logon, ordinary, logon]).is_err());
+    let mut normal = normal().token;
+    normal.logon_sid = None;
+    assert!(normal.user_worker(4).is_err());
+    normal.user = SYSTEM.into();
+    normal.integrity = "S-1-16-16384".into();
+    normal.session = 0;
+    assert!(normal.allows(&Role::Broker));
+}
+
+#[test]
+fn native_arrays_reject_truncation_misalignment_and_count_overflow() {
+    let buffer = Buffer {
+        words: vec![0; 2],
+        length: size_of::<usize>() * 2,
+    };
+    // SAFETY: zeroed test storage represents these integer/pointer fields; rejected calls create no slice.
+    unsafe {
+        assert!(buffer.array::<SID_AND_ATTRIBUTES>(1, 0).is_err());
+        assert!(buffer.array::<SID_AND_ATTRIBUTES>(8, 1).is_err());
+        assert!(buffer.array::<LUID_AND_ATTRIBUTES>(4, usize::MAX).is_err());
+        assert!(buffer.array::<SID_AND_ATTRIBUTES>(8, 0).unwrap().is_empty());
+    }
 }
 
 fn normal() -> Snapshot {

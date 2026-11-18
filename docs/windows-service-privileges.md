@@ -6,6 +6,8 @@
 
 A telepített szolgáltatás induláskor előkészíti a Windows-segédek indításához szükséges jogosultságokat, majd rögzíti saját közvetítői azonosságát. A `remote_ipc::startup::Broker` csak SYSTEM-fiókkal, rendszerintegritással, a nullás szolgáltatásmunkamenetben működik; megszemélyesítő száltoken, UIAccess vagy AppContainer mellett elutasít. Nem emel felhasználói folyamatot, és nem módosít fiókjogot, helyi biztonsági szabályzatot vagy UAC-beállítást.
 
+A bejelentkezési SID-et a natív `TokenGroups` lista `SE_GROUP_LOGON_ID` jelöléséből olvassa ki. A SYSTEM-szerep megengedi e csoport hiányát; normál felhasználói segédnél továbbra is kötelező. Több bejelentkezési csoport vagy hibás méretű natív adat elutasítást okoz. A teljes token- és folyamatellenőrzés megmarad.
+
 ### Indulás és visszaállítás
 
 Három, a szolgáltatás tokenjében már meglévő privilégiumot engedélyez:
@@ -35,6 +37,8 @@ Az előkészített közvetítő még nem indít távvezérlést, és az agent et
 ## English
 
 The installed service prepares the privileges required to launch Windows workers, then pins its broker identity. `remote_ipc::startup::Broker` requires SYSTEM at system integrity in service session zero; thread impersonation, UIAccess and AppContainer are refused. It elevates no user process and changes no account rights, local security policy or UAC setting.
+
+The logon SID is read from the native `TokenGroups` entry marked `SE_GROUP_LOGON_ID`. SYSTEM roles permit this group to be absent; ordinary user workers still require it. Multiple logon groups or malformed native array lengths cause rejection. Full token and process verification remains in place.
 
 ### Startup and restoration
 
