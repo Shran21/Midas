@@ -1,4 +1,4 @@
-//! Suspended, job-contained workers. Token acquisition, bootstrap and execution grants are separate.
+//! Suspended, job-contained workers with session-bound tokens. Bootstrap and execution grants are separate.
 
 use std::{
     io,
@@ -6,7 +6,7 @@ use std::{
         ffi::OsStrExt,
         io::{AsRawHandle, FromRawHandle, OwnedHandle},
     },
-    path::{Component, Path, PathBuf, Prefix},
+    path::{Component, Path, Prefix},
     ptr,
 };
 
@@ -30,40 +30,19 @@ use windows_sys::Win32::{
     },
 };
 
-use super::{
-    Peer, Worker, denied,
-    identity::{Role, Token},
-};
+use super::{Peer, denied, tokens::PreparedToken};
 
 pub struct SuspendedWorker {
     process: Process,
-    image: PathBuf,
-    kind: Worker,
-    session: u32,
+    token: PreparedToken,
+    identity: Peer,
 }
 
 impl SuspendedWorker {
-    /// The service supplies an owned primary token and an administrator-protected installed image.
+    /// The service supplies a prepared native token and an administrator-protected installed image.
     /// No PID, token handle, image path or command line may come from a remote request.
-    pub fn spawn(
-        broker: &Peer,
-        token: OwnedHandle,
-        installed_image: &Path,
-        kind: Worker,
-        session: u32,
-    ) -> io::Result<Self> {
-        if broker.role != Role::Broker {
-            return Err(denied());
-        }
-        broker.check(std::process::id())?;
-        let role = Role::Worker {
-            kind: kind.clone(),
-            session,
-        };
-        let before = Token::read(&token)?;
-        if !before.allows(&role) {
-            return Err(denied());
-        }
+    pub fn spawn(broker: &Peer, token: PreparedToken, installed_image: &Path) -> io::Result<Self> {
+        token.check(broker)?;
         let application = image_path(installed_image)?;
         let directory = image_path(installed_image.parent().ok_or_else(denied)?)?;
         let mut command = vec![b'"' as u16];
@@ -80,7 +59,7 @@ impl SuspendedWorker {
             // and startup points to the extended structure with its live job attribute.
             unsafe {
                 CreateProcessAsUserW(
-                    token.as_raw_handle(),
+                    token.raw(),
                     application.as_ptr(),
                     command.as_mut_ptr(),
                     ptr::null(),
@@ -94,33 +73,30 @@ impl SuspendedWorker {
                 )
             }
         })?;
-        if Token::read(&token)? != before {
-            return Err(denied());
-        }
-        broker.check(std::process::id())?;
-        let worker = Self {
+        token.check(broker)?;
+        let identity = Peer::worker(
+            process.query_handle()?,
+            installed_image,
+            token.kind(),
+            token.session(),
+        )?;
+        Ok(Self {
             process,
-            image: installed_image.into(),
-            kind,
-            session,
-        };
-        worker.peer()?;
-        Ok(worker)
+            token,
+            identity,
+        })
     }
 
     /// Query-only process access for IPC identity; no process-control handle leaves this owner.
     pub fn peer(&self) -> io::Result<Peer> {
-        Peer::worker(
-            self.process.query_handle()?,
-            &self.image,
-            self.kind.clone(),
-            self.session,
-        )
+        self.identity.duplicate()
     }
 
-    pub fn resume(self) -> io::Result<RunningWorker> {
+    pub fn resume(self, broker: &Peer) -> io::Result<RunningWorker> {
+        self.token.check(broker)?;
         let peer = self.peer()?;
         let process = self.process.resume()?;
+        self.token.check(broker)?;
         peer.check(process.pid()?)?;
         Ok(RunningWorker(process))
     }

@@ -2,6 +2,7 @@
 
 mod identity;
 pub mod launch;
+pub mod tokens;
 pub use identity::{Peer, Worker};
 
 use std::{

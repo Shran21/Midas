@@ -543,6 +543,9 @@ mod tests {
             "Ops <ops@example.test>",
             "ops@exa mple.test",
             "a,b@example.test",
+            "\"d \"@example.test",
+            "ops\u{2003}@example.test",
+            "ops@example.test\r\nBcc: hidden@example.test",
         ] {
             assert!(!valid_email(bad), "{bad}");
         }
@@ -552,6 +555,62 @@ mod tests {
     fn retries_back_off() {
         assert!(backoff(1) < backoff(2) && backoff(4) < backoff(5));
         assert_eq!(backoff(9), backoff(5));
+    }
+
+    #[tokio::test]
+    async fn smtp_greetings_with_blank_capability_lines_do_not_panic() {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        use tokio::net::TcpListener;
+
+        for capabilities in [
+            "250 OK\r\n",
+            "250- \r\n250 OK\r\n",
+            "250-\t \t\r\n250 OK\r\n",
+        ] {
+            let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+                .await
+                .unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let Mailer::Smtp { transport, .. } = Mailer::smtp(&SmtpSettings {
+                host: "127.0.0.1".into(),
+                port,
+                security: SmtpSecurity::None,
+                credentials: None,
+                from: "MIDAS <midas@example.test>".into(),
+            })
+            .unwrap() else {
+                panic!("SMTP transport was not created");
+            };
+            let server = async {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut stream = BufReader::new(stream);
+                stream
+                    .get_mut()
+                    .write_all(b"220 mail.example.test\r\n")
+                    .await
+                    .unwrap();
+                for (command, response) in [
+                    ("EHLO ", format!("250-mail.example.test\r\n{capabilities}")),
+                    ("NOOP\r\n", "250 OK\r\n".into()),
+                    ("QUIT\r\n", "221 Bye\r\n".into()),
+                ] {
+                    let mut line = String::new();
+                    stream.read_line(&mut line).await.unwrap();
+                    assert!(line.starts_with(command), "unexpected SMTP command");
+                    stream
+                        .get_mut()
+                        .write_all(response.as_bytes())
+                        .await
+                        .unwrap();
+                }
+            };
+            tokio::time::timeout(Duration::from_secs(5), async {
+                let (result, ()) = tokio::join!(transport.test_connection(), server);
+                assert!(result.unwrap());
+            })
+            .await
+            .expect("local SMTP test timed out");
+        }
     }
 
     #[test]

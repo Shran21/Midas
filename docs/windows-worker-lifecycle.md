@@ -8,9 +8,9 @@ A `remote_ipc::launch` könyvtár a távsegítési segédfolyamat előkészítet
 
 ### Indítás és azonosság
 
-A hívónak a saját, korábban ellenőrzött SYSTEM-közvetítőjét, egy birtokolt elsődleges tokent, a kiválasztott Windows-munkamenetet, a szerepet és egy rendszergazda által védett telepítési útvonalat kell átadnia. Távoli kérésből nem vehető át programútvonal, parancssor, PID vagy tokenkezelő. A telepítési könyvtár védelme és az aláírás ellenőrzése a telepítő és a későbbi integráció feladata.
+A hívónak a saját, korábban ellenőrzött SYSTEM-közvetítőjét, egy [munkamenethez kötött PreparedToken értéket](windows-session-tokens.md) és egy rendszergazda által védett telepítési útvonalat kell átadnia. A szerep és a munkamenet az előkészített tokenhez tartozik. Távoli kérésből nem vehető át programútvonal, parancssor, PID vagy tokenkezelő. A telepítési könyvtár védelme és az aláírás ellenőrzése a telepítő és a későbbi integráció feladata.
 
-A token ugyanazokon a szerepellenőrzéseken megy át, mint az [IPC azonossága](windows-remote-ipc.md): normál segédnél pontos felhasználó, bejelentkezés és munkamenet, közepes integritás, emelés és UIAccess nélkül; privilegizált segédnél SYSTEM és a kiválasztott munkamenet. A token lekérése és az emelt felhasználó korlátozott tokenjének kiválasztása még nincs megvalósítva.
+A token ugyanazokon a szerepellenőrzéseken megy át, mint az [IPC azonossága](windows-remote-ipc.md): normál segédnél pontos felhasználó, bejelentkezés és munkamenet, közepes integritás, emelés és UIAccess nélkül; privilegizált segédnél SYSTEM és a kiválasztott munkamenet. Az előkészítő WTS-ből kéri le a felhasználói tokent, szükség esetén kiválasztja a megfelelő kapcsolt korlátozott tokent, illetve külön SYSTEM-másolatot készít a privilegizált szerephez.
 
 Az indítás teljes helyi útvonalat, rögzített `remote-worker` argumentumot, a telepítési könyvtárat és a `winsta0\default` asztalt használja. Nincs örökölt kezelő vagy szülői környezetmásolat. A környezet csak a Windows API-ból származó rendszerkönyvtárra épülő `PATH`, `SystemRoot` és `WINDIR` értékeket tartalmazza. Asztaljogosultságot nem módosít.
 
@@ -28,7 +28,7 @@ Ez folyamatelkülönítés, nem RAM-, CPU-, GPU- vagy videominőségi korlát. I
 
 A tesztek saját jogosultsággal indított valódi Windows-folyamatokkal ellenőrzik a felfüggesztett állapotot, a gyermekindítás tiltását, a kifejezett leállítást, a hibás ismételt indítást és a felügyelő váratlan kilépését. Nem végeznek szolgáltatástelepítést vagy SYSTEM/UAC-próbát.
 
-Még szükséges a munkamenethez kötött tokenlekérés, a védett kezdeti kezelőátadás, a külön segédfolyamatok belépési pontjai és a jogosultságok tényleges műveletenkénti ellenőrzése. A normál segéd továbbra is nem megbízható felhasználói folyamat. Az indítás és a hitelesített IPC önmagában nem ad távvezérlési vagy UAC-engedélyt. A telepített SYSTEM–felhasználó kapcsolat, az RDP/UAC és a valós asztalváltások ellenőrzése a végső kézi próbák része.
+Még szükséges a szolgáltatásba kötés, a védett kezdeti kezelőátadás, a külön segédfolyamatok belépési pontjai és a jogosultságok tényleges műveletenkénti ellenőrzése. A normál segéd továbbra is nem megbízható felhasználói folyamat. Az indítás és a hitelesített IPC önmagában nem ad távvezérlési vagy UAC-engedélyt. A telepített SYSTEM–felhasználó kapcsolat, a natív WTS-tokenválasztás, az RDP/UAC és a valós asztalváltások ellenőrzése a végső kézi próbák része.
 
 ## English
 
@@ -36,9 +36,9 @@ The `remote_ipc::launch` library prepares and contains remote-support worker pro
 
 ### Startup and identity
 
-The caller supplies its previously verified SYSTEM broker, an owned primary token, the selected Windows session and role, and an administrator-protected installed image. Remote requests must never supply an executable path, command line, PID or token handle. Installation protection and signature verification remain installer and integration responsibilities.
+The caller supplies its previously verified SYSTEM broker, a [session-bound PreparedToken](windows-session-tokens.md#english), and an administrator-protected installed image. The role and session belong to the prepared token. Remote requests must never supply an executable path, command line, PID or token handle. Installation protection and signature verification remain installer and integration responsibilities.
 
-Tokens use the same role checks as [IPC identity](windows-remote-ipc.md#english): an ordinary worker must match the exact user, logon and session, with medium integrity, no elevation and no UIAccess; a privileged worker requires SYSTEM in the selected session. Token acquisition and selecting a filtered token for an elevated user remain unimplemented.
+Tokens use the same role checks as [IPC identity](windows-remote-ipc.md#english): an ordinary worker must match the exact user, logon and session, with medium integrity, no elevation and no UIAccess; a privileged worker requires SYSTEM in the selected session. Preparation acquires the user token through WTS, selects the appropriate linked limited token when needed, or creates a separate SYSTEM copy for the privileged role.
 
 Creation uses an explicit local image, the fixed `remote-worker` argument, the installation directory and `winsta0\default`. No handles or parent environment are inherited. Only `PATH`, `SystemRoot` and `WINDIR`, derived from the Windows API's system directory, are provided. Desktop permissions are not changed.
 
@@ -56,4 +56,4 @@ This contains processes without imposing RAM, CPU, GPU or video-quality limits.
 
 Tests launch real Windows processes with the test account's privileges to verify suspension, child-process refusal, explicit termination, invalid repeated resumes and owner crashes. They install no service and perform no SYSTEM/UAC trial.
 
-Session-bound token acquisition, protected bootstrap handle transfer, separate worker entry points and per-operation authorization remain. Ordinary helpers remain untrusted user processes. Process creation and authenticated IPC do not authorize remote control or UAC interaction. Installed SYSTEM-to-user, RDP/UAC and real desktop-transition verification remain final manual trials.
+Service integration, protected bootstrap handle transfer, separate worker entry points and per-operation authorization remain. Ordinary helpers remain untrusted user processes. Process creation and authenticated IPC do not authorize remote control or UAC interaction. Installed SYSTEM-to-user, native WTS token selection, RDP/UAC and real desktop-transition verification remain final manual trials.

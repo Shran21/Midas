@@ -1,17 +1,15 @@
 use std::{
     fs,
     os::windows::process::CommandExt,
+    path::PathBuf,
     process::{Command, Stdio},
     thread,
     time::{Duration, Instant},
 };
 
-use windows_sys::Win32::{
-    Security::TOKEN_QUERY,
-    System::{
-        JobObjects::QueryInformationJobObject,
-        Threading::{CreateProcessW, OpenProcessToken, SuspendThread},
-    },
+use windows_sys::Win32::System::{
+    JobObjects::QueryInformationJobObject,
+    Threading::{CreateProcessW, SuspendThread},
 };
 
 use super::*;
@@ -185,26 +183,7 @@ fn unexpected_suspend_count_and_second_resume_kill_the_worker() {
 }
 
 #[test]
-fn launch_rejects_nonbroker_callers_and_ambiguous_paths() {
-    let peer = super::super::identity::tests::local();
-    let mut token = ptr::null_mut();
-    assert_ne!(
-        // SAFETY: obtains this test process's query-only token into one owned output.
-        unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) },
-        0
-    );
-    // SAFETY: the successful token query gave this test sole ownership of the returned handle.
-    let token = unsafe { OwnedHandle::from_raw_handle(token) };
-    assert!(
-        SuspendedWorker::spawn(
-            &peer,
-            token,
-            &std::env::current_exe().unwrap(),
-            Worker::Privileged,
-            1
-        )
-        .is_err()
-    );
+fn launch_rejects_ambiguous_paths_and_inherits_no_parent_environment() {
     for path in [
         "worker.exe",
         r"C:worker.exe",

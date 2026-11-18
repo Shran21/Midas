@@ -14,8 +14,10 @@ use windows_sys::Win32::{
     Security::{
         Authorization::ConvertSidToStringSidW, GetTokenInformation, PSID, TOKEN_ELEVATION,
         TOKEN_GROUPS, TOKEN_INFORMATION_CLASS, TOKEN_MANDATORY_LABEL, TOKEN_QUERY,
-        TOKEN_STATISTICS, TOKEN_USER, TokenElevation, TokenIntegrityLevel, TokenIsAppContainer,
-        TokenLogonSid, TokenPrimary, TokenSessionId, TokenStatistics, TokenUIAccess, TokenUser,
+        TOKEN_STATISTICS, TOKEN_USER, TokenElevation, TokenElevationType,
+        TokenElevationTypeDefault, TokenElevationTypeFull, TokenElevationTypeLimited,
+        TokenIntegrityLevel, TokenIsAppContainer, TokenLogonSid, TokenPrimary, TokenSessionId,
+        TokenStatistics, TokenUIAccess, TokenUser,
     },
     System::{
         RemoteDesktop::ProcessIdToSessionId,
@@ -81,6 +83,15 @@ impl Peer {
         Ok(())
     }
 
+    pub(super) fn duplicate(&self) -> io::Result<Self> {
+        self.check(self.snapshot.pid)?;
+        Ok(Self {
+            process: self.process.try_clone()?,
+            snapshot: self.snapshot.clone(),
+            role: self.role.clone(),
+        })
+    }
+
     pub(super) fn acl(&self) -> io::Result<String> {
         let sid = match &self.role {
             Role::Worker {
@@ -123,6 +134,7 @@ pub(super) struct Token {
     logon_sid: Option<String>,
     integrity: String,
     elevated: bool,
+    elevation_type: u32,
     ui_access: bool,
     app_container: bool,
 }
@@ -184,6 +196,7 @@ impl Token {
                     Worker::User { user_sid, logon_id } => {
                         !system
                             && !token.elevated
+                            && token.elevation_type != TokenElevationTypeFull as u32
                             && token.integrity == "S-1-16-8192"
                             && token.user == *user_sid
                             && token.logon == *logon_id
@@ -200,6 +213,68 @@ fn luid(value: LUID) -> u64 {
 }
 
 impl Token {
+    pub(super) fn user_worker(&self, session: u32) -> io::Result<Worker> {
+        let kind = Worker::User {
+            user_sid: self.user.clone(),
+            logon_id: self.logon,
+        };
+        if !self.allows(&Role::Worker {
+            kind: kind.clone(),
+            session,
+        }) {
+            return Err(denied());
+        }
+        Ok(kind)
+    }
+
+    pub(super) fn needs_linked(&self, session: u32) -> io::Result<bool> {
+        self.observed_user(session)?;
+        if self.elevation_type == TokenElevationTypeFull as u32
+            && self.elevated
+            && self.integrity == "S-1-16-12288"
+        {
+            return Ok(true);
+        }
+        self.user_worker(session)?;
+        Ok(false)
+    }
+
+    pub(super) fn observed_user(&self, session: u32) -> io::Result<()> {
+        if self.user == SYSTEM
+            || self.ui_access
+            || self.app_container
+            || self.logon_sid.is_none()
+            || session == 0
+            || session == u32::MAX
+            || self.session != session
+        {
+            return Err(denied());
+        }
+        Ok(())
+    }
+
+    pub(super) fn linked_worker(&self, linked: &Self, session: u32) -> io::Result<Worker> {
+        if !self.needs_linked(session)?
+            || linked.user != self.user
+            || linked.elevation_type != TokenElevationTypeLimited as u32
+        {
+            return Err(denied());
+        }
+        linked.user_worker(session)
+    }
+
+    pub(super) fn same_logon(&self, other: &Self) -> bool {
+        self.logon == other.logon
+            && self.session == other.session
+            && self.user == other.user
+            && self.logon_sid == other.logon_sid
+            && self.integrity == other.integrity
+            && self.elevated == other.elevated
+            && self.elevation_type == other.elevation_type
+            && self.ui_access == other.ui_access
+            && self.app_container == other.app_container
+    }
+
     pub(super) fn read(token: &OwnedHandle) -> io::Result<Self> {
         let token = token.as_raw_handle() as HANDLE;
         let before = statistics(token)?;
@@ -232,11 +307,20 @@ impl Token {
             logon_sid,
             session: scalar(token, TokenSessionId)?,
             elevated: scalar(token, TokenElevation)? != 0,
+            elevation_type: scalar(token, TokenElevationType)?,
             ui_access: scalar(token, TokenUIAccess)? != 0,
             app_container: scalar(token, TokenIsAppContainer)? != 0,
         };
         let after = statistics(token)?;
-        if value.id != luid(after.TokenId) || value.modified != luid(after.ModifiedId) {
+        if value.id != luid(after.TokenId)
+            || value.modified != luid(after.ModifiedId)
+            || ![
+                TokenElevationTypeDefault as u32,
+                TokenElevationTypeFull as u32,
+                TokenElevationTypeLimited as u32,
+            ]
+            .contains(&value.elevation_type)
+        {
             return Err(denied());
         }
         Ok(value)
