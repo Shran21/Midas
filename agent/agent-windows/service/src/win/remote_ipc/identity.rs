@@ -116,6 +116,24 @@ impl Peer {
             super::CLIENT_ACCESS
         ))
     }
+
+    pub(super) fn user_logon_sid(&self) -> io::Result<&str> {
+        self.check(self.snapshot.pid)?;
+        if !matches!(
+            self.role,
+            Role::Worker {
+                kind: Worker::User { .. },
+                ..
+            }
+        ) {
+            return Err(denied());
+        }
+        self.snapshot.token.logon_sid.as_deref().ok_or_else(denied)
+    }
+
+    pub(super) fn recheck(&self) -> io::Result<()> {
+        self.check(self.snapshot.pid)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

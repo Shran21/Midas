@@ -158,6 +158,12 @@ impl SuspendedWorker {
         self.identity.duplicate()
     }
 
+    pub(super) fn binding(&self, broker: &Peer) -> io::Result<Binding> {
+        self.token.check(broker)?;
+        self.identity.recheck()?;
+        Ok(self.token.binding())
+    }
+
     pub fn resume(self, broker: &Peer) -> io::Result<RunningWorker> {
         self.token.check(broker)?;
         let peer = self.peer()?;
@@ -177,6 +183,11 @@ pub struct RunningWorker {
 }
 
 impl RunningWorker {
+    pub(super) fn bound(process: Process, session: Binding) -> io::Result<Self> {
+        session.check()?;
+        Ok(Self { process, session })
+    }
+
     pub fn has_exited(&self) -> io::Result<bool> {
         self.process.has_exited()
     }
@@ -188,14 +199,14 @@ impl RunningWorker {
     }
 }
 
-struct Process {
+pub(super) struct Process {
     job: OwnedHandle,
     process: OwnedHandle,
     thread: Option<OwnedHandle>,
 }
 
 impl Process {
-    fn create(
+    pub(super) fn create(
         desktop: Option<&mut [u16]>,
         create: impl FnOnce(&STARTUPINFOW, u32, &mut PROCESS_INFORMATION) -> i32,
     ) -> io::Result<Self> {
@@ -272,7 +283,7 @@ impl Process {
         Ok(child)
     }
 
-    fn query_handle(&self) -> io::Result<OwnedHandle> {
+    pub(super) fn query_handle(&self) -> io::Result<OwnedHandle> {
         let mut result = ptr::null_mut();
         // SAFETY: duplicate only query/synchronize access into this process, without inheritance.
         check(unsafe {
@@ -290,7 +301,7 @@ impl Process {
         Ok(unsafe { OwnedHandle::from_raw_handle(result) })
     }
 
-    fn pid(&self) -> io::Result<u32> {
+    pub(super) fn pid(&self) -> io::Result<u32> {
         // SAFETY: the retained handle always identifies the same process object.
         match unsafe { GetProcessId(self.process.as_raw_handle()) } {
             0 => Err(io::Error::last_os_error()),
@@ -298,7 +309,7 @@ impl Process {
         }
     }
 
-    fn resume(mut self) -> io::Result<Self> {
+    pub(super) fn resume(mut self) -> io::Result<Self> {
         let thread = self.thread.take().ok_or_else(denied)?;
         // SAFETY: only this owner can resume the retained primary thread.
         if unsafe { ResumeThread(thread.as_raw_handle()) } != 1 {
@@ -361,7 +372,7 @@ impl Drop for Attributes {
     }
 }
 
-fn image_path(path: &Path) -> io::Result<Vec<u16>> {
+pub(super) fn image_path(path: &Path) -> io::Result<Vec<u16>> {
     let mut components = path.components();
     if !matches!(components.next(), Some(Component::Prefix(p)) if matches!(p.kind(), Prefix::Disk(_)))
         || components.next() != Some(Component::RootDir)
@@ -382,7 +393,7 @@ fn image_path(path: &Path) -> io::Result<Vec<u16>> {
     Ok(text.into_iter().chain(Some(0)).collect())
 }
 
-fn environment() -> io::Result<Vec<u16>> {
+pub(super) fn environment() -> io::Result<Vec<u16>> {
     let mut directory = vec![0u16; 32_768];
     // SAFETY: directory has the stated writable capacity; this reads the OS system directory.
     let length =

@@ -146,6 +146,10 @@ impl PreparedToken {
         self.binding
     }
 
+    pub(super) fn binding(&self) -> Binding {
+        self.binding.clone()
+    }
+
     pub(super) fn raw(&self) -> HANDLE {
         self.handle.as_raw_handle()
     }
