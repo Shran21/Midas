@@ -36,7 +36,7 @@ try {
     $secret = 'Midas!' + [guid]::NewGuid().ToString('N') + 'A1'
     $account = New-LocalUser -Name $name -Password (ConvertTo-SecureString $secret -AsPlainText -Force)
     $account.SID.Value | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'account-sid.txt')
-    Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $account.SID
+    Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $account
     $env:MIDAS_SYSTEM_TRIAL = '1'
     $env:GITHUB_ACTIONS = 'true'
     $env:MIDAS_SYSTEM_TRIAL_USER = $name
