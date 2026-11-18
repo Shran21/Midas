@@ -32,6 +32,62 @@ use windows_sys::Win32::{
 
 use super::{Peer, denied, tokens::PreparedToken};
 
+mod wait;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Stopped {
+    Requested,
+    WorkerExited,
+}
+
+/// Owns all workers until stop, exit or cancellation; this does not authorize their operations.
+pub async fn supervise(
+    workers: Vec<RunningWorker>,
+    stop: impl Future<Output = ()>,
+) -> io::Result<Stopped> {
+    if workers.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "no workers to supervise",
+        ));
+    }
+    let mut waits = tokio::task::JoinSet::new();
+    for worker in &workers {
+        let wait = wait::ExitWait::new(worker.0.query_handle()?)?;
+        waits.spawn(wait.wait());
+    }
+    let stopped = tokio::select! {
+        biased;
+        _ = stop => Ok(Stopped::Requested),
+        exited = waits.join_next() => wait_result(exited).map(|()| Stopped::WorkerExited),
+    };
+    let mut failure = None;
+    for worker in &workers {
+        if let Err(error) = worker.terminate() {
+            failure.get_or_insert(error);
+        }
+    }
+    let cleanup: io::Result<()> = tokio::time::timeout(super::IO_TIMEOUT, async {
+        while !waits.is_empty() {
+            wait_result(waits.join_next().await)?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "worker shutdown was not confirmed"))?;
+    cleanup?;
+    if let Some(error) = failure {
+        return Err(error);
+    }
+    stopped
+}
+
+fn wait_result(result: Option<Result<io::Result<()>, tokio::task::JoinError>>) -> io::Result<()> {
+    result
+        .ok_or_else(|| io::Error::other("worker exit wait disappeared"))?
+        .map_err(|_| io::Error::other("worker exit wait failed"))?
+}
+
 pub struct SuspendedWorker {
     process: Process,
     token: PreparedToken,

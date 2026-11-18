@@ -114,7 +114,236 @@ fn worker_child() {
         "started"
     };
     fs::write(output, format!("{result}\n")).unwrap();
+    if mode == "exit" {
+        return;
+    }
     thread::sleep(Duration::from_secs(20));
+}
+
+#[tokio::test]
+async fn native_exit_wait_handles_cancellation_and_already_exited_processes() {
+    let output = Output::new();
+    let child = create_child(&output, "wait");
+    let process = child.query_handle().unwrap();
+    for _ in 0..32 {
+        drop(wait::ExitWait::new(child.query_handle().unwrap()).unwrap());
+    }
+    assert!(!child.has_exited().unwrap());
+    let wait = wait::ExitWait::new(child.query_handle().unwrap()).unwrap();
+    let waiting = tokio::spawn(wait.wait());
+    drop(child);
+    tokio::time::timeout(Duration::from_secs(5), waiting)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    stopped(&process);
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        wait::ExitWait::new(process).unwrap().wait(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+}
+
+#[tokio::test]
+async fn cancelling_a_ready_native_callback_keeps_its_context_alive() {
+    let output = Output::new();
+    let child = create_child(&output, "wait");
+    let process = child.query_handle().unwrap();
+    drop(child);
+    stopped(&process);
+    for _ in 0..64 {
+        let wait = wait::ExitWait::new(process.try_clone().unwrap()).unwrap();
+        let task = tokio::spawn(wait.wait());
+        tokio::task::yield_now().await;
+        task.abort();
+        match tokio::time::timeout(Duration::from_secs(2), task)
+            .await
+            .unwrap()
+        {
+            Ok(result) => result.unwrap(),
+            Err(error) => assert!(error.is_cancelled()),
+        }
+    }
+    tokio::time::timeout(
+        Duration::from_secs(2),
+        wait::ExitWait::new(process).unwrap().wait(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+}
+
+#[tokio::test]
+async fn requested_stop_terminates_and_observes_all_workers() {
+    let outputs = [Output::new(), Output::new()];
+    let workers: Vec<_> = outputs
+        .iter()
+        .map(|output| RunningWorker(create_child(output, "wait").resume().unwrap()))
+        .collect();
+    let processes: Vec<_> = workers
+        .iter()
+        .map(|w| w.0.query_handle().unwrap())
+        .collect();
+    let (stop, stopped_signal) = tokio::sync::oneshot::channel();
+    let supervising = tokio::spawn(supervise(workers, async {
+        let _ = stopped_signal.await;
+    }));
+    tokio::task::yield_now().await;
+    stop.send(()).unwrap();
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(10), supervising)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap(),
+        Stopped::Requested
+    );
+    for process in processes {
+        stopped(&process);
+    }
+}
+
+#[tokio::test]
+async fn one_workers_exit_terminates_its_remaining_companion() {
+    let outputs = [Output::new(), Output::new()];
+    let workers = vec![
+        RunningWorker(create_child(&outputs[0], "exit").resume().unwrap()),
+        RunningWorker(create_child(&outputs[1], "wait").resume().unwrap()),
+    ];
+    let processes: Vec<_> = workers
+        .iter()
+        .map(|w| w.0.query_handle().unwrap())
+        .collect();
+    assert_eq!(
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            supervise(workers, std::future::pending())
+        )
+        .await
+        .unwrap()
+        .unwrap(),
+        Stopped::WorkerExited
+    );
+    for process in processes {
+        stopped(&process);
+    }
+}
+
+#[tokio::test]
+async fn cancelling_supervision_kills_workers_even_before_its_first_poll() {
+    for poll in [false, true] {
+        let output = Output::new();
+        let worker = RunningWorker(create_child(&output, "wait").resume().unwrap());
+        let process = worker.0.query_handle().unwrap();
+        let supervision = supervise(vec![worker], std::future::pending());
+        if poll {
+            let task = tokio::spawn(supervision);
+            tokio::task::yield_now().await;
+            task.abort();
+            assert!(task.await.unwrap_err().is_cancelled());
+        } else {
+            drop(supervision);
+        }
+        stopped(&process);
+    }
+}
+
+#[tokio::test]
+async fn an_immediate_stop_is_not_lost_and_empty_supervision_is_refused() {
+    assert_eq!(
+        supervise(vec![], std::future::ready(()))
+            .await
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::InvalidInput
+    );
+    let output = Output::new();
+    let worker = RunningWorker(create_child(&output, "wait").resume().unwrap());
+    let process = worker.0.query_handle().unwrap();
+    assert_eq!(
+        supervise(vec![worker], std::future::ready(()))
+            .await
+            .unwrap(),
+        Stopped::Requested
+    );
+    stopped(&process);
+}
+
+#[tokio::test]
+async fn signed_lease_revocation_channel_loss_and_expiry_stop_real_workers() {
+    use midas_agent_core::remote::{Channel, DesktopKind, Observation, Presence};
+    use midas_remote_auth::{Claims, Connection, Mode, Rights, SigningKey, Target};
+    use uuid::Uuid;
+
+    for reason in ["revoked", "disconnected", "expired"] {
+        let key = SigningKey::generate().unwrap();
+        let connection = Connection {
+            tenant: Uuid::new_v4(),
+            device: Uuid::new_v4(),
+            id: Uuid::new_v4(),
+        };
+        let channel = Channel::from_authenticated_server(connection, key.public_key()).unwrap();
+        let target = Target {
+            connection,
+            session: 4,
+            generation: Uuid::new_v4(),
+        };
+        let rights = Rights {
+            mode: Mode::Administrative,
+            uac: true,
+        };
+        let operator = Uuid::new_v4();
+        let started = Instant::now();
+        let pending = channel.prepare(target, operator, rights).unwrap();
+        let grant = key
+            .sign(&Claims {
+                id: Uuid::new_v4(),
+                challenge: pending.challenge(),
+                operator,
+                target,
+                rights,
+                issued_at: 100,
+                expires_at: if reason == "expired" { 101 } else { 130 },
+            })
+            .unwrap();
+        let lease = pending
+            .accept(
+                &grant,
+                Observation {
+                    target,
+                    presence: Presence::Vacant,
+                    desktop: DesktopKind::User,
+                    desktop_epoch: Uuid::new_v4(),
+                },
+            )
+            .unwrap();
+        let cancel = lease.cancellation();
+        let output = Output::new();
+        let worker = RunningWorker(create_child(&output, "wait").resume().unwrap());
+        let process = worker.0.query_handle().unwrap();
+        let supervising = tokio::spawn(async move { supervise(vec![worker], lease.ended()).await });
+        tokio::task::yield_now().await;
+        match reason {
+            "revoked" => cancel.revoke(),
+            "disconnected" => drop(channel),
+            _ => {}
+        }
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(10), supervising)
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap(),
+            Stopped::Requested
+        );
+        if reason == "expired" {
+            assert!(started.elapsed() >= Duration::from_secs(1));
+        }
+        stopped(&process);
+    }
 }
 
 #[test]

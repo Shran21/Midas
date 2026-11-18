@@ -7,6 +7,7 @@ use std::{
 };
 
 use midas_remote_auth::{Claims, Connection, Error, Mode, Rights, SignedGrant, Target, verify};
+use tokio::sync::Notify;
 use uuid::Uuid;
 
 pub mod transport;
@@ -14,7 +15,39 @@ pub mod transport;
 struct ChannelState {
     identity: Connection,
     key: [u8; 32],
-    live: AtomicBool,
+    live: Signal,
+}
+
+struct Signal {
+    active: AtomicBool,
+    changed: Notify,
+}
+
+impl Signal {
+    fn new() -> Self {
+        Self {
+            active: AtomicBool::new(true),
+            changed: Notify::new(),
+        }
+    }
+
+    fn active(&self) -> bool {
+        self.active.load(Ordering::Acquire)
+    }
+
+    fn revoke(&self) {
+        self.active.store(false, Ordering::Release);
+        self.changed.notify_waiters();
+    }
+
+    async fn ended(&self) {
+        let changed = self.changed.notified();
+        tokio::pin!(changed);
+        changed.as_mut().enable();
+        if self.active() {
+            changed.await;
+        }
+    }
 }
 
 /// The protected transport must obtain the identity and key from its authenticated server channel.
@@ -27,7 +60,7 @@ impl Channel {
         Ok(Self(Arc::new(ChannelState {
             identity,
             key,
-            live: AtomicBool::new(true),
+            live: Signal::new(),
         })))
     }
     pub fn prepare(
@@ -36,7 +69,7 @@ impl Channel {
         operator: Uuid,
         rights: Rights,
     ) -> Result<Pending, Error> {
-        if !self.0.live.load(Ordering::Acquire) {
+        if !self.0.live.active() {
             return Err(Error::Revoked);
         }
         if !target.valid() || target.connection != self.0.identity || operator.is_nil() {
@@ -52,7 +85,7 @@ impl Channel {
         })
     }
     pub fn revoke(&self) {
-        self.0.live.store(false, Ordering::Release);
+        self.0.live.revoke();
     }
 }
 impl Drop for Channel {
@@ -103,7 +136,7 @@ impl Pending {
             claims,
             deadline,
             started: self.started,
-            active: Arc::new(AtomicBool::new(true)),
+            active: Arc::new(Signal::new()),
         };
         lease.validate(observed, now)?;
         Ok(lease)
@@ -141,13 +174,13 @@ pub struct Lease {
     claims: Claims,
     deadline: Instant,
     started: Instant,
-    active: Arc<AtomicBool>,
+    active: Arc<Signal>,
 }
 #[derive(Clone)]
-pub struct Cancellation(Arc<AtomicBool>);
+pub struct Cancellation(Arc<Signal>);
 impl Cancellation {
     pub fn revoke(&self) {
-        self.0.store(false, Ordering::Release);
+        self.0.revoke();
     }
 }
 
@@ -161,7 +194,7 @@ pub struct InputPermit {
 fn live(channel: &Weak<ChannelState>) -> Result<Arc<ChannelState>, Error> {
     channel
         .upgrade()
-        .filter(|c| c.live.load(Ordering::Acquire))
+        .filter(|c| c.live.active())
         .ok_or(Error::Revoked)
 }
 
@@ -172,16 +205,29 @@ impl Lease {
     pub fn cancellation(&self) -> Cancellation {
         Cancellation(self.active.clone())
     }
+
+    /// Wakes native supervision on revocation, channel loss or the original local deadline.
+    /// Execution still requires fresh observation and the per-operation checks below.
+    pub async fn ended(&self) {
+        if let Some(channel) = self.channel.upgrade() {
+            tokio::select! {
+                _ = self.active.ended() => {},
+                _ = channel.live.ended() => {},
+                _ = tokio::time::sleep_until(self.deadline.into()) => {},
+            }
+        }
+        self.active.revoke();
+    }
     fn validate(&self, observed: Observation, now: Instant) -> Result<(), Error> {
         let result = self.validate_inner(observed, now);
         if result.is_err() {
-            self.active.store(false, Ordering::Release);
+            self.active.revoke();
         }
         result
     }
     fn validate_inner(&self, observed: Observation, now: Instant) -> Result<(), Error> {
         live(&self.channel)?;
-        if !self.active.load(Ordering::Acquire) {
+        if !self.active.active() {
             return Err(Error::Revoked);
         }
         if now < self.started || now >= self.deadline {
@@ -240,7 +286,7 @@ impl Lease {
 }
 impl Drop for Lease {
     fn drop(&mut self) {
-        self.active.store(false, Ordering::Release);
+        self.active.revoke();
     }
 }
 

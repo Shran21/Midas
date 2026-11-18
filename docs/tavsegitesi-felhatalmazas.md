@@ -44,6 +44,8 @@ A védett transzport `Channel` példánya csak hitelesített kapcsolatadatból �
 
 A helyi lejárat a kérés kezdőideje és az aláírt, legfeljebb 30 másodperces időtartam összege. A hálózati vagy szerveroldali várakozás ebből fogyaszt; a gép faliórájának átállítása nem hosszabbítja meg. A normál felhasználói folyamat nem adhat át saját „friss” kezdőidőt vagy jelenlétállítást.
 
+A `Lease::ended()` folyamatos lekérdezés nélkül értesíti a natív felügyeletet a lejáratról, a visszavonásról és a csatorna elvesztéséről. Az összes aktuális és későn induló várakozó ugyanazt a végleges leállítást látja. A [Windows-felügyelet](windows-worker-lifecycle.md) ezzel a jellel már összeköthető, a szolgáltatás teljes koordinátora azonban még nincs bekötve. A várakozás nem ellenőriz jelenlétet vagy asztalt, ezért a műveletenkénti ellenőrzések továbbra is kötelezők.
+
 Minden kép- és beviteli művelet friss, védett natív megfigyelést igényel. Foglalt vagy ismeretlen cél, másik munkamenet/generáció, lejárat, leállítás vagy kapcsolatvesztés letiltja az engedélyt. A letiltás nem vonható vissza ugyanazon engedélyen. A secure desktop csak privilegizált komponensnek és külön UAC-joggal hozzáférhető, mindkét módban. Normál mód UAC-jog nélkül nem választhat privilegizált végrehajtási útvonalat.
 
 A sorba állított bevitel egyszer használható `InputPermit` példányt kap. Végrehajtáskor ismét ellenőrzött az engedély, a cél, a natív asztal generációja és típusa. Asztalváltás után a régi bevitel elutasított. A védett natív komponens minden asztalváltáshoz új generációt köt, a korábbi asztalra való visszatéréskor is.
@@ -89,6 +91,8 @@ Native checks run through a bounded work queue, outside the network event loop. 
 The protected transport creates `Channel` only from authenticated connection information. Each non-cloneable `Pending` request receives a new random challenge and local monotonic start time. Acceptance consumes it and requires exact target, operator and requested-rights matches. New requests have new challenges, preventing replay of an earlier response.
 
 Local expiry is request start plus the signed lifetime, at most 30 seconds. Network and server delays consume this lifetime; changing the machine's wall clock cannot extend it. An ordinary user process cannot supply its own fresh start time or presence claim.
+
+`Lease::ended()` notifies native supervision of expiry, revocation and channel loss without polling. All current and late waiters observe the same permanent stop. [Windows supervision](windows-worker-lifecycle.md#english) can consume this signal; the complete service coordinator is not wired yet. Waiting observes neither presence nor desktop state, so per-operation validation remains mandatory.
 
 Every capture and input operation requires a fresh protected native observation. Occupied/unknown targets, changed sessions/generations, expiry, cancellation and transport loss revoke the lease; the same lease cannot be reactivated. Secure desktop access requires both the privileged component and separate UAC permission in either mode. Normal mode without UAC permission cannot select privileged execution.
 

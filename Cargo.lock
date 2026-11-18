@@ -1997,6 +1997,7 @@ dependencies = [
  "clap",
  "midas-agent-core",
  "midas-protocol",
+ "midas-remote-auth",
  "rustls",
  "serde",
  "serde_json",

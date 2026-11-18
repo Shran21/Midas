@@ -60,6 +60,120 @@ impl Fixture {
     }
 }
 
+#[tokio::test]
+async fn revocation_wakes_all_current_and_late_waiters() {
+    let f = Fixture::new(Mode::Administrative, true);
+    let lease = f.lease();
+    let first = lease.ended();
+    let second = lease.ended();
+    tokio::pin!(first, second);
+    assert!(futures_util::poll!(first.as_mut()).is_pending());
+    assert!(futures_util::poll!(second.as_mut()).is_pending());
+    lease.cancellation().revoke();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        tokio::join!(first, second, lease.ended());
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        lease.capture(f.observation, Worker::Privileged),
+        Err(Error::Revoked)
+    );
+}
+
+#[tokio::test]
+async fn channel_loss_wakes_a_waiter_that_retains_the_channel_state() {
+    let f = Fixture::new(Mode::Normal, false);
+    let lease = f.lease();
+    let companion = f.lease();
+    let ended = lease.ended();
+    let other = companion.ended();
+    tokio::pin!(ended, other);
+    assert!(futures_util::poll!(ended.as_mut()).is_pending());
+    assert!(futures_util::poll!(other.as_mut()).is_pending());
+    drop(f.channel);
+    tokio::time::timeout(Duration::from_secs(2), async {
+        tokio::join!(ended, other, companion.ended());
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        lease.capture(f.observation, Worker::User),
+        Err(Error::Revoked)
+    );
+}
+
+#[tokio::test]
+async fn validation_failure_notifies_supervision_without_another_operation() {
+    let f = Fixture::new(Mode::Normal, false);
+    let lease = f.lease();
+    let ended = lease.ended();
+    tokio::pin!(ended);
+    assert!(futures_util::poll!(ended.as_mut()).is_pending());
+    let changed = Observation {
+        presence: Presence::Occupied,
+        ..f.observation
+    };
+    assert_eq!(
+        lease.capture(changed, Worker::User),
+        Err(Error::ConsentRequired)
+    );
+    tokio::time::timeout(Duration::from_secs(2), ended)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn idle_lease_expires_at_its_existing_deadline() {
+    let f = Fixture::new(Mode::Normal, false);
+    let mut lease = f.lease();
+    lease.deadline = Instant::now() + Duration::from_millis(20);
+    let deadline = lease.deadline;
+    tokio::time::timeout(Duration::from_secs(2), lease.ended())
+        .await
+        .unwrap();
+    assert!(Instant::now() >= deadline);
+    assert_eq!(
+        lease.capture(f.observation, Worker::User),
+        Err(Error::Revoked)
+    );
+    tokio::time::timeout(Duration::from_secs(2), lease.ended())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn cancelling_a_wait_does_not_cancel_or_extend_its_lease() {
+    let f = Fixture::new(Mode::Normal, false);
+    let lease = f.lease();
+    let deadline = lease.deadline;
+    {
+        let ended = lease.ended();
+        tokio::pin!(ended);
+        assert!(futures_util::poll!(ended.as_mut()).is_pending());
+    }
+    assert_eq!(lease.deadline, deadline);
+    assert_eq!(lease.capture(f.observation, Worker::User), Ok(()));
+    f.channel.revoke();
+    tokio::time::timeout(Duration::from_secs(2), lease.ended())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn revocation_racing_wait_registration_is_not_lost() {
+    let f = Fixture::new(Mode::Normal, false);
+    for _ in 0..32 {
+        let lease = f.lease();
+        let cancel = lease.cancellation();
+        let thread = std::thread::spawn(move || cancel.revoke());
+        tokio::time::timeout(Duration::from_secs(2), lease.ended())
+            .await
+            .unwrap();
+        thread.join().unwrap();
+    }
+}
+
 #[test]
 fn a_grant_is_consumed_once_for_its_exact_request() {
     let f = Fixture::new(Mode::Normal, false);
