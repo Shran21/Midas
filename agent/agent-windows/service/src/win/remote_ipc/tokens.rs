@@ -19,7 +19,7 @@ use windows_sys::Win32::{
     },
 };
 
-use super::super::sessions::Observer;
+use super::super::sessions::{Binding, Observer};
 use super::{
     Peer, Worker, denied,
     identity::{Role, Token},
@@ -35,12 +35,14 @@ pub struct PreparedToken {
     kind: Worker,
     target: OsSession,
     observer: Arc<Observer>,
+    binding: Binding,
     source: Source,
 }
 
 impl PreparedToken {
     pub fn user(broker: &Peer, observer: Arc<Observer>, target: OsSession) -> io::Result<Self> {
         let broker_state = broker_token(broker)?;
+        let binding = observer.bind(&target)?;
         check_target(&target, observer.collect(), true)?;
         let selected = select_user(wts_token(target.id)?, target.id)?;
         let prepared = Self {
@@ -50,6 +52,7 @@ impl PreparedToken {
             kind: selected.kind,
             target,
             observer,
+            binding,
             source: Source::Normal(selected.binding),
         };
         prepared.check(broker)?;
@@ -62,6 +65,7 @@ impl PreparedToken {
         target: OsSession,
     ) -> io::Result<Self> {
         let broker_state = broker_token(broker)?;
+        let binding = observer.bind(&target)?;
         check_target(&target, observer.collect(), false)?;
         let source = if target.presence == Presence::Occupied as i32 {
             let state = Token::read(&wts_token(target.id)?)?;
@@ -101,6 +105,7 @@ impl PreparedToken {
             kind: Worker::Privileged,
             target,
             observer,
+            binding,
             source,
         };
         prepared.check(broker)?;
@@ -108,6 +113,7 @@ impl PreparedToken {
     }
 
     pub(super) fn check(&self, broker: &Peer) -> io::Result<()> {
+        self.binding.check()?;
         if broker_token(broker)? != self.broker || Token::read(&self.handle)? != self.expected {
             return Err(denied());
         }
@@ -133,7 +139,11 @@ impl PreparedToken {
         if broker_token(broker)? != self.broker || Token::read(&self.handle)? != self.expected {
             return Err(denied());
         }
-        Ok(())
+        self.binding.check()
+    }
+
+    pub(super) fn into_binding(self) -> Binding {
+        self.binding
     }
 
     pub(super) fn raw(&self) -> HANDLE {

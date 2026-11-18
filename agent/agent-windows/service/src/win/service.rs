@@ -59,13 +59,15 @@ fn service_main(_arguments: Vec<OsString>) {
     let observer = std::sync::Arc::new(super::sessions::Observer::default());
     let probe = observer.probe();
     let (stop, stopped) = watch::channel(false);
+    let sessions = observer.clone();
     let handler = move |event| match event {
         ServiceControl::Stop | ServiceControl::Shutdown => {
+            sessions.stop();
             stop.send_replace(true);
             ServiceControlHandlerResult::NoError
         }
         ServiceControl::SessionChange(_) => {
-            observer.changed();
+            sessions.changed();
             ServiceControlHandlerResult::NoError
         }
         ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
@@ -99,6 +101,7 @@ fn service_main(_arguments: Vec<OsString>) {
         )),
         Err(error) => tracing::error!(%error, "runtime could not start"),
     }
+    observer.stop();
     let _ =
         control.set_service_status(status(ServiceState::Stopped, ServiceControlAccept::empty()));
 }

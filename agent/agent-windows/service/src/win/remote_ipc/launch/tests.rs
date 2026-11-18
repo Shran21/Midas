@@ -14,6 +14,16 @@ use windows_sys::Win32::System::{
 
 use super::*;
 
+use super::super::super::sessions::tests::Fixture;
+
+fn running(process: Process) -> RunningWorker {
+    static FIXTURE: std::sync::OnceLock<Fixture> = std::sync::OnceLock::new();
+    RunningWorker {
+        process,
+        session: FIXTURE.get_or_init(Fixture::new).binding(),
+    }
+}
+
 const CHILD: &str = "win::remote_ipc::launch::tests::worker_child";
 const OWNER: &str = "win::remote_ipc::launch::tests::owner_child";
 
@@ -177,15 +187,76 @@ async fn cancelling_a_ready_native_callback_keeps_its_context_alive() {
 }
 
 #[tokio::test]
+async fn native_session_loss_terminates_workers_and_their_companions() {
+    for cause in 0..4 {
+        for before_poll in [true, false] {
+            let fixture = Fixture::new();
+            let other = Fixture::new();
+            let outputs = [Output::new(), Output::new()];
+            let workers = vec![
+                RunningWorker {
+                    process: create_child(&outputs[0], "wait").resume().unwrap(),
+                    session: fixture.binding(),
+                },
+                RunningWorker {
+                    process: create_child(&outputs[1], "wait").resume().unwrap(),
+                    session: other.binding(),
+                },
+            ];
+            let processes: Vec<_> = workers
+                .iter()
+                .map(|w| w.process.query_handle().unwrap())
+                .collect();
+            let supervision = supervise(workers, std::future::pending());
+            let (start, started) = tokio::sync::oneshot::channel();
+            let mut start = Some(start);
+            let task = tokio::spawn(async move {
+                started.await.unwrap();
+                supervision.await
+            });
+            if !before_poll {
+                start.take().unwrap().send(()).unwrap();
+                for output in &outputs {
+                    assert_eq!(output.wait(), "started");
+                }
+                tokio::task::yield_now().await;
+            }
+            match cause {
+                0 => fixture.observer.changed(),
+                1 => fixture.unavailable(),
+                2 => fixture.observer.stop(),
+                3 => drop(fixture),
+                _ => unreachable!(),
+            }
+            if let Some(start) = start {
+                start.send(()).unwrap();
+            }
+            assert_eq!(
+                tokio::time::timeout(Duration::from_secs(10), task)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .unwrap(),
+                Stopped::SessionChanged
+            );
+            other.binding().check().unwrap();
+            for process in processes {
+                stopped(&process);
+            }
+        }
+    }
+}
+
+#[tokio::test]
 async fn requested_stop_terminates_and_observes_all_workers() {
     let outputs = [Output::new(), Output::new()];
     let workers: Vec<_> = outputs
         .iter()
-        .map(|output| RunningWorker(create_child(output, "wait").resume().unwrap()))
+        .map(|output| running(create_child(output, "wait").resume().unwrap()))
         .collect();
     let processes: Vec<_> = workers
         .iter()
-        .map(|w| w.0.query_handle().unwrap())
+        .map(|w| w.process.query_handle().unwrap())
         .collect();
     let (stop, stopped_signal) = tokio::sync::oneshot::channel();
     let supervising = tokio::spawn(supervise(workers, async {
@@ -210,12 +281,12 @@ async fn requested_stop_terminates_and_observes_all_workers() {
 async fn one_workers_exit_terminates_its_remaining_companion() {
     let outputs = [Output::new(), Output::new()];
     let workers = vec![
-        RunningWorker(create_child(&outputs[0], "exit").resume().unwrap()),
-        RunningWorker(create_child(&outputs[1], "wait").resume().unwrap()),
+        running(create_child(&outputs[0], "exit").resume().unwrap()),
+        running(create_child(&outputs[1], "wait").resume().unwrap()),
     ];
     let processes: Vec<_> = workers
         .iter()
-        .map(|w| w.0.query_handle().unwrap())
+        .map(|w| w.process.query_handle().unwrap())
         .collect();
     assert_eq!(
         tokio::time::timeout(
@@ -236,8 +307,8 @@ async fn one_workers_exit_terminates_its_remaining_companion() {
 async fn cancelling_supervision_kills_workers_even_before_its_first_poll() {
     for poll in [false, true] {
         let output = Output::new();
-        let worker = RunningWorker(create_child(&output, "wait").resume().unwrap());
-        let process = worker.0.query_handle().unwrap();
+        let worker = running(create_child(&output, "wait").resume().unwrap());
+        let process = worker.process.query_handle().unwrap();
         let supervision = supervise(vec![worker], std::future::pending());
         if poll {
             let task = tokio::spawn(supervision);
@@ -261,8 +332,8 @@ async fn an_immediate_stop_is_not_lost_and_empty_supervision_is_refused() {
         io::ErrorKind::InvalidInput
     );
     let output = Output::new();
-    let worker = RunningWorker(create_child(&output, "wait").resume().unwrap());
-    let process = worker.0.query_handle().unwrap();
+    let worker = running(create_child(&output, "wait").resume().unwrap());
+    let process = worker.process.query_handle().unwrap();
     assert_eq!(
         supervise(vec![worker], std::future::ready(()))
             .await
@@ -322,8 +393,8 @@ async fn signed_lease_revocation_channel_loss_and_expiry_stop_real_workers() {
             .unwrap();
         let cancel = lease.cancellation();
         let output = Output::new();
-        let worker = RunningWorker(create_child(&output, "wait").resume().unwrap());
-        let process = worker.0.query_handle().unwrap();
+        let worker = running(create_child(&output, "wait").resume().unwrap());
+        let process = worker.process.query_handle().unwrap();
         let supervising = tokio::spawn(async move { supervise(vec![worker], lease.ended()).await });
         tokio::task::yield_now().await;
         match reason {
@@ -382,8 +453,8 @@ fn suspended_worker_cannot_run_and_is_killed_when_dropped() {
 #[test]
 fn running_worker_is_contained_and_stops_on_explicit_termination() {
     let output = Output::new();
-    let child = RunningWorker(create_child(&output, "spawn").resume().unwrap());
-    let process = child.0.query_handle().unwrap();
+    let child = running(create_child(&output, "spawn").resume().unwrap());
+    let process = child.process.query_handle().unwrap();
     assert_eq!(output.wait(), "blocked");
     assert!(!child.has_exited().unwrap());
     child.terminate().unwrap();

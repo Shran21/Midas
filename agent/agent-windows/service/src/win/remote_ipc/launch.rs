@@ -30,6 +30,7 @@ use windows_sys::Win32::{
     },
 };
 
+use super::super::sessions::Binding;
 use super::{Peer, denied, tokens::PreparedToken};
 
 mod wait;
@@ -38,6 +39,7 @@ mod wait;
 pub enum Stopped {
     Requested,
     WorkerExited,
+    SessionChanged,
 }
 
 /// Owns all workers until stop, exit or cancellation; this does not authorize their operations.
@@ -52,13 +54,21 @@ pub async fn supervise(
         ));
     }
     let mut waits = tokio::task::JoinSet::new();
+    let mut sessions = tokio::task::JoinSet::new();
     for worker in &workers {
-        let wait = wait::ExitWait::new(worker.0.query_handle()?)?;
+        let wait = wait::ExitWait::new(worker.process.query_handle()?)?;
         waits.spawn(wait.wait());
+        let binding = worker.session.clone();
+        sessions.spawn(async move { binding.ended().await });
     }
     let stopped = tokio::select! {
         biased;
         _ = stop => Ok(Stopped::Requested),
+        ended = sessions.join_next() => ended
+            .ok_or_else(|| io::Error::other("session wait disappeared"))
+            .and_then(|result| result
+                .map(|()| Stopped::SessionChanged)
+                .map_err(|_| io::Error::other("session wait failed"))),
         exited = waits.join_next() => wait_result(exited).map(|()| Stopped::WorkerExited),
     };
     let mut failure = None;
@@ -154,22 +164,27 @@ impl SuspendedWorker {
         let process = self.process.resume()?;
         self.token.check(broker)?;
         peer.check(process.pid()?)?;
-        Ok(RunningWorker(process))
+        let session = self.token.into_binding();
+        session.check()?;
+        Ok(RunningWorker { process, session })
     }
 }
 
 /// Dropping this owner closes the sole job handle and terminates the worker.
-pub struct RunningWorker(Process);
+pub struct RunningWorker {
+    process: Process,
+    session: Binding,
+}
 
 impl RunningWorker {
     pub fn has_exited(&self) -> io::Result<bool> {
-        self.0.has_exited()
+        self.process.has_exited()
     }
 
     /// Requests termination; `has_exited` separately confirms that the process has stopped.
     pub fn terminate(&self) -> io::Result<()> {
         // SAFETY: this owner retains the job handle; no job handle is exported or inherited.
-        check(unsafe { TerminateJobObject(self.0.job.as_raw_handle(), 1) })
+        check(unsafe { TerminateJobObject(self.process.job.as_raw_handle(), 1) })
     }
 }
 

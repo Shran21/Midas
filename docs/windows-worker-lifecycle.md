@@ -30,13 +30,19 @@ A `launch::supervise` átveszi az összetartozó, már elindított segédek tula
 
 A kilépésjelzés a Windows [szálkészletének várakozási objektumára](https://learn.microsoft.com/en-us/windows/win32/api/threadpoolapiset/nf-threadpoolapiset-createthreadpoolwait) épül. Nincs ismételt folyamatlekérdezés vagy segédenként lefoglalt blokkoló alkalmazásszál. A visszahívás csak az eredményt adja át; a várakozás megszüntetésekor a kód letiltja a további visszahívásokat, és a szükséges szinkronizálás után szabadítja fel a kontextust és a folyamatkezelőt.
 
-A `Lease::ended()` az engedély visszavonására, a hitelesített csatorna elvesztésére vagy az eredeti helyi határidőre ébred. A natív ellenőrzés által visszavont engedély is értesíti a várakozókat. A már beállított jel nem veszhet el későn induló felügyeletnél, és egy megszakított várakozás nem hosszabbítja meg az engedélyt. Ez a jövőbeli koordinátor egyik leállítási forrása; a szolgáltatás leállítását, az IPC hibáját és a natív munkamenetváltozást ugyanott kell majd bekötni. Az életciklus-felügyelet nem helyettesíti a műveletenkénti engedély- és asztalellenőrzést.
+A `Lease::ended()` az engedély visszavonására, a hitelesített csatorna elvesztésére vagy az eredeti helyi határidőre ébred. A natív ellenőrzés által visszavont engedély is értesíti a várakozókat. A már beállított jel nem veszhet el későn induló felügyeletnél, és egy megszakított várakozás nem hosszabbítja meg az engedélyt. Ez a jövőbeli koordinátor egyik leállítási forrása; az IPC hibáját ugyanott kell majd bekötni. Az életciklus-felügyelet nem helyettesíti a műveletenkénti engedély- és asztalellenőrzést.
+
+A futó segéd megtartja a token előkészítésekor létrejött natív munkamenetkötést. A felügyelet erre külön vár: a Windows szolgáltatás munkamenetjelzése, egy megváltozott vagy sikertelen WTS-megfigyelés, illetve a megfigyelő megszűnése leállítja a teljes segédcsoportot. Nincs külön lekérdező ciklus. A szolgáltatás Stop/Shutdown eseménye és futásának befejezése végleg lezárja a megfigyelőt; utána új kötés sem készülhet.
+
+A megfigyelő sorosítja a natív adatgyűjtést, hogy egy korábban elkezdett lekérés ne írhasson felül újabb eredményt. A kötés még a cél újbóli ellenőrzése előtt feliratkozik a változásokra. A változatlan megfigyelés megtartja, a már érvénytelen kötést egy későbbi sikeres lekérés sem éleszti újra. A jelenlegi konzervatív szabály az adott gép megfigyelt munkamenetlistájának bármely változására bont; nem vált át automatikusan másik felhasználóra vagy új bejelentkezésre. Az UAC asztalváltásának külön ellenőrzése továbbra is a műveleti végrehajtó feladata.
 
 ### Ellenőrzés és hátralévő integráció
 
 A tesztek saját jogosultsággal indított valódi Windows-folyamatokkal ellenőrzik a felfüggesztett állapotot, a gyermekindítás tiltását, a kifejezett leállítást, a hibás ismételt indítást és a felügyelő váratlan kilépését. Nem végeznek szolgáltatástelepítést vagy SYSTEM/UAC-próbát.
 
 A felügyelet próbái lefedik az egyik segéd kilépését követő csoportos leállítást, a felügyeleti feladat megszakítását, az előre jelzett leállítást és a már kilépett folyamatot. Aláírt tesztengedéllyel a visszavonás, csatornavesztés és lejárat valódi helyi tesztfolyamatokat állít le; a tesztben a jelenlét mesterséges, ezért ez nem telepített távvezérlési vagy UAC-próba.
+
+A munkamenetkötés próbái a jelzéssel egyidejű és késői várakozást, a megváltozott vagy hibás natív adatot, a megfigyelő megszűnését és végleges leállítását is lefedik. Mesterséges munkamenetadatokkal, valódi helyi folyamatokon ellenőrzött, hogy a felügyelet indulása előtt és közben érkező érvénytelenítés a társfolyamatot is leállítja.
 
 Még szükséges a szolgáltatásba kötés, a védett kezdeti kezelőátadás, a külön segédfolyamatok belépési pontjai és a jogosultságok tényleges műveletenkénti ellenőrzése. A normál segéd továbbra is nem megbízható felhasználói folyamat. Az indítás és a hitelesített IPC önmagában nem ad távvezérlési vagy UAC-engedélyt. A telepített SYSTEM–felhasználó kapcsolat, a natív WTS-tokenválasztás, az RDP/UAC és a valós asztalváltások ellenőrzése a végső kézi próbák része.
 
@@ -68,12 +74,18 @@ This contains processes without imposing RAM, CPU, GPU or video-quality limits.
 
 Exit notification uses a Windows [thread-pool wait object](https://learn.microsoft.com/en-us/windows/win32/api/threadpoolapiset/nf-threadpoolapiset-createthreadpoolwait). There is no repeated process query or dedicated blocking application thread per worker. The callback only passes the result. Cleanup disarms further callbacks and synchronizes before freeing the context and process handle.
 
-`Lease::ended()` wakes on grant revocation, authenticated-channel loss or the original local deadline. Native validation failures that revoke the lease also wake waiters. An existing signal cannot be lost by late supervision, and cancelling a wait cannot extend the lease. This is one stop source for the future coordinator; service shutdown, IPC failures and native session changes must still be connected there. Lifetime supervision does not replace per-operation grant and desktop verification.
+`Lease::ended()` wakes on grant revocation, authenticated-channel loss or the original local deadline. Native validation failures that revoke the lease also wake waiters. An existing signal cannot be lost by late supervision, and cancelling a wait cannot extend the lease. This is one stop source for the future coordinator; IPC failures must still be connected there. Lifetime supervision does not replace per-operation grant and desktop verification.
+
+A running worker retains the native session binding created during token preparation. Supervision independently awaits its invalidation: a Windows service session notification, changed or failed WTS observation, or loss of the observer stops the entire worker group. There is no additional polling loop. Service Stop/Shutdown events and completion permanently stop the observer; it cannot issue new bindings afterwards.
+
+The observer serializes native collection so an earlier query cannot overwrite a newer result. A binding subscribes before rechecking its target. Unchanged observations preserve it; a subsequent successful observation never revives an invalidated binding. The current conservative policy disconnects on any change to the machine's observed session list; it never silently follows another user or new logon. UAC desktop transitions still require separate checks in the operation executor.
 
 ### Verification and remaining integration
 
 Tests launch real Windows processes with the test account's privileges to verify suspension, child-process refusal, explicit termination, invalid repeated resumes and owner crashes. They install no service and perform no SYSTEM/UAC trial.
 
 Supervision tests cover group shutdown after one worker exits, supervisor cancellation, an immediate stop signal and an already-exited process. Signed test grants exercise revocation, channel loss and expiry against real local test processes. Presence is synthetic in that test, so it is not an installed remote-control or UAC trial.
+
+Session-binding tests cover concurrent and late waiters, changed or failed native data, observer loss and permanent stop. Using synthetic session data with real local processes, tests verify that invalidation before or during supervision also stops companion workers.
 
 Service integration, protected bootstrap handle transfer, separate worker entry points and per-operation authorization remain. Ordinary helpers remain untrusted user processes. Process creation and authenticated IPC do not authorize remote control or UAC interaction. Installed SYSTEM-to-user, native WTS token selection, RDP/UAC and real desktop-transition verification remain final manual trials.

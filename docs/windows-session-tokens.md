@@ -20,6 +20,8 @@ Foglalt célnál a privilegizált segéd előkészítése is rögzíti a felhasz
 
 ### Indítási ellenőrzések
 
+Az előkészítés a friss céllekérés előtt feliratkozik a natív megfigyelő változásjelzéseire. Ez a kötés az indítás minden ellenőrzésénél érvényes kell maradjon, majd a futó segédhez kerül, ahol az eseményalapú felügyelet vár rá. A szolgáltatás munkamenetváltozása vagy leállítása, a megfigyelt adatok változása és lekérdezési hibája így az üresjáratban várakozó segédet is leállítja. A kötés nem ad végrehajtási engedélyt.
+
 A cél és a token forrása az előkészítés lezárásakor, a folyamat létrehozása előtt és után, valamint a felfüggesztés feloldása előtt és után is ellenőrzött. A már birtokolt indítási token objektum- és módosításazonosítója változatlan kell maradjon. A segédfolyamat elsőként rögzített IPC-azonossága a felfüggesztett állapot alatt is megmarad; új kezelő kiadásakor nem rögzítjük újra az időközben megváltozott tokent. Az indítás vagy a felfüggesztés feloldásának sikertelen ellenőrzése leállítja a létrehozott segédet.
 
 A szükséges szolgáltatásjogokat, köztük a WTS-hez és munkamenetbeállításhoz szükséges jogosultságokat, a szolgáltatásnak induláskor kell rendeznie. A könyvtár nem engedélyez privilégiumot, nem vált másik fiókra, és nem ad emelt jogot a normál segédnek. Nincs új háttérlekérdező ciklus vagy erőforrásplafon.
@@ -47,6 +49,8 @@ A privileged worker receives a separate copy of the broker's SYSTEM token, and o
 For an occupied target, privileged preparation also pins the user's native logon identity. For a vacant target, WTS must explicitly return `ERROR_NO_TOKEN` in addition to the observer's vacancy result. Access, privilege or other failures never count as vacancy. Unattended policy and strong authentication remain separate requirements.
 
 ### Startup checks
+
+Preparation subscribes to native observer changes before freshly querying the target. The binding must remain valid through every startup check and is then transferred to the running worker for event-driven supervision. Service session changes or shutdown, changed observations and query failures therefore stop an idle worker too. This binding grants no execution authority.
 
 The target and token source are checked at preparation completion, before and after process creation, and before and after resuming the suspended process. The owned launch token's object and modification IDs must remain unchanged. The worker's initially pinned IPC identity persists through suspension; issuing another handle never silently repins a changed token. Failed creation or resumption checks terminate the created worker.
 

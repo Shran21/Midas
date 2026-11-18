@@ -1,12 +1,14 @@
 use std::{
     ffi::c_void,
+    io,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
 };
 
 use midas_protocol::sessions::{MAX_SESSIONS, OsSession};
+use tokio::sync::watch;
 use windows_sys::Win32::System::RemoteDesktop::{
     WTS_CURRENT_SERVER_HANDLE, WTS_SESSION_INFOW, WTSEnumerateSessionsW, WTSFreeMemory,
     WTSGetActiveConsoleSessionId, WTSINFOEXW, WTSListen, WTSQuerySessionInformationW,
@@ -15,15 +17,58 @@ use windows_sys::Win32::System::RemoteDesktop::{
 
 use crate::sessions::{NativeSession, Tracker};
 
-#[derive(Default)]
 pub struct Observer {
     epoch: AtomicU64,
-    tracker: Mutex<Tracker>,
+    state: Mutex<State>,
+    changes: watch::Sender<()>,
+    stopped: AtomicBool,
+}
+
+#[derive(Default)]
+struct State {
+    tracker: Tracker,
+    last: Option<Vec<OsSession>>,
+}
+
+impl Default for Observer {
+    fn default() -> Self {
+        Self {
+            epoch: AtomicU64::new(0),
+            state: Mutex::new(State::default()),
+            changes: watch::channel(()).0,
+            stopped: AtomicBool::new(false),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct Binding(watch::Receiver<()>);
+
+impl Binding {
+    pub(crate) fn check(&self) -> io::Result<()> {
+        match self.0.has_changed() {
+            Ok(false) => Ok(()),
+            _ => Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "native session binding ended",
+            )),
+        }
+    }
+
+    pub(crate) async fn ended(&self) {
+        let _ = self.0.clone().changed().await;
+    }
 }
 
 impl Observer {
+    pub fn stop(&self) {
+        self.stopped.store(true, Ordering::Release);
+        self.changed();
+    }
+
     pub fn changed(&self) {
         self.epoch.fetch_add(1, Ordering::AcqRel);
+        self.changes.send_replace(());
     }
 
     pub fn probe(self: &Arc<Self>) -> midas_agent_core::sessions::Probe {
@@ -32,17 +77,55 @@ impl Observer {
     }
 
     pub fn collect(&self) -> Option<Vec<OsSession>> {
-        let result = self.read();
-        let mut tracker = self.tracker.lock().ok()?;
-        match result {
-            Some((sessions, epoch)) if epoch == self.epoch.load(Ordering::Acquire) => {
-                tracker.observe(sessions, epoch)
-            }
-            _ => {
-                *tracker = Tracker::default();
-                None
-            }
+        self.collect_with(|| self.read())
+    }
+
+    pub(crate) fn bind(&self, target: &OsSession) -> io::Result<Binding> {
+        self.bind_with(target, || self.collect())
+    }
+
+    fn bind_with(
+        &self,
+        target: &OsSession,
+        collect: impl FnOnce() -> Option<Vec<OsSession>>,
+    ) -> io::Result<Binding> {
+        let binding = Binding(self.changes.subscribe());
+        let current = collect().ok_or_else(|| io::Error::other("native sessions unavailable"))?;
+        if current.iter().find(|session| session.id == target.id) != Some(target) {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "session changed",
+            ));
         }
+        binding.check()?;
+        Ok(binding)
+    }
+
+    fn collect_with(
+        &self,
+        read: impl FnOnce() -> Option<(Vec<NativeSession>, u64)>,
+    ) -> Option<Vec<OsSession>> {
+        let Ok(mut state) = self.state.lock() else {
+            self.changes.send_replace(());
+            return None;
+        };
+        let result = match (!self.stopped.load(Ordering::Acquire)).then(read).flatten() {
+            Some((sessions, epoch))
+                if epoch == self.epoch.load(Ordering::Acquire)
+                    && !self.stopped.load(Ordering::Acquire) =>
+            {
+                state.tracker.observe(sessions, epoch)
+            }
+            _ => None,
+        };
+        if result.is_none() {
+            state.tracker = Tracker::default();
+        }
+        if result.is_none() || (state.last.is_some() && state.last != result) {
+            self.changes.send_replace(());
+        }
+        state.last = result.clone();
+        result
     }
 
     fn read(&self) -> Option<(Vec<NativeSession>, u64)> {
@@ -149,3 +232,6 @@ fn enumerate() -> Option<Vec<(u32, i32)>> {
 fn text(value: &[u16]) -> Option<String> {
     String::from_utf16(&value[..value.iter().position(|c| *c == 0)?]).ok()
 }
+
+#[cfg(test)]
+pub(crate) mod tests;
