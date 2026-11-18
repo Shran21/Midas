@@ -76,6 +76,25 @@ fn service_main(_arguments: Vec<OsString>) {
     let Ok(control) = service_control_handler::register(NAME, handler) else {
         return;
     };
+    let mut pending = status(ServiceState::StartPending, ServiceControlAccept::empty());
+    pending.checkpoint = 1;
+    if control.set_service_status(pending).is_err() {
+        return;
+    }
+    let broker = std::env::current_exe()
+        .and_then(|image| super::remote_ipc::startup::Broker::initialize(&image));
+    let broker = match broker {
+        Ok(broker) => broker,
+        Err(error) => {
+            tracing::error!(%error, "service worker privileges could not be prepared");
+            observer.stop();
+            let mut failed = status(ServiceState::Stopped, ServiceControlAccept::empty());
+            failed.exit_code = ServiceExitCode::ServiceSpecific(1);
+            let _ = control.set_service_status(failed);
+            return;
+        }
+    };
+    tracing::info!("service worker privileges verified");
     if control
         .set_service_status(status(
             ServiceState::Running,
@@ -102,8 +121,14 @@ fn service_main(_arguments: Vec<OsString>) {
         Err(error) => tracing::error!(%error, "runtime could not start"),
     }
     observer.stop();
-    let _ =
-        control.set_service_status(status(ServiceState::Stopped, ServiceControlAccept::empty()));
+    let mut finished = status(ServiceState::Stopped, ServiceControlAccept::empty());
+    if let Err(error) = broker.finish() {
+        tracing::error!(%error, "service worker privileges could not be restored");
+        finished.exit_code = ServiceExitCode::ServiceSpecific(2);
+    } else {
+        tracing::info!("service worker privileges restored");
+    }
+    let _ = control.set_service_status(finished);
 }
 
 /// Restricts the data directory to SYSTEM and Administrators, removing inherited access.

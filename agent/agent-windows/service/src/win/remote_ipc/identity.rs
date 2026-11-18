@@ -12,12 +12,12 @@ use std::{
 use windows_sys::Win32::{
     Foundation::{HANDLE, LUID, LocalFree, WAIT_TIMEOUT},
     Security::{
-        Authorization::ConvertSidToStringSidW, GetTokenInformation, PSID, TOKEN_ELEVATION,
-        TOKEN_GROUPS, TOKEN_INFORMATION_CLASS, TOKEN_MANDATORY_LABEL, TOKEN_QUERY,
-        TOKEN_STATISTICS, TOKEN_USER, TokenElevation, TokenElevationType,
-        TokenElevationTypeDefault, TokenElevationTypeFull, TokenElevationTypeLimited,
-        TokenIntegrityLevel, TokenIsAppContainer, TokenLogonSid, TokenPrimary, TokenSessionId,
-        TokenStatistics, TokenUIAccess, TokenUser,
+        Authorization::ConvertSidToStringSidW, GetTokenInformation, LUID_AND_ATTRIBUTES, PSID,
+        TOKEN_ELEVATION, TOKEN_GROUPS, TOKEN_INFORMATION_CLASS, TOKEN_MANDATORY_LABEL,
+        TOKEN_PRIVILEGES, TOKEN_QUERY, TOKEN_STATISTICS, TOKEN_USER, TokenElevation,
+        TokenElevationType, TokenElevationTypeDefault, TokenElevationTypeFull,
+        TokenElevationTypeLimited, TokenIntegrityLevel, TokenIsAppContainer, TokenLogonSid,
+        TokenPrimary, TokenPrivileges, TokenSessionId, TokenStatistics, TokenUIAccess, TokenUser,
     },
     System::{
         RemoteDesktop::ProcessIdToSessionId,
@@ -208,11 +208,15 @@ impl Token {
     }
 }
 
-fn luid(value: LUID) -> u64 {
+pub(super) fn luid(value: LUID) -> u64 {
     (u64::from(value.HighPart as u32) << 32) | u64::from(value.LowPart)
 }
 
 impl Token {
+    pub(super) fn same_primary_identity(&self, other: &Self) -> bool {
+        self.id == other.id && self.same_logon(other)
+    }
+
     pub(super) fn user_worker(&self, session: u32) -> io::Result<Worker> {
         let kind = Worker::User {
             user_sid: self.user.clone(),
@@ -330,6 +334,36 @@ impl Token {
 fn statistics(token: HANDLE) -> io::Result<TOKEN_STATISTICS> {
     // SAFETY: TokenStatistics returns TOKEN_STATISTICS, with size checked by read.
     unsafe { Buffer::query(token, TokenStatistics)?.read() }
+}
+
+pub(super) fn privileges(token: &OwnedHandle) -> io::Result<Vec<(u64, u32)>> {
+    let buffer = Buffer::query(token.as_raw_handle(), TokenPrivileges)?;
+    // SAFETY: TOKEN_PRIVILEGES starts with a DWORD count, checked by read.
+    let count = unsafe { buffer.read::<u32>()? } as usize;
+    let offset = std::mem::offset_of!(TOKEN_PRIVILEGES, Privileges);
+    let end = count
+        .checked_mul(size_of::<LUID_AND_ATTRIBUTES>())
+        .and_then(|size| offset.checked_add(size))
+        .ok_or_else(denied)?;
+    if end > buffer.length {
+        return Err(denied());
+    }
+    // SAFETY: the native array is aligned within the live query buffer and its full extent was checked.
+    let entries = unsafe {
+        std::slice::from_raw_parts(
+            buffer
+                .words
+                .as_ptr()
+                .cast::<u8>()
+                .add(offset)
+                .cast::<LUID_AND_ATTRIBUTES>(),
+            count,
+        )
+    };
+    Ok(entries
+        .iter()
+        .map(|entry| (luid(entry.Luid), entry.Attributes))
+        .collect())
 }
 
 fn scalar(token: HANDLE, class: TOKEN_INFORMATION_CLASS) -> io::Result<u32> {

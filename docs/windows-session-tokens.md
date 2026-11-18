@@ -24,7 +24,7 @@ Az előkészítés a friss céllekérés előtt feliratkozik a natív megfigyel�
 
 A cél és a token forrása az előkészítés lezárásakor, a folyamat létrehozása előtt és után, valamint a felfüggesztés feloldása előtt és után is ellenőrzött. A már birtokolt indítási token objektum- és módosításazonosítója változatlan kell maradjon. A segédfolyamat elsőként rögzített IPC-azonossága a felfüggesztett állapot alatt is megmarad; új kezelő kiadásakor nem rögzítjük újra az időközben megváltozott tokent. Az indítás vagy a felfüggesztés feloldásának sikertelen ellenőrzése leállítja a létrehozott segédet.
 
-A szükséges szolgáltatásjogokat, köztük a WTS-hez és munkamenetbeállításhoz szükséges jogosultságokat, a szolgáltatásnak induláskor kell rendeznie. A könyvtár nem engedélyez privilégiumot, nem vált másik fiókra, és nem ad emelt jogot a normál segédnek. Nincs új háttérlekérdező ciklus vagy erőforrásplafon.
+A szükséges szolgáltatásjogokat a szolgáltatás indulásakor a [közvetítő előkészítése](windows-service-privileges.md) rendezi, még az azonosság rögzítése előtt. A tokenkönyvtár nem engedélyez privilégiumot, nem vált másik fiókra, és nem ad emelt jogot a normál segédnek. Nincs új háttérlekérdező ciklus vagy erőforrásplafon.
 
 ### Ellenőrzés és további munka
 
@@ -54,7 +54,7 @@ Preparation subscribes to native observer changes before freshly querying the ta
 
 The target and token source are checked at preparation completion, before and after process creation, and before and after resuming the suspended process. The owned launch token's object and modification IDs must remain unchanged. The worker's initially pinned IPC identity persists through suspension; issuing another handle never silently repins a changed token. Failed creation or resumption checks terminate the created worker.
 
-The service must establish required privileges, including those needed by WTS and session adjustment, during startup. The library enables no privilege, switches no account and elevates no ordinary worker. It adds no background polling loop or resource ceiling.
+The service establishes required privileges through [broker preparation](windows-service-privileges.md#english) during startup, before pinning identity. The token library enables no privilege, switches no account and elevates no ordinary worker. It adds no background polling loop or resource ceiling.
 
 ### Verification and remaining work
 

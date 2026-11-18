@@ -252,7 +252,7 @@ fn vacant(result: io::Result<OwnedHandle>) -> io::Result<()> {
     }
 }
 
-fn no_impersonation() -> io::Result<()> {
+pub(super) fn no_impersonation() -> io::Result<()> {
     let mut handle = ptr::null_mut();
     // SAFETY: query this thread as the process identity; any successful handle is owned below.
     if unsafe { OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, 1, &mut handle) } != 0 {
@@ -268,7 +268,7 @@ fn no_impersonation() -> io::Result<()> {
     }
 }
 
-fn current_token(access: u32) -> io::Result<OwnedHandle> {
+pub(super) fn current_token(access: u32) -> io::Result<OwnedHandle> {
     let mut handle = ptr::null_mut();
     // SAFETY: the current-process pseudo handle is borrowed, and handle is a writable output.
     check(unsafe { OpenProcessToken(GetCurrentProcess(), access, &mut handle) })?;

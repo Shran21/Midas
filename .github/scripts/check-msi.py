@@ -45,17 +45,29 @@ token_file.write_text(canary + '\n', encoding='ascii')
 ca = work / 'server-ca.pem'
 ca.write_text('-----BEGIN CERTIFICATE-----\nMIIBszCCAVmgAwIBAgIUQ0FOQVJZ\n-----END CERTIFICATE-----\n', encoding='ascii')
 log = work / 'install.log'
+data = pathlib.Path(os.environ['ProgramData']) / 'MIDAS' / 'agent'
+service_log = data / 'logs' / 'agent.log'
+service_log_start = service_log.stat().st_size if service_log.exists() else 0
+
+def redact(value):
+    return value.replace(canary, '[redacted]').replace(canary[13:], '[redacted]')
+
+def verify_service(message):
+    added = service_log.read_bytes()[service_log_start:].decode('utf-8', errors='replace')
+    assert message in added, redact(added[-6000:])
+
 result = subprocess.run(['msiexec', '/i', str(package), '/qn', '/l*v', str(log), 'MIDAS_SERVER=127.0.0.1',
                          'MIDAS_PORT=1', 'MIDAS_ENROLLMENT_PORT=1', f'MIDAS_SERVER_CA={ca}',
                          f'MIDAS_TOKEN_FILE={token_file}'])
 text = log.read_bytes()
 decoded = text.decode('utf-16', errors='ignore') if text[:2] == b'\xff\xfe' else text.decode('utf-8', errors='ignore')
 if result.returncode != 0:
-    print(decoded[-6000:])
+    print(redact(decoded[-6000:]))
+    if service_log.exists():
+        print(redact(service_log.read_bytes()[service_log_start:].decode('utf-8', errors='replace')[-6000:]))
     raise SystemExit(f'msiexec failed: {result.returncode}')
 assert canary not in decoded and canary[13:] not in decoded, 'the token reached the MSI log'
 assert str(token_file) in decoded, 'the log should name the token file, which is not secret'
-data = pathlib.Path(os.environ['ProgramData']) / 'MIDAS' / 'agent'
 config = (data / 'config.json').read_text(encoding='utf-8')
 assert '127.0.0.1' in config and canary not in config, 'config written without the token'
 staged = (data / 'enrollment-token').read_text(encoding='ascii').strip()
@@ -68,6 +80,7 @@ for _ in range(30):
         break
     time.sleep(1)
 assert 'RUNNING' in state, state
+verify_service('service worker privileges verified')
 lines = subprocess.run(['powershell', '-NoProfile', '-Command',
                         "Get-CimInstance Win32_Process | ForEach-Object { $_.CommandLine }"],
                        capture_output=True, text=True, check=True).stdout
@@ -79,6 +92,7 @@ installed = pathlib.Path(os.environ['ProgramFiles']) / 'MIDAS' / 'Agent'
 assert (installed / 'midas-tray.exe').is_file() and (installed / 'midas-agent.exe').is_file()
 removal = subprocess.run(['msiexec', '/x', str(package), '/qn', '/l*v', str(work / 'remove.log')])
 assert removal.returncode == 0, removal.returncode
+verify_service('service worker privileges restored')
 assert subprocess.run(['reg', 'query', run_key, '/v', 'MIDAS Agent'], capture_output=True).returncode != 0
 # 1060: the service does not exist any more; the data directory is kept on purpose.
 assert subprocess.run(['sc', 'query', 'MidasAgent'], capture_output=True).returncode == 1060
