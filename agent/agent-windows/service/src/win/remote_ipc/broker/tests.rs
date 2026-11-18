@@ -8,11 +8,12 @@ use windows_sys::Win32::{
         TokenSessionId,
     },
     System::{
+        JobObjects::IsProcessInJob,
         RemoteDesktop::WTSGetActiveConsoleSessionId,
         Threading::{
-            CreateEventW, EVENT_MODIFY_STATE, OpenEventW, OpenProcess, OpenProcessToken,
-            PROCESS_CREATE_PROCESS, PROCESS_DUP_HANDLE, PROCESS_TERMINATE, PROCESS_VM_OPERATION,
-            PROCESS_VM_READ, PROCESS_VM_WRITE, SetEvent, WaitForSingleObject,
+            CreateEventW, EVENT_MODIFY_STATE, GetCurrentProcess, OpenEventW, OpenProcess,
+            OpenProcessToken, PROCESS_CREATE_PROCESS, PROCESS_DUP_HANDLE, PROCESS_TERMINATE,
+            PROCESS_VM_OPERATION, PROCESS_VM_READ, PROCESS_VM_WRITE, SetEvent, WaitForSingleObject,
         },
     },
 };
@@ -146,7 +147,8 @@ fn user_process(token: &OwnedHandle, image: &Path) -> Process {
     let mut command =
         super::super::super::wide(&format!("\"{}\" --exact {CHILD}", image.display()));
     let environment = environment().unwrap();
-    Process::create(None, |startup, flags, information| {
+    let mut desktop = [0u16];
+    Process::create(Some(&mut desktop), |startup, flags, information| {
         // SAFETY: this CI-only standard-user fixture stays suspended; all buffers outlive creation.
         unsafe {
             CreateProcessAsUserW(
@@ -199,6 +201,16 @@ fn refused<T>(result: io::Result<T>) {
 fn isolated_system_query_access() {
     assert_eq!(std::env::var("MIDAS_SYSTEM_TRIAL").as_deref(), Ok("1"));
     assert_eq!(std::env::var("GITHUB_ACTIONS").as_deref(), Ok("true"));
+    let mut contained = 0;
+    assert_ne!(
+        // SAFETY: queries this fixture process, without changing any parent or child job.
+        unsafe { IsProcessInJob(GetCurrentProcess(), ptr::null_mut(), &mut contained) },
+        0
+    );
+    assert_eq!(
+        contained, 0,
+        "SYSTEM fixture must not inherit the scheduler's session-zero job"
+    );
     let image = std::env::current_exe().unwrap();
     let owner = Broker::initialize(&image).unwrap();
     println!("service identity prepared");
