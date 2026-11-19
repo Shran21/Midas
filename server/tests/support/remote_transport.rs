@@ -6,8 +6,9 @@ use std::{
     time::Duration,
 };
 
+use axum::http::StatusCode;
 use midas_agent_core::remote::{
-    DesktopKind, Lease, Observation, Presence, Worker, transport::Native,
+    Consent, ConsentRequest, DesktopKind, Lease, Observation, Presence, Worker, transport::Native,
 };
 use midas_remote_auth::{Error, Target};
 use midas_server::{
@@ -23,7 +24,7 @@ use serde_json::Value;
 use sqlx::PgConnection;
 use uuid::Uuid;
 
-use super::remote_sessions::Context;
+use super::{administration::call, remote_sessions::Context};
 
 pub struct Broker {
     generation: Uuid,
@@ -34,6 +35,10 @@ pub struct Broker {
     lease: Mutex<Option<(Observation, Lease)>>,
     hold: Mutex<Option<std::sync::mpsc::Receiver<()>>>,
     entered: tokio::sync::Notify,
+    /// The local answer; with `None` the window stays open until revoked, then allows late.
+    answer: Mutex<Option<Consent>>,
+    asked: Mutex<Vec<ConsentRequest>>,
+    asking: tokio::sync::Notify,
 }
 
 impl Broker {
@@ -47,6 +52,9 @@ impl Broker {
             lease: Mutex::new(None),
             hold: Mutex::new(None),
             entered: tokio::sync::Notify::new(),
+            answer: Mutex::new(Some(Consent::Allowed)),
+            asked: Mutex::new(Vec::new()),
+            asking: tokio::sync::Notify::new(),
         }
     }
     pub fn allowed(&self) -> bool {
@@ -54,7 +62,7 @@ impl Broker {
             .lock()
             .unwrap()
             .as_ref()
-            .is_some_and(|(observed, lease)| lease.capture(*observed, Worker::Privileged).is_ok())
+            .is_some_and(|(observed, lease)| lease.capture(*observed, worker(lease)).is_ok())
     }
     async fn stopped(&self) {
         tokio::time::timeout(Duration::from_secs(3), async {
@@ -64,6 +72,14 @@ impl Broker {
         })
         .await
         .unwrap();
+    }
+}
+
+fn worker(lease: &Lease) -> Worker {
+    if lease.attended() {
+        Worker::User
+    } else {
+        Worker::Privileged
     }
 }
 
@@ -78,14 +94,19 @@ impl Native for Broker {
         if target.session != 2 || target.generation != self.generation {
             return Err(Error::Target);
         }
+        let presence = match self.presence.load(Ordering::SeqCst) {
+            0 => Presence::Vacant,
+            1 => Presence::Occupied,
+            _ => Presence::Unknown,
+        };
         let observed = Observation {
             target,
-            presence: match self.presence.load(Ordering::SeqCst) {
-                0 => Presence::Vacant,
-                1 => Presence::Occupied,
-                _ => Presence::Unknown,
+            presence,
+            desktop: if presence == Presence::Occupied {
+                DesktopKind::User
+            } else {
+                DesktopKind::Secure
             },
-            desktop: DesktopKind::Secure,
             desktop_epoch: self.generation,
         };
         *self.last.lock().unwrap() = Some(observed);
@@ -96,10 +117,224 @@ impl Native for Broker {
             return Err(Error::Desktop);
         }
         let observed = self.last.lock().unwrap().unwrap();
-        lease.capture(observed, Worker::Privileged)?;
+        lease.capture(observed, worker(&lease))?;
         *self.lease.lock().unwrap() = Some((observed, lease));
         Ok(())
     }
+    fn consent(&self, request: &ConsentRequest, stopped: &dyn Fn() -> bool) -> Consent {
+        self.asked.lock().unwrap().push(request.clone());
+        self.asking.notify_one();
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        loop {
+            if let Some(answer) = *self.answer.lock().unwrap() {
+                return answer;
+            }
+            if stopped() {
+                return Consent::Allowed;
+            }
+            assert!(std::time::Instant::now() < deadline, "unanswered consent");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+}
+
+async fn settled(ctx: &Context<'_>, path: &str, from: &str) -> Value {
+    for _ in 0..200 {
+        let (status, body, _) = call(ctx.app, "GET", path, Some(ctx.manager), None, &[]).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        if body["state"] != from {
+            return body;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    panic!("request stayed {from}");
+}
+
+/// Attended requests through the panel API, the agent transport and the local answer.
+pub async fn verify_attended(
+    ctx: &Context<'_>,
+    admin: &mut PgConnection,
+    view: &Value,
+    broker: &Arc<Broker>,
+) {
+    let base = format!(
+        "/api/tenants/{}/devices/{}/remote-requests",
+        ctx.tenant, ctx.device
+    );
+    let request = |mode: &str, uac: bool| {
+        serde_json::json!({
+            "mode": mode,
+            "uac": uac,
+            "session": view["sessions"][0]["selection"].clone(),
+        })
+    };
+    sqlx::query("UPDATE midas.devices SET platform='windows' WHERE tenant_id=$1 AND id=$2")
+        .bind(ctx.tenant)
+        .bind(ctx.device)
+        .execute(&mut *admin)
+        .await
+        .unwrap();
+    assert_eq!(
+        call(
+            ctx.app,
+            "POST",
+            &base,
+            None,
+            Some(request("normal", false)),
+            &[]
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        call(
+            ctx.app,
+            "POST",
+            &base,
+            Some(ctx.outsider),
+            Some(request("normal", false)),
+            &[]
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    let start = async |body: Value| {
+        let (status, view, _) =
+            call(ctx.app, "POST", &base, Some(ctx.manager), Some(body), &[]).await;
+        assert_eq!(status, StatusCode::ACCEPTED, "{view}");
+        assert_eq!(view["state"], "waiting");
+        assert!(view["answer_by"].as_i64().unwrap() > 0);
+        format!("{base}/{}", view["id"].as_str().unwrap())
+    };
+    let token = SessionToken::parse(ctx.manager.cookie().split_once('=').unwrap().1).unwrap();
+    let operator = ctx
+        .web
+        .sessions()
+        .validate(&token, false)
+        .await
+        .unwrap()
+        .operator_id;
+    let (operator_name, customer_name): (String, String) = sqlx::query_as("SELECT o.display_name, t.name FROM midas.operators o JOIN midas.tenants t ON t.id=$2 WHERE o.id=$1")
+        .bind(operator).bind(ctx.tenant).fetch_one(&mut *admin).await.unwrap();
+
+    broker.presence.store(1, Ordering::SeqCst);
+    let path = start(request("normal", false)).await;
+    let active = settled(ctx, &path, "waiting").await;
+    assert_eq!(active["state"], "active", "{active}");
+    assert!(broker.allowed());
+    let asked = broker.asked.lock().unwrap().last().cloned().unwrap();
+    assert_eq!(asked.timeout, Duration::from_secs(60));
+    assert_eq!(asked.rights.mode, midas_remote_auth::Mode::Normal);
+    assert!(!asked.rights.uac);
+    assert_eq!(asked.operator_name, operator_name);
+    assert_eq!(asked.customer_name, customer_name);
+    assert_eq!(
+        call(
+            ctx.app,
+            "POST",
+            &base,
+            Some(ctx.manager),
+            Some(request("normal", false)),
+            &[]
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        call(ctx.app, "GET", &path, Some(ctx.outsider), None, &[])
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        call(ctx.app, "DELETE", &path, Some(ctx.manager), None, &[])
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(settled(ctx, &path, "active").await["state"], "ended");
+    broker.stopped().await;
+    assert_eq!(
+        call(ctx.app, "DELETE", &path, Some(ctx.manager), None, &[])
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+
+    for (answer, state) in [
+        (Consent::Declined, "declined"),
+        (Consent::Expired, "expired"),
+        (Consent::Unavailable, "unavailable"),
+    ] {
+        *broker.answer.lock().unwrap() = Some(answer);
+        let path = start(request("normal", false)).await;
+        assert_eq!(settled(ctx, &path, "waiting").await["state"], state);
+        assert!(!broker.allowed(), "{state}");
+    }
+    *broker.answer.lock().unwrap() = Some(Consent::Allowed);
+    broker.presence.store(0, Ordering::SeqCst);
+    let asked = broker.asked.lock().unwrap().len();
+    let path = start(request("normal", false)).await;
+    assert_eq!(settled(ctx, &path, "waiting").await["state"], "unavailable");
+    assert_eq!(broker.asked.lock().unwrap().len(), asked);
+    broker.presence.store(1, Ordering::SeqCst);
+
+    // A late "allow" after the operator cancelled, and one after the passkey sign-in went stale.
+    for late in ["cancel", "passkey"] {
+        *broker.answer.lock().unwrap() = None;
+        let path = start(request("administrative", true)).await;
+        tokio::time::timeout(Duration::from_secs(5), broker.asking.notified())
+            .await
+            .unwrap();
+        if late == "cancel" {
+            assert_eq!(
+                call(ctx.app, "DELETE", &path, Some(ctx.manager), None, &[])
+                    .await
+                    .0,
+                StatusCode::NO_CONTENT
+            );
+            assert_eq!(settled(ctx, &path, "waiting").await["state"], "cancelled");
+        } else {
+            sqlx::query("UPDATE midas.browser_sessions SET authenticated_at=clock_timestamp()-interval '6 minutes' WHERE operator_id=$1").bind(operator).execute(&mut *admin).await.unwrap();
+            *broker.answer.lock().unwrap() = Some(Consent::Allowed);
+            let failed = settled(ctx, &path, "waiting").await;
+            assert_eq!(failed["state"], "failed", "{failed}");
+            assert_eq!(failed["reason"], "fresh_passkey_required");
+            sqlx::query("UPDATE midas.browser_sessions SET authenticated_at=clock_timestamp() WHERE operator_id=$1").bind(operator).execute(&mut *admin).await.unwrap();
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(!broker.allowed(), "{late}");
+    }
+    *broker.answer.lock().unwrap() = Some(Consent::Allowed);
+
+    let consents: Vec<(String, String)> = sqlx::query_as("SELECT outcome, details->>'result' FROM midas.tenant_audit WHERE tenant_id=$1 AND device_id=$2 AND action='remote.consent' ORDER BY sequence")
+        .bind(ctx.tenant).bind(ctx.device).fetch_all(&mut *admin).await.unwrap();
+    let results: Vec<_> = consents.iter().map(|(_, result)| result.as_str()).collect();
+    assert_eq!(
+        results,
+        [
+            "allowed",
+            "declined",
+            "expired",
+            "unavailable",
+            "unavailable",
+            "cancelled",
+            "allowed"
+        ]
+    );
+    let issued: i64 = sqlx::query_scalar("SELECT count(*) FROM midas.tenant_audit WHERE tenant_id=$1 AND device_id=$2 AND action='remote.grant_issued' AND details->>'unattended'='false'")
+        .bind(ctx.tenant).bind(ctx.device).fetch_one(&mut *admin).await.unwrap();
+    assert_eq!(issued, 1);
+    broker.presence.store(0, Ordering::SeqCst);
+    sqlx::query("UPDATE midas.devices SET platform='linux' WHERE tenant_id=$1 AND id=$2")
+        .bind(ctx.tenant)
+        .bind(ctx.device)
+        .execute(&mut *admin)
+        .await
+        .unwrap();
 }
 
 pub async fn verify(

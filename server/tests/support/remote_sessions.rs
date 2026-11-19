@@ -301,6 +301,7 @@ pub async fn verify(ctx: Context<'_>, admin: &mut PgConnection) {
         generation.to_string()
     );
     assert_eq!(view["sessions"][0]["presence"], "vacant");
+    super::remote_transport::verify_attended(&ctx, admin, &view, &broker).await;
     let active_grant = super::remote_transport::verify(&ctx, admin, &view, &broker).await;
     stop.send_replace(true);
     agent.await.unwrap();

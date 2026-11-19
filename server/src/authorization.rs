@@ -1,4 +1,5 @@
 use crate::database::driver as sqlx;
+pub mod attended;
 pub mod unattended;
 use std::{
     collections::{HashMap, HashSet},

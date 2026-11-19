@@ -40,7 +40,11 @@ impl GrantAuthority {
     pub fn public_key(&self) -> [u8; 32] {
         self.signer.public_key()
     }
-    pub(super) fn sign(&self, claims: &Claims, observed: &AgentEvidence) -> Result<SignedGrant> {
+    pub(in crate::authorization) fn sign(
+        &self,
+        claims: &Claims,
+        observed: &AgentEvidence,
+    ) -> Result<SignedGrant> {
         if !self.source.is_live() || !observed.is_live() {
             return Err(AccessError::Offline);
         }

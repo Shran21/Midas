@@ -40,6 +40,12 @@ use crate::{
 const SESSION_COOKIE: &str = "__Host-midas-session";
 const BINDING_COOKIE: &str = "__Host-midas-login";
 
+impl AsRef<Sessions> for WebAuth {
+    fn as_ref(&self) -> &Sessions {
+        &self.sessions
+    }
+}
+
 pub struct WebAuth {
     auth: AuthService,
     sessions: Sessions,
@@ -203,6 +209,14 @@ pub fn router(state: Arc<WebAuth>) -> Router {
         .route(
             "/api/tenants/{id}/devices/{device}/unattended-check",
             post(check_unattended),
+        )
+        .route(
+            "/api/tenants/{id}/devices/{device}/remote-requests",
+            post(request_attended),
+        )
+        .route(
+            "/api/tenants/{id}/devices/{device}/remote-requests/{request}",
+            get(remote_request).delete(cancel_remote_request),
         )
         .route(
             "/api/tenants/{id}/devices/{device}/metrics",
@@ -550,6 +564,48 @@ async fn check_unattended(
             .check_unattended(&state.sessions, &context.token, tenant, device, &request)
             .await?,
     ))
+}
+
+async fn request_attended(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((tenant, device)): Path<(Uuid, Uuid)>,
+    Json(request): Json<crate::authorization::attended::AttendedRequest>,
+) -> Result<(StatusCode, Json<crate::remote_requests::RequestView>)> {
+    let enrollment = state
+        .enrollment
+        .clone()
+        .ok_or(Failure(StatusCode::SERVICE_UNAVAILABLE, "unavailable"))?;
+    let view = enrollment
+        .request_attended(state.clone(), &context.token, tenant, device, request)
+        .await?;
+    Ok((StatusCode::ACCEPTED, Json(view)))
+}
+
+async fn remote_request(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((tenant, device, request)): Path<(Uuid, Uuid, Uuid)>,
+) -> Result<Json<crate::remote_requests::RequestView>> {
+    enrollment(&state)?
+        .remote_request(&state.sessions, &context.token, tenant, device, request)
+        .await?
+        .map(Json)
+        .ok_or(Failure(StatusCode::NOT_FOUND, "not_found"))
+}
+
+async fn cancel_remote_request(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((tenant, device, request)): Path<(Uuid, Uuid, Uuid)>,
+) -> Result<StatusCode> {
+    if !enrollment(&state)?
+        .cancel_remote_request(&state.sessions, &context.token, tenant, device, request)
+        .await?
+    {
+        return Err(Failure(StatusCode::NOT_FOUND, "not_found"));
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn remote_sessions(

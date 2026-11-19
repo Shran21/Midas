@@ -26,6 +26,32 @@ pub struct Prepare {
     pub mode: i32,
     #[prost(bool, tag = "6")]
     pub uac: bool,
+    /// Present only for an attended request: the agent must obtain local consent first.
+    #[prost(message, optional, tag = "7")]
+    pub consent: Option<ConsentRequest>,
+}
+
+/// What the local consent window names, as verified by the server.
+#[derive(Clone, PartialEq, Message)]
+pub struct ConsentRequest {
+    #[prost(string, tag = "1")]
+    pub operator_name: String,
+    #[prost(string, tag = "2")]
+    pub customer_name: String,
+    #[prost(uint32, tag = "3")]
+    pub timeout_seconds: u32,
+}
+
+/// The local answer to an attended request; `Unspecified` for unattended requests.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, prost::Enumeration)]
+#[repr(i32)]
+pub enum Consent {
+    Unspecified = 0,
+    Allowed = 1,
+    Declined = 2,
+    Expired = 3,
+    Unavailable = 4,
+    Cancelled = 5,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, prost::Enumeration)]
@@ -44,6 +70,8 @@ pub struct Challenge {
     pub challenge: Vec<u8>,
     #[prost(enumeration = "crate::sessions::Presence", tag = "3")]
     pub presence: i32,
+    #[prost(enumeration = "Consent", tag = "4")]
+    pub consent: i32,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -98,11 +126,17 @@ mod tests {
                 operator: vec![3; 16],
                 mode: Mode::Normal as i32,
                 uac: true,
+                consent: Some(ConsentRequest {
+                    operator_name: "Operator".into(),
+                    customer_name: "Customer".into(),
+                    timeout_seconds: 60,
+                }),
             }),
             Body::RemoteChallenge(Challenge {
                 request: vec![1; 16],
                 challenge: vec![4; 16],
-                presence: crate::sessions::Presence::Vacant as i32,
+                presence: crate::sessions::Presence::Occupied as i32,
+                consent: Consent::Allowed as i32,
             }),
             Body::RemoteDeliver(Deliver {
                 request: vec![1; 16],

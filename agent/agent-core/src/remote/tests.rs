@@ -372,3 +372,57 @@ fn cancellation_and_transport_loss_invalidate_active_and_pending_work() {
         Err(Error::Revoked)
     ));
 }
+
+#[test]
+fn a_consented_lease_serves_only_the_occupied_desktop_that_answered() {
+    let f = Fixture::new(Mode::Normal, true);
+    let occupied = Observation {
+        presence: Presence::Occupied,
+        ..f.observation
+    };
+    let (pending, _) = f.prepare();
+    let before = pending.challenge();
+    let pending = pending.consented();
+    assert_ne!(pending.challenge(), before);
+    let claims = Claims {
+        id: Uuid::new_v4(),
+        challenge: before,
+        operator: f.operator,
+        target: f.target,
+        rights: f.rights,
+        issued_at: 100,
+        expires_at: 130,
+    };
+    assert!(matches!(
+        pending.accept(&f.key.sign(&claims).unwrap(), occupied),
+        Err(Error::Target)
+    ));
+
+    let (pending, mut claims) = f.prepare();
+    let pending = pending.consented();
+    claims.challenge = pending.challenge();
+    let lease = pending
+        .accept(&f.key.sign(&claims).unwrap(), occupied)
+        .unwrap();
+    assert!(lease.attended());
+    assert_eq!(lease.capture(occupied, Worker::User), Ok(()));
+    assert_eq!(
+        lease.capture(f.observation, Worker::User),
+        Err(Error::Target)
+    );
+    assert_eq!(lease.capture(occupied, Worker::User), Err(Error::Revoked));
+
+    let (pending, mut claims) = f.prepare();
+    let pending = pending.consented();
+    claims.challenge = pending.challenge();
+    assert!(matches!(
+        pending.accept(&f.key.sign(&claims).unwrap(), f.observation),
+        Err(Error::Target)
+    ));
+    let lease = f.lease();
+    assert!(!lease.attended());
+    assert_eq!(
+        lease.capture(occupied, Worker::User),
+        Err(Error::ConsentRequired)
+    );
+}

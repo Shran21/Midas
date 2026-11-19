@@ -8,7 +8,7 @@ use std::{
 };
 
 use midas_protocol::{Body, remote as wire, sessions::Presence as WirePresence};
-use midas_remote_auth::verify;
+use midas_remote_auth::{SignedGrant, verify};
 use prost::Message;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, oneshot, watch};
 use uuid::Uuid;
@@ -18,6 +18,7 @@ use crate::{
     auth::sessions::{SessionInfo, SessionToken, Sessions},
     authorization::{
         AccessError, RemoteMode, Target,
+        attended::{Asked, CONSENT_TIMEOUT, Requester},
         unattended::{
             Presence, SessionObservation, SessionSelection, UnattendedRequest,
             grants::{GrantAuthority, GrantDecision, GrantRequest},
@@ -61,8 +62,10 @@ pub(crate) enum Event {
 
 pub(crate) struct Challenge {
     nonce: Uuid,
-    observation: SessionObservation,
+    observation: Option<SessionObservation>,
     started: Instant,
+    /// The local answer to an attended request; `Unspecified` for an unattended one.
+    consent: wire::Consent,
 }
 
 pub(crate) struct Registration {
@@ -83,6 +86,7 @@ struct Flow {
     challenge: Option<oneshot::Sender<Result<Challenge>>>,
     delivery: Option<oneshot::Sender<Result<()>>>,
     prepared: bool,
+    attended: bool,
 }
 
 impl Drop for Flow {
@@ -114,6 +118,9 @@ impl Session {
         self.active.store(false, Ordering::Release);
         self.stop.send_replace(true);
     }
+    pub fn remaining(&self) -> Duration {
+        self.deadline.saturating_duration_since(Instant::now())
+    }
 }
 
 impl Drop for Session {
@@ -125,6 +132,21 @@ impl Drop for Session {
 pub enum Decision {
     LocalConsentRequired,
     Granted(Session),
+}
+
+/// The result of an attended request: a granted session, or the local answer that refused it.
+pub enum Attended {
+    Granted(Session),
+    Answered(wire::Consent),
+}
+
+/// What an accepted request reserved before it starts: the grant authority, the agent's command
+/// channel and the device's single remote-support slot.
+pub(crate) struct Reserved {
+    authority: Arc<GrantAuthority>,
+    sender: mpsc::Sender<Command>,
+    slot: OwnedSemaphorePermit,
+    os_session: u32,
 }
 
 impl Registry {
@@ -207,7 +229,12 @@ impl Registration {
                     return None;
                 }
                 let now = Instant::now();
+                let answer = message
+                    .consent
+                    .as_ref()
+                    .map(|consent| Duration::from_secs(consent.timeout_seconds.into()));
                 self.flow = Some(Flow {
+                    attended: answer.is_some(),
                     request: message.request.clone(),
                     selection: SessionSelection {
                         connection_id: admission.connection_id(),
@@ -216,7 +243,7 @@ impl Registration {
                             .expect("validated generation"),
                     },
                     started: now,
-                    deadline: now + REPLY_LIMIT,
+                    deadline: now + REPLY_LIMIT + answer.unwrap_or_default(),
                     stop,
                     active,
                     challenge: Some(reply),
@@ -273,16 +300,42 @@ impl Registration {
             {
                 return Err(AccessError::Offline);
             }
-            let (presence, nonce) = match WirePresence::try_from(message.presence) {
-                Ok(WirePresence::Vacant) => (
-                    Presence::Vacant,
-                    Uuid::from_slice(&message.challenge)
-                        .ok()
-                        .filter(|id| !id.is_nil())
-                        .ok_or(AccessError::InvalidInput)?,
-                ),
-                Ok(WirePresence::Occupied) if message.challenge.is_empty() => {
+            let consent =
+                wire::Consent::try_from(message.consent).map_err(|_| AccessError::Offline)?;
+            let nonce = || {
+                Uuid::from_slice(&message.challenge)
+                    .ok()
+                    .filter(|id| !id.is_nil())
+                    .ok_or(AccessError::InvalidInput)
+            };
+            let presence = WirePresence::try_from(message.presence);
+            let (presence, nonce) = match (presence, flow.attended, consent) {
+                (Ok(WirePresence::Vacant), false, wire::Consent::Unspecified) => {
+                    (Presence::Vacant, nonce()?)
+                }
+                (Ok(WirePresence::Occupied), false, wire::Consent::Unspecified)
+                    if message.challenge.is_empty() =>
+                {
                     (Presence::Occupied, Uuid::nil())
+                }
+                (Ok(WirePresence::Occupied), true, wire::Consent::Allowed) => {
+                    // The grant lifetime starts with the local answer, not with the request.
+                    flow.started = Instant::now();
+                    (Presence::Occupied, nonce()?)
+                }
+                (_, true, answer)
+                    if answer != wire::Consent::Allowed && message.challenge.is_empty() =>
+                {
+                    return Ok(Challenge {
+                        nonce: Uuid::nil(),
+                        observation: None,
+                        started: flow.started,
+                        // An agent without consent support ignores the request's consent part.
+                        consent: match answer {
+                            wire::Consent::Unspecified => wire::Consent::Unavailable,
+                            answer => answer,
+                        },
+                    });
                 }
                 _ => return Err(AccessError::Offline),
             };
@@ -296,8 +349,9 @@ impl Registration {
             flow.deadline = flow.started + LIFETIME;
             Ok(Challenge {
                 nonce,
-                observation,
+                observation: Some(observation),
                 started: flow.started,
+                consent,
             })
         })();
         let _ = reply.send(result);
@@ -451,17 +505,7 @@ impl Enrollment {
                 return Err(error);
             }
         };
-        let os_session: u32 = request
-            .session
-            .os_session_id
-            .parse()
-            .map_err(|_| AccessError::InvalidInput)?;
-        if os_session == 0
-            || os_session == u32::MAX
-            || request.session.os_session_id != os_session.to_string()
-        {
-            return Err(AccessError::InvalidInput);
-        }
+        let os_session = os_session(&request.session)?;
         let (stop, stopped) = watch::channel(false);
         let mut session = Session {
             request: id,
@@ -483,13 +527,14 @@ impl Enrollment {
                         RemoteMode::Administrative => wire::Mode::Administrative,
                     } as i32,
                     uac: request.uac,
+                    consent: None,
                 },
                 stop: stopped,
                 active: session.active.clone(),
                 reply,
             })
             .map_err(|_| AccessError::Offline)?;
-        let challenge = wait(result).await?;
+        let challenge = wait(result, REPLY_LIMIT).await?;
         let decision = self
             .authorizer
             .issue_unattended_grant(
@@ -497,7 +542,7 @@ impl Enrollment {
                 token,
                 target,
                 request,
-                Some(&challenge.observation),
+                challenge.observation.as_ref(),
                 GrantRequest {
                     authority: &authority,
                     challenge: challenge.nonce,
@@ -507,36 +552,210 @@ impl Enrollment {
         let GrantDecision::Issued(grant) = decision else {
             return Ok(Decision::LocalConsentRequired);
         };
-        let checked =
-            verify(&authority.public_key(), &grant).map_err(|_| AccessError::Unavailable)?;
-        let lifetime = Duration::from_secs(
-            checked
-                .claims()
-                .lifetime_seconds()
-                .map_err(|_| AccessError::Unavailable)?,
-        );
-        session.deadline = challenge.started + lifetime;
+        send_grant(
+            &authority,
+            &sender,
+            id,
+            grant,
+            challenge.started,
+            &mut session,
+        )
+        .await?;
+        Ok(Decision::Granted(session))
+    }
+
+    /// Reserves the device's remote-support slot on the selected agent connection.
+    pub(crate) fn reserve(&self, target: Target, selection: &SessionSelection) -> Result<Reserved> {
+        let device = target.device.ok_or(AccessError::InvalidInput)?;
+        let os_session = os_session(selection)?;
+        let (authority, sender, slot) = self.remote_grants.acquire(
+            AgentIdentity {
+                tenant: target.tenant,
+                device,
+            },
+            selection.connection_id,
+        )?;
+        Ok(Reserved {
+            authority,
+            sender,
+            slot,
+            os_session,
+        })
+    }
+
+    /// Asks the signed-in user through the agent, and only after an allowed answer signs and
+    /// delivers a grant bound to that answer's challenge.
+    pub(crate) async fn deliver_attended(
+        &self,
+        asked: &Asked<'_>,
+        requester: &Requester,
+        reserved: Reserved,
+    ) -> Result<Attended> {
+        let Asked {
+            target,
+            request,
+            id,
+            ..
+        } = *asked;
+        let Reserved {
+            authority,
+            sender,
+            slot,
+            os_session,
+        } = reserved;
+        let (stop, stopped) = watch::channel(false);
+        let mut session = Session {
+            request: id,
+            deadline: Instant::now() + CONSENT_TIMEOUT + REPLY_LIMIT + LIFETIME,
+            active: Arc::new(AtomicBool::new(false)),
+            stop,
+            _slot: slot,
+        };
         let (reply, result) = oneshot::channel();
         sender
-            .try_send(Command::Deliver {
-                message: wire::Deliver {
+            .try_send(Command::Prepare {
+                message: wire::Prepare {
                     request: id.as_bytes().to_vec(),
-                    grant: grant.encode_to_vec(),
+                    session: os_session,
+                    generation: request.session.generation.as_bytes().to_vec(),
+                    operator: requester.identity.operator_id.as_bytes().to_vec(),
+                    mode: match request.mode {
+                        RemoteMode::Normal => wire::Mode::Normal,
+                        RemoteMode::Administrative => wire::Mode::Administrative,
+                    } as i32,
+                    uac: request.uac,
+                    consent: Some(wire::ConsentRequest {
+                        operator_name: requester.operator_name.clone(),
+                        customer_name: requester.customer_name.clone(),
+                        timeout_seconds: CONSENT_TIMEOUT.as_secs() as u32,
+                    }),
                 },
-                lifetime,
+                stop: stopped,
+                active: session.active.clone(),
                 reply,
             })
             .map_err(|_| AccessError::Offline)?;
-        wait(result).await?;
-        if !session.is_active() {
-            return Err(AccessError::Offline);
-        }
-        Ok(Decision::Granted(session))
+        let challenge = wait(result, CONSENT_TIMEOUT + REPLY_LIMIT).await?;
+        let (outcome, label) = match challenge.consent {
+            wire::Consent::Allowed => (Outcome::Success, "allowed"),
+            wire::Consent::Declined => (Outcome::Denied, "declined"),
+            wire::Consent::Expired => (Outcome::Denied, "expired"),
+            wire::Consent::Cancelled => (Outcome::Denied, "cancelled"),
+            wire::Consent::Unavailable | wire::Consent::Unspecified => {
+                (Outcome::Failure, "unavailable")
+            }
+        };
+        self.authorizer
+            .record_attended(
+                &requester.identity,
+                target,
+                request,
+                id,
+                (Action::RemoteConsent, outcome, label),
+            )
+            .await?;
+        let Some(observation) = challenge
+            .observation
+            .filter(|_| challenge.consent == wire::Consent::Allowed)
+        else {
+            return Ok(Attended::Answered(challenge.consent));
+        };
+        let grant = self
+            .authorizer
+            .issue_attended_grant(
+                asked,
+                &observation,
+                GrantRequest {
+                    authority: &authority,
+                    challenge: challenge.nonce,
+                },
+            )
+            .await?;
+        let delivered = send_grant(
+            &authority,
+            &sender,
+            id,
+            grant,
+            challenge.started,
+            &mut session,
+        )
+        .await;
+        self.authorizer
+            .record_attended(
+                &requester.identity,
+                target,
+                request,
+                id,
+                match delivered {
+                    Ok(()) => (
+                        Action::RemoteGrantDelivery,
+                        Outcome::Success,
+                        "acknowledged",
+                    ),
+                    Err(_) => (
+                        Action::RemoteGrantDelivery,
+                        Outcome::Failure,
+                        "not_delivered",
+                    ),
+                },
+            )
+            .await?;
+        delivered?;
+        Ok(Attended::Granted(session))
     }
 }
 
-async fn wait<T>(result: oneshot::Receiver<Result<T>>) -> Result<T> {
-    tokio::time::timeout(REPLY_LIMIT + Duration::from_secs(2), result)
+fn os_session(selection: &SessionSelection) -> Result<u32> {
+    let os_session: u32 = selection
+        .os_session_id
+        .parse()
+        .map_err(|_| AccessError::InvalidInput)?;
+    if os_session == 0
+        || os_session == u32::MAX
+        || selection.os_session_id != os_session.to_string()
+    {
+        return Err(AccessError::InvalidInput);
+    }
+    Ok(os_session)
+}
+
+/// Delivers a signed grant and waits for the agent's acknowledgement within its lifetime.
+async fn send_grant(
+    authority: &GrantAuthority,
+    sender: &mpsc::Sender<Command>,
+    id: Uuid,
+    grant: SignedGrant,
+    started: Instant,
+    session: &mut Session,
+) -> Result<()> {
+    let checked = verify(&authority.public_key(), &grant).map_err(|_| AccessError::Unavailable)?;
+    let lifetime = Duration::from_secs(
+        checked
+            .claims()
+            .lifetime_seconds()
+            .map_err(|_| AccessError::Unavailable)?,
+    );
+    session.deadline = started + lifetime;
+    let (reply, result) = oneshot::channel();
+    sender
+        .try_send(Command::Deliver {
+            message: wire::Deliver {
+                request: id.as_bytes().to_vec(),
+                grant: grant.encode_to_vec(),
+            },
+            lifetime,
+            reply,
+        })
+        .map_err(|_| AccessError::Offline)?;
+    wait(result, REPLY_LIMIT).await?;
+    if !session.is_active() {
+        return Err(AccessError::Offline);
+    }
+    Ok(())
+}
+
+async fn wait<T>(result: oneshot::Receiver<Result<T>>, limit: Duration) -> Result<T> {
+    tokio::time::timeout(limit + Duration::from_secs(2), result)
         .await
         .map_err(|_| AccessError::Offline)?
         .map_err(|_| AccessError::Offline)?

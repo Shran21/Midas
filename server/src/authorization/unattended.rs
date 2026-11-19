@@ -58,7 +58,7 @@ pub struct SessionSelection {
 }
 
 impl SessionSelection {
-    fn valid(&self) -> bool {
+    pub(crate) fn valid(&self) -> bool {
         !self.connection_id.is_nil()
             && !self.generation.is_nil()
             && !self.os_session_id.trim().is_empty()
@@ -76,10 +76,10 @@ pub enum Presence {
 
 /// Created only from the authenticated agent channel, never from a browser's presence claim.
 pub struct SessionObservation {
-    source: AgentEvidence,
+    pub(crate) source: AgentEvidence,
     selection: SessionSelection,
     presence: Presence,
-    received_at: Instant,
+    pub(crate) received_at: Instant,
 }
 
 impl SessionObservation {
@@ -158,9 +158,9 @@ pub enum UnattendedDecision {
     },
 }
 
-fn observed_presence(
+pub(crate) fn observed_presence(
     target: Target,
-    request: &UnattendedRequest,
+    session: &SessionSelection,
     observation: &SessionObservation,
     now: Instant,
 ) -> Result<Presence> {
@@ -169,7 +169,7 @@ fn observed_presence(
     }
     if observation.source.identity.tenant != target.tenant
         || Some(observation.source.identity.device) != target.device
-        || request.session != observation.selection
+        || *session != observation.selection
     {
         return Err(AccessError::Denied);
     }
@@ -180,7 +180,7 @@ fn observed_presence(
     Ok(observation.presence)
 }
 
-fn observation_fresh(received_at: Instant, now: Instant) -> bool {
+pub(crate) fn observation_fresh(received_at: Instant, now: Instant) -> bool {
     now.checked_duration_since(received_at)
         .is_some_and(|age| age < Duration::from_secs(30))
 }
@@ -291,7 +291,7 @@ impl Authorizer {
             let access = Self::evaluate_in(&mut tx, &identity, target, &request.permissions(), true).await?;
             request.validate()?;
             let observation = observation.ok_or(AccessError::Offline)?;
-            let presence = observed_presence(target, request, observation, Instant::now())?;
+            let presence = observed_presence(target, &request.session, observation, Instant::now())?;
             let active: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM midas.devices d JOIN midas.agent_credentials c ON c.tenant_id=d.tenant_id AND c.device_id=d.id WHERE d.tenant_id=$1 AND d.id=$2 AND d.enrollment='active' AND c.fingerprint=$3 AND c.revoked_at IS NULL AND c.expires_at > clock_timestamp())")
                 .bind(target.tenant).bind(target.device).bind(&observation.source.credential_fingerprint).fetch_one(&mut *tx).await?;
             if !active { return Err(AccessError::Offline); }
@@ -345,7 +345,7 @@ impl Authorizer {
         if result.is_ok() {
             observed_presence(
                 target,
-                request,
+                &request.session,
                 observation.ok_or(AccessError::Offline)?,
                 Instant::now(),
             )?;
@@ -359,7 +359,7 @@ impl Authorizer {
             tx.commit().await?;
             observed_presence(
                 target,
-                request,
+                &request.session,
                 observation.ok_or(AccessError::Offline)?,
                 Instant::now(),
             )?;
@@ -370,7 +370,7 @@ impl Authorizer {
         result.map(|decision| (decision, signed))
     }
 
-    async fn unattended_tx(&self, tenant: Uuid) -> Result<Transaction<'_, Postgres>> {
+    pub(crate) async fn unattended_tx(&self, tenant: Uuid) -> Result<Transaction<'_, Postgres>> {
         if tenant.is_nil() {
             return Err(AccessError::InvalidInput);
         }

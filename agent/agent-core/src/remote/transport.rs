@@ -1,6 +1,9 @@
-use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
 };
 
 use midas_protocol::{Body, Welcome, remote as wire, sessions::Presence as WirePresence};
@@ -8,13 +11,25 @@ use midas_remote_auth::{Connection, Error, Mode, Rights, SignedGrant, Target};
 use tokio::sync::{Semaphore, mpsc};
 use uuid::Uuid;
 
-use super::{Cancellation, Channel, Lease, Observation, Pending, Presence};
+use super::{
+    Cancellation, Channel, Consent, ConsentRequest, Lease, Observation, Pending, Presence,
+};
+
+/// The local answer window and the names it shows stay within these limits.
+pub const CONSENT_TIMEOUT: std::ops::RangeInclusive<u32> = 10..=300;
+const NAME_LIMIT: usize = 200;
 
 /// Implemented only by the protected native broker. It must check the lease at each
 /// actual operation and serialize native observation, execution and stopping.
 pub trait Native: Send + Sync {
     fn observe(&self, target: Target) -> Result<Observation, Error>;
     fn activate(&self, lease: Lease) -> Result<(), Error>;
+    /// Asks the user signed in to the target session, and only that user, within the timeout.
+    /// `stopped` turns true when the request is revoked; the window must then close.
+    fn consent(&self, request: &ConsentRequest, stopped: &dyn Fn() -> bool) -> Consent {
+        let _ = (request, stopped);
+        Consent::Unavailable
+    }
 }
 
 #[derive(Clone)]
@@ -73,11 +88,20 @@ impl Revocation {
     }
 }
 
+struct Attended {
+    operator: Uuid,
+    operator_name: String,
+    customer_name: String,
+    rights: Rights,
+    timeout: Duration,
+}
+
 enum Work {
     Prepare {
         request: Uuid,
         target: Target,
         pending: Pending,
+        attended: Option<Box<Attended>>,
         stop: Arc<Revocation>,
     },
     Deliver {
@@ -106,44 +130,92 @@ impl Engine {
                 request,
                 target,
                 pending,
+                attended,
                 stop,
             } => {
                 self.pending = None;
+                let observe = |native: &dyn Native| {
+                    stop.check()?;
+                    let observed = native.observe(target)?;
+                    stop.check()?;
+                    if observed.target != target || observed.desktop_epoch.is_nil() {
+                        return Err(Error::Target);
+                    }
+                    Ok(observed)
+                };
                 let observed = available
-                    .then(|| {
-                        stop.check()?;
-                        let observed = self.native.observe(target)?;
-                        stop.check()?;
-                        if observed.target != target || observed.desktop_epoch.is_nil() {
-                            return Err(Error::Target);
-                        }
-                        Ok(observed)
-                    })
+                    .then(|| observe(self.native.as_ref()))
                     .transpose()
                     .ok()
                     .flatten();
-                let presence = observed.map_or(WirePresence::Unknown, |o| match o.presence {
-                    Presence::Vacant => WirePresence::Vacant,
-                    Presence::Occupied => WirePresence::Occupied,
-                    Presence::Unknown => WirePresence::Unknown,
-                });
-                let challenge = if presence == WirePresence::Vacant {
-                    let challenge = pending.challenge().as_bytes().to_vec();
-                    self.pending = Some(Prepared {
-                        request,
-                        target,
-                        pending,
-                        stop,
-                    });
-                    challenge
-                } else {
-                    stop.revoke();
-                    Vec::new()
+                let presence = observed.map_or(Presence::Unknown, |o| o.presence);
+                let asked = attended.is_some();
+                let (pending, consent) = match (presence, attended) {
+                    (Presence::Vacant, None) => (Some(pending), Consent::Unavailable),
+                    (Presence::Occupied, Some(attended)) => {
+                        let question = ConsentRequest {
+                            request,
+                            target,
+                            operator: attended.operator,
+                            operator_name: attended.operator_name,
+                            customer_name: attended.customer_name,
+                            rights: attended.rights,
+                            timeout: attended.timeout,
+                        };
+                        let answer = self.native.consent(&question, &|| stop.check().is_err());
+                        // The answer counts only for the same occupied desktop, still unrevoked.
+                        let current = observe(self.native.as_ref()).ok().filter(|now| {
+                            observed.is_some_and(|before| {
+                                now.presence == Presence::Occupied
+                                    && now.desktop_epoch == before.desktop_epoch
+                            })
+                        });
+                        match answer {
+                            Consent::Allowed if current.is_some() => {
+                                (Some(pending.consented()), Consent::Allowed)
+                            }
+                            Consent::Allowed => (None, Consent::Cancelled),
+                            other => (None, other),
+                        }
+                    }
+                    (_, Some(_)) => (None, Consent::Unavailable),
+                    (_, None) => (None, Consent::Unavailable),
+                };
+                let challenge = match pending {
+                    Some(pending) => {
+                        let challenge = pending.challenge().as_bytes().to_vec();
+                        self.pending = Some(Prepared {
+                            request,
+                            target,
+                            pending,
+                            stop,
+                        });
+                        challenge
+                    }
+                    None => {
+                        stop.revoke();
+                        Vec::new()
+                    }
                 };
                 Body::RemoteChallenge(wire::Challenge {
                     request: request.as_bytes().to_vec(),
                     challenge,
-                    presence: presence as i32,
+                    presence: match presence {
+                        Presence::Vacant => WirePresence::Vacant,
+                        Presence::Occupied => WirePresence::Occupied,
+                        Presence::Unknown => WirePresence::Unknown,
+                    } as i32,
+                    consent: if asked {
+                        match consent {
+                            Consent::Allowed => wire::Consent::Allowed,
+                            Consent::Declined => wire::Consent::Declined,
+                            Consent::Expired => wire::Consent::Expired,
+                            Consent::Unavailable => wire::Consent::Unavailable,
+                            Consent::Cancelled => wire::Consent::Cancelled,
+                        }
+                    } else {
+                        wire::Consent::Unspecified
+                    } as i32,
                 })
             }
             Work::Deliver {
@@ -275,15 +347,30 @@ impl Transport {
             },
             uac: request.uac,
         };
-        let pending = self
-            .channel
-            .prepare(target, id(&request.operator)?, rights)?;
+        let operator = id(&request.operator)?;
+        let attended = request
+            .consent
+            .map(|consent| {
+                if !CONSENT_TIMEOUT.contains(&consent.timeout_seconds) {
+                    return Err(Error::Invalid);
+                }
+                Ok(Box::new(Attended {
+                    operator,
+                    operator_name: display_name(&consent.operator_name)?,
+                    customer_name: display_name(&consent.customer_name)?,
+                    rights,
+                    timeout: Duration::from_secs(consent.timeout_seconds.into()),
+                }))
+            })
+            .transpose()?;
+        let pending = self.channel.prepare(target, operator, rights)?;
         let stop = Arc::new(Revocation::default());
         self.commands
             .try_send(Work::Prepare {
                 request: request_id,
                 target,
                 pending,
+                attended,
                 stop: stop.clone(),
             })
             .map_err(|_| Error::Revoked)?;
@@ -331,6 +418,34 @@ impl Drop for Transport {
         }
         self.task.abort();
     }
+}
+
+/// Drops control, direction and invisible formatting characters, so a name cannot reorder or
+/// hide the text around it in the consent window.
+fn display_name(text: &str) -> Result<String, Error> {
+    let kept: String = text
+        .chars()
+        .map(|c| if c.is_whitespace() { ' ' } else { c })
+        .filter(|c| {
+            !c.is_control()
+                && !matches!(
+                    c,
+                    '\u{00ad}'
+                        | '\u{061c}'
+                        | '\u{180e}'
+                        | '\u{200b}'..='\u{200f}'
+                        | '\u{202a}'..='\u{202e}'
+                        | '\u{2060}'..='\u{206f}'
+                        | '\u{feff}'
+                        | '\u{fff9}'..='\u{fffb}'
+                )
+        })
+        .collect();
+    let name = kept.split_whitespace().collect::<Vec<_>>().join(" ");
+    if name.is_empty() || name.chars().count() > NAME_LIMIT {
+        return Err(Error::Invalid);
+    }
+    Ok(name)
 }
 
 fn id(bytes: &[u8]) -> Result<Uuid, Error> {

@@ -1,4 +1,7 @@
-use std::{sync::atomic::AtomicUsize, time::Duration};
+use std::{
+    sync::atomic::{AtomicBool, AtomicUsize},
+    time::Duration,
+};
 
 use midas_remote_auth::{Claims, SigningKey};
 use prost::Message;
@@ -8,11 +11,40 @@ use crate::remote::{DesktopKind, Worker};
 
 struct Broker {
     observed: Observation,
+    occupied: AtomicBool,
+    /// The user's desktop changes while the consent window is open.
+    move_on_answer: AtomicBool,
+    moved: AtomicBool,
+    /// `None` keeps the window open until the request is revoked, then answers Allowed late.
+    answer: Mutex<Option<Consent>>,
+    asked: Mutex<Vec<ConsentRequest>>,
     lease: Mutex<Option<Lease>>,
     calls: AtomicUsize,
     block_at: usize,
     entered: tokio::sync::Notify,
     release: Mutex<std::sync::mpsc::Receiver<()>>,
+}
+
+impl Broker {
+    fn current(&self) -> Observation {
+        let mut observed = self.observed;
+        if self.occupied.load(Ordering::SeqCst) {
+            observed.presence = Presence::Occupied;
+            observed.desktop = DesktopKind::User;
+        }
+        if self.moved.load(Ordering::SeqCst) {
+            observed.desktop_epoch = observed.target.generation;
+        }
+        observed
+    }
+}
+
+fn worker(lease: &Lease) -> Worker {
+    if lease.attended() {
+        Worker::User
+    } else {
+        Worker::Privileged
+    }
 }
 
 impl Native for Broker {
@@ -25,12 +57,28 @@ impl Native for Broker {
                 .recv_timeout(Duration::from_secs(5))
                 .unwrap();
         }
-        Ok(self.observed)
+        Ok(self.current())
     }
     fn activate(&self, lease: Lease) -> Result<(), Error> {
-        lease.capture(self.observed, Worker::Privileged)?;
+        lease.capture(self.current(), worker(&lease))?;
         *self.lease.lock().unwrap() = Some(lease);
         Ok(())
+    }
+    fn consent(&self, request: &ConsentRequest, stopped: &dyn Fn() -> bool) -> Consent {
+        self.asked.lock().unwrap().push(request.clone());
+        if self.move_on_answer.load(Ordering::SeqCst) {
+            self.moved.store(true, Ordering::SeqCst);
+        }
+        if let Some(answer) = *self.answer.lock().unwrap() {
+            return answer;
+        }
+        self.entered.notify_one();
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !stopped() {
+            assert!(std::time::Instant::now() < deadline, "never revoked");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        Consent::Allowed
     }
 }
 
@@ -63,6 +111,11 @@ impl Fixture {
         let (release, wait) = std::sync::mpsc::channel();
         let broker = Arc::new(Broker {
             observed,
+            occupied: AtomicBool::new(false),
+            move_on_answer: AtomicBool::new(false),
+            moved: AtomicBool::new(false),
+            answer: Mutex::new(Some(Consent::Allowed)),
+            asked: Mutex::new(Vec::new()),
             lease: Mutex::new(None),
             calls: AtomicUsize::new(0),
             block_at,
@@ -90,6 +143,7 @@ impl Fixture {
                 operator: Uuid::new_v4().as_bytes().to_vec(),
                 mode: wire::Mode::Administrative as i32,
                 uac: true,
+                consent: None,
             },
             key,
             broker,
@@ -128,11 +182,19 @@ impl Fixture {
             .lock()
             .unwrap()
             .as_ref()
-            .is_some_and(|lease| {
-                lease
-                    .capture(self.broker.observed, Worker::Privileged)
-                    .is_ok()
-            })
+            .is_some_and(|lease| lease.capture(self.broker.current(), worker(lease)).is_ok())
+    }
+    /// An attended request for the occupied desktop, answered with `answer`.
+    fn attended(answer: Option<Consent>) -> Self {
+        let mut f = Self::new(0);
+        f.broker.occupied.store(true, Ordering::SeqCst);
+        *f.broker.answer.lock().unwrap() = answer;
+        f.prepare.consent = Some(wire::ConsentRequest {
+            operator_name: "Kovács\u{202e}Péter".into(),
+            customer_name: "  Norda   Kft.\u{200b} ".into(),
+            timeout_seconds: 60,
+        });
+        f
     }
 }
 
@@ -323,4 +385,143 @@ async fn tampering_and_old_challenges_cannot_activate_a_new_request() {
             })
             .is_err()
     );
+}
+
+async fn attended_challenge(transport: &mut Transport, f: &Fixture) -> wire::Challenge {
+    transport.prepare(f.prepare.clone()).unwrap();
+    let Body::RemoteChallenge(challenge) = response(transport).await else {
+        panic!("challenge");
+    };
+    assert_eq!(challenge.presence, WirePresence::Occupied as i32);
+    challenge
+}
+
+#[tokio::test]
+async fn an_occupied_desktop_gets_a_challenge_only_after_the_local_user_allows() {
+    let f = Fixture::attended(Some(Consent::Allowed));
+    let mut transport = f.connect();
+    let challenge = attended_challenge(&mut transport, &f).await;
+    assert_eq!(challenge.consent, wire::Consent::Allowed as i32);
+    let asked = f.broker.asked.lock().unwrap().clone();
+    assert_eq!(asked.len(), 1);
+    assert_eq!(asked[0].operator_name, "KovácsPéter");
+    assert_eq!(asked[0].customer_name, "Norda Kft.");
+    assert_eq!(asked[0].timeout, Duration::from_secs(60));
+    assert_eq!(asked[0].target, f.broker.observed.target);
+    assert_eq!(asked[0].operator, id(&f.prepare.operator).unwrap());
+    assert_eq!(
+        asked[0].rights,
+        Rights {
+            mode: Mode::Administrative,
+            uac: true
+        }
+    );
+    transport.deliver(f.sign(challenge)).unwrap();
+    assert!(matches!(
+        response(&mut transport).await,
+        Body::RemoteAck(wire::Ack { accepted: true, .. })
+    ));
+    assert!(f.allowed());
+    let lease = f.broker.lease.lock().unwrap().take().unwrap();
+    assert!(lease.attended());
+    assert_eq!(
+        lease.capture(f.broker.observed, Worker::User),
+        Err(Error::Target)
+    );
+}
+
+#[tokio::test]
+async fn declined_expired_or_unavailable_answers_leave_nothing_to_deliver() {
+    for answer in [Consent::Declined, Consent::Expired, Consent::Unavailable] {
+        let f = Fixture::attended(Some(answer));
+        let mut transport = f.connect();
+        let challenge = attended_challenge(&mut transport, &f).await;
+        assert!(challenge.challenge.is_empty(), "{answer:?}");
+        let expected = match answer {
+            Consent::Declined => wire::Consent::Declined,
+            Consent::Expired => wire::Consent::Expired,
+            _ => wire::Consent::Unavailable,
+        };
+        assert_eq!(challenge.consent, expected as i32);
+        let late = f.sign(wire::Challenge {
+            challenge: Uuid::new_v4().as_bytes().to_vec(),
+            ..challenge
+        });
+        transport.deliver(late).unwrap();
+        assert!(matches!(
+            response(&mut transport).await,
+            Body::RemoteAck(wire::Ack {
+                accepted: false,
+                ..
+            })
+        ));
+        assert!(!f.allowed(), "{answer:?}");
+    }
+}
+
+#[tokio::test]
+async fn an_answer_after_revocation_or_from_a_changed_desktop_is_discarded() {
+    let f = Fixture::attended(None);
+    let mut transport = f.connect();
+    transport.prepare(f.prepare.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(5), f.broker.entered.notified())
+        .await
+        .unwrap();
+    transport
+        .revoke(wire::Revoke {
+            request: f.prepare.request.clone(),
+        })
+        .unwrap();
+    let Body::RemoteChallenge(challenge) = response(&mut transport).await else {
+        panic!("challenge");
+    };
+    assert!(challenge.challenge.is_empty());
+    assert_eq!(challenge.consent, wire::Consent::Cancelled as i32);
+
+    let f = Fixture::attended(Some(Consent::Allowed));
+    f.broker.move_on_answer.store(true, Ordering::SeqCst);
+    let mut transport = f.connect();
+    let challenge = attended_challenge(&mut transport, &f).await;
+    assert!(challenge.challenge.is_empty());
+    assert_eq!(challenge.consent, wire::Consent::Cancelled as i32);
+    assert!(!f.allowed());
+}
+
+#[tokio::test]
+async fn nobody_is_asked_without_a_signed_in_user_or_for_an_unattended_request() {
+    let f = Fixture::attended(Some(Consent::Allowed));
+    f.broker.occupied.store(false, Ordering::SeqCst);
+    let mut transport = f.connect();
+    transport.prepare(f.prepare.clone()).unwrap();
+    let Body::RemoteChallenge(challenge) = response(&mut transport).await else {
+        panic!("challenge");
+    };
+    assert_eq!(challenge.presence, WirePresence::Vacant as i32);
+    assert!(challenge.challenge.is_empty());
+    assert_eq!(challenge.consent, wire::Consent::Unavailable as i32);
+
+    let mut f = Fixture::attended(Some(Consent::Allowed));
+    f.prepare.consent = None;
+    let mut transport = f.connect();
+    let challenge = attended_challenge(&mut transport, &f).await;
+    assert!(challenge.challenge.is_empty());
+    assert_eq!(challenge.consent, wire::Consent::Unspecified as i32);
+    assert!(f.broker.asked.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn consent_requests_need_a_bounded_answer_time_and_readable_names() {
+    for change in [
+        |c: &mut wire::ConsentRequest| c.timeout_seconds = 0,
+        |c: &mut wire::ConsentRequest| c.timeout_seconds = 301,
+        |c: &mut wire::ConsentRequest| c.operator_name = " \u{202e}\u{2066} ".into(),
+        |c: &mut wire::ConsentRequest| c.customer_name = "x".repeat(201),
+    ] {
+        let mut f = Fixture::attended(Some(Consent::Allowed));
+        change(f.prepare.consent.as_mut().unwrap());
+        let mut transport = f.connect();
+        assert_eq!(transport.prepare(f.prepare.clone()), Err(Error::Invalid));
+    }
+    assert_eq!(display_name("a\tb\n c").unwrap(), "a b c");
+    assert_eq!(display_name(&"é".repeat(200)).unwrap().chars().count(), 200);
 }

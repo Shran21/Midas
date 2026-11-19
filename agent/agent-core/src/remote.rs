@@ -82,6 +82,7 @@ impl Channel {
             operator,
             rights,
             started: Instant::now(),
+            attended: false,
         })
     }
     pub fn revoke(&self) {
@@ -101,10 +102,21 @@ pub struct Pending {
     operator: Uuid,
     rights: Rights,
     started: Instant,
+    attended: bool,
 }
 impl Pending {
     pub fn challenge(&self) -> Uuid {
         self.challenge
+    }
+    /// Only after the local user allowed this request: the challenge and the grant lifetime start
+    /// now, and the lease then serves only the occupied desktop that answered.
+    pub(crate) fn consented(self) -> Self {
+        Self {
+            challenge: Uuid::new_v4(),
+            started: Instant::now(),
+            attended: true,
+            ..self
+        }
     }
     pub fn accept(self, grant: &SignedGrant, observed: Observation) -> Result<Lease, Error> {
         self.accept_at(grant, observed, Instant::now())
@@ -136,6 +148,7 @@ impl Pending {
             claims,
             deadline,
             started: self.started,
+            attended: self.attended,
             active: Arc::new(Signal::new()),
         };
         lease.validate(observed, now)?;
@@ -174,7 +187,30 @@ pub struct Lease {
     claims: Claims,
     deadline: Instant,
     started: Instant,
+    attended: bool,
     active: Arc<Signal>,
+}
+
+/// An attended request as the local consent window shows it. The names come from the
+/// authenticated server and are already stripped of control and direction characters.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConsentRequest {
+    pub request: Uuid,
+    pub target: Target,
+    pub operator: Uuid,
+    pub operator_name: String,
+    pub customer_name: String,
+    pub rights: Rights,
+    pub timeout: Duration,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Consent {
+    Allowed,
+    Declined,
+    Expired,
+    Unavailable,
+    Cancelled,
 }
 #[derive(Clone)]
 pub struct Cancellation(Arc<Signal>);
@@ -208,6 +244,10 @@ impl Lease {
     }
     pub fn rights(&self) -> Rights {
         self.claims.rights
+    }
+    /// Whether the local user consented; such a lease never serves a vacant session.
+    pub fn attended(&self) -> bool {
+        self.attended
     }
     pub fn cancellation(&self) -> Cancellation {
         Cancellation(self.active.clone())
@@ -243,10 +283,10 @@ impl Lease {
         if observed.target != self.claims.target || observed.desktop_epoch.is_nil() {
             return Err(Error::Target);
         }
-        match observed.presence {
-            Presence::Occupied => Err(Error::ConsentRequired),
-            Presence::Unknown => Err(Error::Target),
-            Presence::Vacant => Ok(()),
+        match (observed.presence, self.attended) {
+            (Presence::Vacant, false) | (Presence::Occupied, true) => Ok(()),
+            (Presence::Occupied, false) => Err(Error::ConsentRequired),
+            (Presence::Vacant | Presence::Unknown, _) => Err(Error::Target),
         }
     }
     fn route(&self, observed: Observation, worker: Worker) -> Result<(), Error> {
