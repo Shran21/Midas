@@ -14,7 +14,7 @@ A normál segéd tokenjének forrása a [WTSQueryUserToken](https://learn.micros
 
 Az UAC kapcsolt tokenjeinek bejelentkezési azonosítói eltérhetnek, ezért a forrás és a kiválasztott token bejelentkezését külön rögzítjük. A [Microsoft leírása](https://learn.microsoft.com/en-us/troubleshoot/windows-client/networking/cannot-redirect-folder-use-drive-map-letter) is külön LSA-bejelentkezéseket ír le. Egy friss lekérdezés új tokenobjektuma elfogadható ugyanahhoz a bejelentkezéshez; megváltozott felhasználó, bejelentkezés vagy szereptulajdonság nem.
 
-A privilegizált segéd külön másolatot kap a közvetítő SYSTEM-tokenjéből. Csak ennek a másolatnak állítjuk át a munkamenetét. A végleges kezelő lekérdezési, másolási és elsődleges tokenként hozzárendelési jogot tart meg; a munkamenet átállításához használt további jog nem marad rajta. A közvetítő saját tokenje változatlan marad.
+A privilegizált segéd külön másolatot kap a közvetítő SYSTEM-tokenjéből. Csak ennek a másolatnak állítjuk át a munkamenetét. A végleges kezelő lekérdezési, másolási és elsődleges tokenként hozzárendelési jogot tart meg; a munkamenet átállításához szükséges két további jog (`TOKEN_ADJUST_DEFAULT`, `TOKEN_ADJUST_SESSIONID`) nem marad rajta. A másolat saját, csak SYSTEM számára hozzáférhető biztonsági leírót kap. A közvetítő saját tokenje változatlan marad.
 
 Foglalt célnál a privilegizált segéd előkészítése is rögzíti a felhasználó natív bejelentkezési azonosságát. Felhasználó nélküli célnál a helyi jelenlétvizsgálat mellett a WTS-lekérdezésnek kifejezetten `ERROR_NO_TOKEN` eredményt kell adnia. Hozzáférési, jogosultsági vagy más hiba nem jelent üres munkamenetet. A felügyelet nélküli kapcsolat külön szabályzata és erős hitelesítése továbbra is szükséges.
 
@@ -44,7 +44,7 @@ Ordinary workers obtain their source through [WTSQueryUserToken](https://learn.m
 
 The linked UAC tokens can belong to different logons, so source and selected logon identities are pinned separately. [Microsoft documents these separate LSA logons](https://learn.microsoft.com/en-us/troubleshoot/windows-client/networking/cannot-redirect-folder-use-drive-map-letter). Fresh queries may return new token objects for the same logon; changed user, logon or role properties are refused.
 
-A privileged worker receives a separate copy of the broker's SYSTEM token, and only that copy's session is changed. The final handle retains query, duplicate and primary-assignment rights; the additional session-adjustment right is removed. The broker's own token remains unchanged.
+A privileged worker receives a separate copy of the broker's SYSTEM token, and only that copy's session is changed. The final handle retains query, duplicate and primary-assignment rights; the two additional rights needed to set the session (`TOKEN_ADJUST_DEFAULT`, `TOKEN_ADJUST_SESSIONID`) are removed. The copy gets its own descriptor that grants access only to SYSTEM. The broker's own token remains unchanged.
 
 For an occupied target, privileged preparation also pins the user's native logon identity. For a vacant target, WTS must explicitly return `ERROR_NO_TOKEN` in addition to the observer's vacancy result. Access, privilege or other failures never count as vacancy. Unattended policy and strong authentication remain separate requirements.
 

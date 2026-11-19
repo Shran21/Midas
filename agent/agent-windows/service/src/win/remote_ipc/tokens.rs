@@ -10,8 +10,8 @@ use windows_sys::Win32::{
     Foundation::{DuplicateHandle, ERROR_NO_TOKEN, HANDLE},
     Security::{
         DuplicateTokenEx, GetTokenInformation, SecurityIdentification, SetTokenInformation,
-        TOKEN_ADJUST_SESSIONID, TOKEN_ASSIGN_PRIMARY, TOKEN_DUPLICATE, TOKEN_LINKED_TOKEN,
-        TOKEN_QUERY, TokenLinkedToken, TokenPrimary, TokenSessionId,
+        TOKEN_ADJUST_DEFAULT, TOKEN_ADJUST_SESSIONID, TOKEN_ASSIGN_PRIMARY, TOKEN_DUPLICATE,
+        TOKEN_LINKED_TOKEN, TOKEN_QUERY, TokenLinkedToken, TokenPrimary, TokenSessionId,
     },
     System::{
         RemoteDesktop::WTSQueryUserToken,
@@ -88,7 +88,11 @@ impl PreparedToken {
         }
         let adjusted = step(
             "copy service token",
-            system_copy(&original, LAUNCH_ACCESS | TOKEN_ADJUST_SESSIONID),
+            // Setting the session also needs TOKEN_ADJUST_DEFAULT; reduce() drops both rights below.
+            system_copy(
+                &original,
+                LAUNCH_ACCESS | TOKEN_ADJUST_DEFAULT | TOKEN_ADJUST_SESSIONID,
+            ),
         )?;
         // SAFETY: only the newly duplicated primary token is moved to this validated session.
         let moved = check(unsafe {
