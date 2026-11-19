@@ -164,6 +164,23 @@ impl SuspendedWorker {
         Ok(self.token.binding())
     }
 
+    pub(super) fn transfer_broker(self, parent: &Peer, broker: &Peer) -> io::Result<(Self, u64)> {
+        self.binding(parent)?;
+        let Self {
+            process,
+            token,
+            identity,
+        } = self;
+        let (process, value) = process.transfer_peer(broker)?;
+        let worker = Self {
+            process,
+            token,
+            identity,
+        };
+        worker.binding(parent)?;
+        Ok((worker, value))
+    }
+
     pub fn resume(self, broker: &Peer) -> io::Result<RunningWorker> {
         self.token.check(broker)?;
         let peer = self.peer()?;
@@ -307,6 +324,32 @@ impl Process {
             0 => Err(io::Error::last_os_error()),
             pid => Ok(pid),
         }
+    }
+
+    pub(super) fn transfer_peer(self, peer: &Peer) -> io::Result<(Self, u64)> {
+        if self.thread.is_none() || self.has_exited()? {
+            return Err(denied());
+        }
+        let source = peer.process_handle()?;
+        let mut remote = ptr::null_mut();
+        // SAFETY: both process objects are retained; only query/synchronize access enters the suspended child.
+        check(unsafe {
+            DuplicateHandle(
+                GetCurrentProcess(),
+                source.as_raw_handle(),
+                self.process.as_raw_handle(),
+                &mut remote,
+                super::bootstrap::QUERY_ACCESS,
+                0,
+                0,
+            )
+        })?;
+        peer.recheck()?;
+        if remote.is_null() || self.has_exited()? {
+            return Err(denied());
+        }
+        // The foreign value is never owned here; failure drops the child, closing its handle table.
+        Ok((self, remote as usize as u64))
     }
 
     pub(super) fn resume(mut self) -> io::Result<Self> {

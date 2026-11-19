@@ -1,0 +1,111 @@
+use std::{
+    io,
+    os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle},
+    path::Path,
+    ptr,
+};
+
+use windows_sys::Win32::{
+    Foundation::DuplicateHandle,
+    System::Threading::{
+        GetCurrentProcess, GetProcessId, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
+    },
+};
+
+use super::{
+    Peer,
+    broker::SuspendedBroker,
+    denied,
+    launch::{RunningWorker, SuspendedWorker},
+    tokens::no_impersonation,
+};
+
+pub(super) const QUERY_ACCESS: u32 = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE;
+
+/// Owns the suspended worker and its single query-only companion handle transfer.
+pub struct Prepared {
+    worker: SuspendedWorker,
+    broker: Peer,
+    handle_value: u64,
+}
+
+impl Prepared {
+    pub fn new(
+        parent: &Peer,
+        broker: &SuspendedBroker,
+        worker: SuspendedWorker,
+    ) -> io::Result<Self> {
+        worker.binding(parent)?;
+        broker.check_worker(parent, &worker.peer()?)?;
+        let peer = broker.peer()?;
+        let (worker, handle_value) = worker.transfer_broker(parent, &peer)?;
+        broker.check_worker(parent, &worker.peer()?)?;
+        Ok(Self {
+            worker,
+            broker: peer,
+            handle_value,
+        })
+    }
+
+    /// Valid only in this worker's handle table; protected metadata delivery is still required.
+    pub fn handle_value(&self, parent: &Peer) -> io::Result<u64> {
+        self.worker.binding(parent)?;
+        self.broker.recheck()?;
+        Ok(self.handle_value)
+    }
+
+    pub fn peer(&self, parent: &Peer) -> io::Result<Peer> {
+        self.handle_value(parent)?;
+        self.worker.peer()
+    }
+
+    pub fn resume(self, parent: &Peer) -> io::Result<RunningWorker> {
+        self.handle_value(parent)?;
+        let running = self.worker.resume(parent)?;
+        self.broker.recheck()?;
+        Ok(running)
+    }
+}
+
+/// Clones a delivered handle; never owns or closes the supplied numeric value.
+/// Protected delivery and the pipe's pinned peer checks remain required.
+/// The image must come from trusted installation configuration, never the received metadata.
+pub fn import_broker(handle_value: u64, installed_image: &Path) -> io::Result<Peer> {
+    no_impersonation()?;
+    let value = usize::try_from(handle_value).map_err(|_| denied())?;
+    if value == 0 || value > isize::MAX as usize {
+        return Err(denied());
+    }
+    let source = value as *mut std::ffi::c_void;
+    // SAFETY: the kernel validates this borrowed numeric handle; it is never closed or dereferenced here.
+    let pid = unsafe { GetProcessId(source) };
+    if pid == 0 || pid == std::process::id() {
+        return Err(denied());
+    }
+    let mut raw = ptr::null_mut();
+    // SAFETY: the kernel creates a separate non-inherited handle; CLOSE_SOURCE and SAME_ACCESS are absent.
+    let ok = unsafe {
+        DuplicateHandle(
+            GetCurrentProcess(),
+            source,
+            GetCurrentProcess(),
+            &mut raw,
+            QUERY_ACCESS,
+            0,
+            0,
+        )
+    };
+    if ok == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: only the successful duplication's new owned handle is adopted.
+    let process = unsafe { OwnedHandle::from_raw_handle(raw) };
+    // SAFETY: verify the duplicated object still matches the process inspected before duplication.
+    if unsafe { GetProcessId(process.as_raw_handle()) } != pid {
+        return Err(denied());
+    }
+    Peer::broker(process, installed_image)
+}
+
+#[cfg(test)]
+mod tests;

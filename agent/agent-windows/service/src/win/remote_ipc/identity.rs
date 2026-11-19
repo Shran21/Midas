@@ -134,6 +134,20 @@ impl Peer {
     pub(super) fn recheck(&self) -> io::Result<()> {
         self.check(self.snapshot.pid)
     }
+
+    pub(super) fn same_process(&self, other: &Peer) -> io::Result<()> {
+        self.recheck()?;
+        other.recheck()?;
+        if self.snapshot != other.snapshot || self.role != other.role {
+            return Err(denied());
+        }
+        Ok(())
+    }
+
+    pub(super) fn process_handle(&self) -> io::Result<&OwnedHandle> {
+        self.recheck()?;
+        Ok(&self.process)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

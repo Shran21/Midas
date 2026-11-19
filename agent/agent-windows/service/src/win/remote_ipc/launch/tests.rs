@@ -100,6 +100,64 @@ fn stopped(process: &OwnedHandle) {
 }
 
 #[test]
+fn peer_transfer_targets_the_retained_suspended_child_and_preserves_the_source() {
+    let output = Output::new();
+    let child = create_child(&output, "wait");
+    let source = super::super::identity::tests::local();
+    let (child, value) = child.transfer_peer(&source).unwrap();
+    let mut raw = ptr::null_mut();
+    assert_ne!(
+        // SAFETY: reads back this test's transfer from the retained child's table, without closing it.
+        unsafe {
+            DuplicateHandle(
+                child.process.as_raw_handle(),
+                value as usize as HANDLE,
+                GetCurrentProcess(),
+                &mut raw,
+                super::super::bootstrap::QUERY_ACCESS,
+                0,
+                0,
+            )
+        },
+        0
+    );
+    // SAFETY: successful readback duplication returned one new handle in this process.
+    let copy = unsafe { OwnedHandle::from_raw_handle(raw) };
+    assert_eq!(
+        // SAFETY: copy is a retained, queryable process object.
+        unsafe { GetProcessId(copy.as_raw_handle()) },
+        std::process::id()
+    );
+    source.recheck().unwrap();
+    let retained = child.query_handle().unwrap();
+    drop(child);
+    stopped(&retained);
+}
+
+#[test]
+fn transfer_failure_stops_running_targets_and_targets_with_a_dead_peer() {
+    let output = Output::new();
+    let child = create_child(&output, "wait").resume().unwrap();
+    let retained = child.query_handle().unwrap();
+    assert!(
+        child
+            .transfer_peer(&super::super::identity::tests::local())
+            .is_err()
+    );
+    stopped(&retained);
+
+    let source = create_child(&output, "wait");
+    let peer = super::super::identity::tests::peer(source.query_handle().unwrap());
+    let exited = source.query_handle().unwrap();
+    drop(source);
+    stopped(&exited);
+    let child = create_child(&output, "wait");
+    let retained = child.query_handle().unwrap();
+    assert!(child.transfer_peer(&peer).is_err());
+    stopped(&retained);
+}
+
+#[test]
 fn worker_child() {
     let Ok(mode) = std::env::var("MIDAS_LAUNCH_CHILD") else {
         return;

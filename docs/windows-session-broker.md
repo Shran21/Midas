@@ -24,7 +24,7 @@ Az elkülönített Windows-CI külön SYSTEM-próbát futtat egy ideiglenes stan
 
 A CI tesztgazdája [WMI-indítással](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/create-method-in-class-win32-process) kilép az indító feladat munkamenethez kötött csoportjából, és ezt natív lekérdezéssel igazolja. Ez csak a tesztgazdára vonatkozik; a termék minden segédje megtartja a saját, létrehozáskor hozzárendelt folyamatcsoportját és annak kilépési tilalmát.
 
-Ez az indítókönyvtár még nem jelent működő távvezérlést. A védett kezdeti kapcsolat- és kezelőátadás, a `remote-broker` és `remote-worker` belépési pontok, a szolgáltatáskoordinátor és a képernyő-/bevitelkezelés továbbra is hátravan. A normál segéd nem kaphat aláírókulcsot vagy önálló felhatalmazást a védett asztalhoz. A komponens nem hirdet új távoli képességet.
+Ez az indítókönyvtár még nem jelent működő távvezérlést. A lekérdezési kezelő [átadását](windows-bootstrap-handles.md) külön előkészítő végzi. A kezdeti metaadatok védett kézbesítése, a `remote-broker` és `remote-worker` belépési pontok, a szolgáltatáskoordinátor és a képernyő-/bevitelkezelés továbbra is hátravan. A normál segéd nem kaphat aláírókulcsot vagy önálló felhatalmazást a védett asztalhoz. A komponens nem hirdet új távoli képességet.
 
 ## English
 
@@ -48,4 +48,4 @@ Isolated Windows CI runs a SYSTEM trial with two real logons of one temporary st
 
 The CI host uses [WMI creation](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/create-method-in-class-win32-process) to leave its launcher's session-bound job and verifies this natively. This applies only to the test host; every product worker retains its own at-creation job and prohibition on breakaway.
 
-This launcher library does not yet provide remote control. Protected initial connection/handle transfer, `remote-broker` and `remote-worker` entry points, service coordination and capture/input remain. Ordinary workers must never receive signing keys or independent secure-desktop authority. No new remote capability is advertised.
+This launcher library does not yet provide remote control. A separate preparation API [transfers the query handle](windows-bootstrap-handles.md#english). Protected initial metadata delivery, `remote-broker` and `remote-worker` entry points, service coordination and capture/input remain. Ordinary workers must never receive signing keys or independent secure-desktop authority. No new remote capability is advertised.

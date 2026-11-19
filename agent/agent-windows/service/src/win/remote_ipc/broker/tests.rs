@@ -25,6 +25,7 @@ use super::super::{identity::tests::local, startup::Broker};
 use super::*;
 
 const CHILD: &str = "win::remote_ipc::broker::tests::companion_child";
+const USER_CHILD: &str = "win::remote_ipc::broker::tests::ordinary_bootstrap_child";
 
 #[test]
 fn ordinary_process_cannot_prepare_a_system_companion() {
@@ -210,12 +211,14 @@ fn logon(session: u32) -> OwnedHandle {
 
 fn user_process(token: &OwnedHandle, image: &Path) -> Process {
     let application = image_path(image).unwrap();
-    let mut command =
-        super::super::super::wide(&format!("\"{}\" --exact {CHILD}", image.display()));
+    let mut command = super::super::super::wide(&format!(
+        "\"{}\" --exact {USER_CHILD} --ignored",
+        image.display()
+    ));
     let environment = environment().unwrap();
     let mut desktop = [0u16];
     Process::create(Some(&mut desktop), |startup, flags, information| {
-        // SAFETY: this CI-only standard-user fixture stays suspended; all buffers outlive creation.
+        // SAFETY: this CI-only standard-user fixture starts suspended; all buffers outlive creation.
         unsafe {
             CreateProcessAsUserW(
                 token.as_raw_handle(),
@@ -235,6 +238,105 @@ fn user_process(token: &OwnedHandle, image: &Path) -> Process {
     .unwrap()
 }
 
+fn bootstrap_name(pid: u32) -> String {
+    format!(r"\\.\pipe\midas-test-bootstrap-{pid}")
+}
+
+#[test]
+#[ignore = "ordinary child fixture, launched only by the isolated SYSTEM trial"]
+fn ordinary_bootstrap_child() {
+    use std::{fs::OpenOptions, os::windows::fs::OpenOptionsExt};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use windows_sys::Win32::{
+        Foundation::{GetHandleInformation, HANDLE_FLAG_INHERIT},
+        Storage::FileSystem::{FILE_FLAG_OVERLAPPED, SECURITY_IDENTIFICATION},
+        System::{RemoteDesktop::ProcessIdToSessionId, Threading::TerminateProcess},
+    };
+
+    let image = std::env::current_exe().unwrap();
+    let token = current_token(TOKEN_QUERY).unwrap();
+    let before = Token::read(&token).unwrap();
+    let mut session = 0;
+    assert_ne!(
+        // SAFETY: queries this fixture's own native session into a writable output.
+        unsafe { ProcessIdToSessionId(std::process::id(), &mut session) },
+        0
+    );
+    before.user_worker(session).unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        let file = OpenOptions::new()
+            .access_mode(super::super::CLIENT_ACCESS)
+            .custom_flags(FILE_FLAG_OVERLAPPED)
+            .security_qos_flags(SECURITY_IDENTIFICATION)
+            .open(bootstrap_name(std::process::id()))
+            .unwrap();
+        let mut pipe = super::super::super::into_pipe_client(file).unwrap();
+        let value = tokio::time::timeout(Duration::from_secs(5), pipe.read_u64_le())
+            .await
+            .unwrap()
+            .unwrap();
+        let outcome = std::panic::catch_unwind(|| {
+            let mut flags = 0;
+            assert_ne!(
+                // SAFETY: queries the live handle installed by the SYSTEM test launcher, without owning it.
+                unsafe { GetHandleInformation(value as usize as HANDLE, &mut flags) },
+                0
+            );
+            assert_eq!(flags & HANDLE_FLAG_INHERIT, 0);
+            assert!(
+                super::super::bootstrap::import_broker(value, &image.with_file_name("wrong.exe"))
+                    .is_err()
+            );
+            let peer = super::super::bootstrap::import_broker(value, &image).unwrap();
+            peer.recheck().unwrap();
+            assert_ne!(
+                // SAFETY: failed and successful imports must both leave the original handle alive.
+                unsafe { GetHandleInformation(value as usize as HANDLE, &mut flags) },
+                0
+            );
+            let handle = peer.process_handle().unwrap();
+            assert_ne!(
+                // SAFETY: queries the independently owned, imported process handle.
+                unsafe { GetHandleInformation(handle.as_raw_handle(), &mut flags) },
+                0
+            );
+            assert_eq!(flags & HANDLE_FLAG_INHERIT, 0);
+            for rights in [PROCESS_TERMINATE, PROCESS_DUP_HANDLE, PROCESS_VM_WRITE] {
+                refused(duplicate_access(handle, rights));
+            }
+            assert_eq!(
+                // SAFETY: a query-only handle must not allow this CI fixture to terminate its companion.
+                unsafe { TerminateProcess(handle.as_raw_handle(), 1) },
+                0
+            );
+            assert_eq!(
+                io::Error::last_os_error().raw_os_error(),
+                Some(ERROR_ACCESS_DENIED as i32)
+            );
+            assert_eq!(before, Token::read(&token).unwrap());
+            peer
+        });
+        let message = match &outcome {
+            Ok(_) => "verified".to_owned(),
+            Err(error) => error
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| error.downcast_ref::<&str>().map(|text| (*text).to_owned()))
+                .unwrap_or_else(|| "native import assertion failed".to_owned()),
+        };
+        let bytes = message.as_bytes();
+        let bytes = &bytes[..bytes.len().min(1024)];
+        pipe.write_u32_le(bytes.len() as u32).await.unwrap();
+        pipe.write_all(bytes).await.unwrap();
+        assert!(outcome.is_ok(), "ordinary bootstrap verification failed");
+        let _ = pipe.read_u8().await;
+    });
+}
+
 fn token_access(process: &OwnedHandle, rights: u32) -> io::Result<OwnedHandle> {
     let mut raw = ptr::null_mut();
     // SAFETY: the retained process handle is valid; raw is a writable output.
@@ -242,6 +344,27 @@ fn token_access(process: &OwnedHandle, rights: u32) -> io::Result<OwnedHandle> {
         return Err(io::Error::last_os_error());
     }
     // SAFETY: successful OpenProcessToken returns one owned token handle.
+    Ok(unsafe { OwnedHandle::from_raw_handle(raw) })
+}
+
+fn duplicate_access(source: &OwnedHandle, rights: u32) -> io::Result<OwnedHandle> {
+    let mut raw = ptr::null_mut();
+    // SAFETY: source is a retained process object; no inheritance or source close is requested.
+    if unsafe {
+        windows_sys::Win32::Foundation::DuplicateHandle(
+            GetCurrentProcess(),
+            source.as_raw_handle(),
+            GetCurrentProcess(),
+            &mut raw,
+            rights,
+            0,
+            0,
+        )
+    } == 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: only the newly returned, independently owned process handle is adopted.
     Ok(unsafe { OwnedHandle::from_raw_handle(raw) })
 }
 
@@ -375,6 +498,68 @@ fn isolated_system_query_access() {
     println!("the other logon cannot query the companion process or token");
     pinned.check(pid).unwrap();
     assert_eq!(source, Token::read(&original).unwrap());
+    let user_peer = child.preparation.user.duplicate().unwrap();
+    child
+        .check_worker(owner.peer().unwrap(), &user_peer)
+        .unwrap();
+    let wrong = user_process(&user_token, &image);
+    let wrong_peer = Peer::worker(
+        wrong.query_handle().unwrap(),
+        &image,
+        Token::read(&user_token)
+            .unwrap()
+            .user_worker(session)
+            .unwrap(),
+        session,
+    )
+    .unwrap();
+    assert!(
+        child
+            .check_worker(owner.peer().unwrap(), &wrong_peer)
+            .is_err()
+    );
+    drop(wrong);
+    let (user, handle_value) = user.transfer_peer(&pinned).unwrap();
+    let user_handle = user.query_handle().unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let mut bootstrap_pipe = runtime.block_on(async {
+        let mut options = tokio::net::windows::named_pipe::ServerOptions::new();
+        options
+            .first_pipe_instance(true)
+            .reject_remote_clients(true)
+            .max_instances(1);
+        super::super::super::create_pipe(
+            &options,
+            &bootstrap_name(user.pid().unwrap()),
+            &user_peer.acl().unwrap(),
+        )
+        .unwrap()
+    });
+    let user = user.resume().unwrap();
+    runtime.block_on(async {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        tokio::time::timeout(Duration::from_secs(5), async {
+            bootstrap_pipe.connect().await.unwrap();
+            user_peer
+                .check(super::super::peer_pid(&bootstrap_pipe, true).unwrap())
+                .unwrap();
+            bootstrap_pipe.write_u64_le(handle_value).await.unwrap();
+            let length = bootstrap_pipe.read_u32_le().await.unwrap() as usize;
+            assert!(length > 0 && length <= 1024);
+            let mut reply = vec![0u8; length];
+            bootstrap_pipe.read_exact(&mut reply).await.unwrap();
+            assert_eq!(String::from_utf8_lossy(&reply), "verified");
+            user_peer.recheck().unwrap();
+        })
+        .await
+        .unwrap();
+    });
+    println!(
+        "ordinary worker imported the query-only companion handle without elevation or inheritance"
+    );
     let ready = ready_event(pid);
     let running = child.resume().unwrap();
     assert_eq!(
@@ -383,24 +568,7 @@ fn isolated_system_query_access() {
         WAIT_OBJECT_0
     );
     assert!(!running.has_exited().unwrap());
-    fixture.unavailable();
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-    let stopped = runtime
-        .block_on(super::super::launch::supervise(
-            vec![running],
-            std::future::pending(),
-        ))
-        .unwrap();
-    assert_eq!(stopped, super::super::launch::Stopped::SessionChanged);
-    assert_eq!(
-        // SAFETY: waits only for the retained CI-created child; no PID lookup or arbitrary target.
-        unsafe { WaitForSingleObject(process.as_raw_handle() as HANDLE, 5000) },
-        WAIT_OBJECT_0
-    );
-    let fixture = Fixture::new();
+    let stale_fixture = Fixture::new();
     let role = Token::read(&user_token)
         .unwrap()
         .user_worker(session)
@@ -409,20 +577,36 @@ fn isolated_system_query_access() {
     let stale = SuspendedBroker::create(
         owner.peer().unwrap(),
         peer,
-        fixture.binding(),
+        stale_fixture.binding(),
         &image,
         &format!("--exact {CHILD} --ignored"),
     )
     .unwrap();
     let stopped = stale.process.query_handle().unwrap();
-    fixture.unavailable();
+    stale_fixture.unavailable();
     assert!(stale.resume().is_err());
     assert_eq!(
         // SAFETY: the failed resume must terminate this retained suspended test process.
         unsafe { WaitForSingleObject(stopped.as_raw_handle(), 5000) },
         WAIT_OBJECT_0
     );
-    drop(user);
+    let user = RunningWorker::bound(user, fixture.binding()).unwrap();
+    fixture.unavailable();
+    let stopped = runtime
+        .block_on(super::super::launch::supervise(
+            vec![running, user],
+            std::future::pending(),
+        ))
+        .unwrap();
+    assert_eq!(stopped, super::super::launch::Stopped::SessionChanged);
+    for handle in [&process, &user_handle] {
+        assert_eq!(
+            // SAFETY: waits only for the retained CI-created workers; no PID lookup or arbitrary target.
+            unsafe { WaitForSingleObject(handle.as_raw_handle(), 5000) },
+            WAIT_OBJECT_0
+        );
+    }
+    drop(bootstrap_pipe);
     owner.finish().unwrap();
     println!(
         "SYSTEM companion: selected logon can query; mutation, other logon and stale binding refused"

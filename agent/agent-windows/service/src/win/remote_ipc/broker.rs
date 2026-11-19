@@ -103,6 +103,12 @@ impl SuspendedBroker {
         self.identity.duplicate()
     }
 
+    pub(super) fn check_worker(&self, parent: &Peer, worker: &Peer) -> io::Result<()> {
+        self.preparation.check()?;
+        self.preparation.parent.same_process(parent)?;
+        self.preparation.user.same_process(worker)
+    }
+
     pub fn resume(self) -> io::Result<RunningWorker> {
         let peer = self.peer()?;
         let process = self.process.resume()?;

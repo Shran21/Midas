@@ -1,5 +1,6 @@
 //! Process-bound control IPC. A verified peer is not a remote-session grant or desktop authorization.
 
+pub mod bootstrap;
 pub mod broker;
 mod identity;
 pub mod launch;
