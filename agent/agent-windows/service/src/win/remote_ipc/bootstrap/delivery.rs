@@ -28,6 +28,7 @@ use super::super::{
     tokens::{current_token, no_impersonation},
 };
 use super::{Peer, denied, import_broker, import_process};
+use crate::win::remote_ipc::participant::{Stage, reached};
 use crate::win::{self, sessions::Binding};
 
 const MAGIC: &[u8; 4] = b"MBT1";
@@ -217,6 +218,7 @@ pub(in crate::win::remote_ipc) async fn receive_worker<T>(
 ) -> io::Result<T> {
     no_impersonation()?;
     Token::read(&current_token(TOKEN_QUERY)?)?.user_worker(win::current_session()?)?;
+    reached(Stage::Identity);
     receive_record(Recipient::Worker, deadline, async |handle, endpoint| {
         ready(Destination {
             broker: import_broker(handle, installed_image)?,
@@ -244,6 +246,7 @@ pub(in crate::win::remote_ipc) async fn receive_companion(
 ) -> io::Result<(ipc::Listener, Launcher)> {
     no_impersonation()?;
     let broker = Peer::broker(current_process()?, installed_image)?;
+    reached(Stage::Identity);
     receive_record(Recipient::Broker, deadline, async |handle, endpoint| {
         let worker = Peer::ordinary(import_process(handle)?, installed_image)?;
         ipc::Listener::bind_at(&broker, worker, endpoint)
@@ -285,6 +288,7 @@ async fn receive_record<T>(
     let (pid, id) = locator.split_once(':').ok_or_else(denied)?;
     let launcher = pid.parse::<u32>().map_err(|_| denied())?;
     let id = Uuid::parse_str(id).map_err(|_| denied())?;
+    reached(Stage::Locator);
     ipc::bounded(deadline, async {
         let file = OpenOptions::new()
             .access_mode(ipc::CLIENT_ACCESS)
@@ -293,14 +297,17 @@ async fn receive_record<T>(
             .open(name(id))?;
         verify_sender(&file, launcher)?;
         let mut pipe = win::into_pipe_client(file)?;
+        reached(Stage::Bootstrap);
         let mut message = [0; 28];
         pipe.read_exact(&mut message).await?;
         if &message[..4] != magic {
             return Err(denied());
         }
+        reached(Stage::Record);
         let handle = u64::from_le_bytes(message[4..12].try_into().map_err(|_| denied())?);
         let endpoint = Uuid::from_slice(&message[12..]).map_err(|_| denied())?;
         let result = prepare(handle, endpoint).await?;
+        reached(Stage::Prepared);
         verify_sender(&pipe, launcher)?;
         pipe.write_all(acknowledgement).await?;
         let mut confirmed = [0; 2];
@@ -308,6 +315,7 @@ async fn receive_record<T>(
         if &confirmed != b"OK" {
             return Err(denied());
         }
+        reached(Stage::Acknowledged);
         Ok((
             result,
             Launcher {

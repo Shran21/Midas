@@ -1,4 +1,8 @@
-use std::{io, os::windows::io::AsRawHandle};
+use std::{
+    io,
+    os::windows::io::AsRawHandle,
+    sync::atomic::{AtomicU8, Ordering},
+};
 
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite},
@@ -17,38 +21,70 @@ pub enum Participant {
     Broker,
 }
 
+/// The last startup step a participant reached. Participants start without inherited handles, so
+/// a failure exit code of `0x20 + step` is how the launcher learns where startup stopped.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Stage {
+    Started = 1,
+    Runtime = 2,
+    Identity = 3,
+    Locator = 4,
+    Bootstrap = 5,
+    Record = 6,
+    Prepared = 7,
+    Acknowledged = 8,
+    Connected = 9,
+    Standby = 10,
+}
+
+static STAGE: AtomicU8 = AtomicU8::new(0);
+
+pub(in crate::win::remote_ipc) fn reached(stage: Stage) {
+    STAGE.store(stage as u8, Ordering::Release);
+}
+
+pub fn failure_code() -> u8 {
+    0x20 + STAGE.load(Ordering::Acquire)
+}
+
 impl Participant {
     pub fn run(self) -> io::Result<()> {
+        reached(Stage::Started);
         let image = std::env::current_exe()?;
-        tokio::runtime::Builder::new_current_thread()
+        let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_io()
             .enable_time()
-            .build()?
-            .block_on(async {
-                let deadline = Instant::now() + STARTUP_TIMEOUT;
-                match self {
-                    Self::Worker => {
-                        let connection =
-                            delivery::receive_worker(&image, deadline, async |destination| {
-                                let mut connection = destination.connect()?;
-                                connection.send(WORKER_HELLO, deadline).await?;
-                                expect(&mut connection, BROKER_HELLO, deadline).await?;
-                                Ok(connection)
-                            })
-                            .await?;
-                        standby(connection).await
-                    }
-                    Self::Broker => {
-                        let (listener, launcher) =
-                            delivery::receive_companion(&image, deadline).await?;
-                        let mut connection = listener.accept(deadline).await?;
-                        expect(&mut connection, WORKER_HELLO, deadline).await?;
-                        connection.send(BROKER_HELLO, deadline).await?;
-                        launcher.connected(deadline).await?;
-                        standby(connection).await
-                    }
+            .build()?;
+        reached(Stage::Runtime);
+        runtime.block_on(async {
+            let deadline = Instant::now() + STARTUP_TIMEOUT;
+            match self {
+                Self::Worker => {
+                    let connection =
+                        delivery::receive_worker(&image, deadline, async |destination| {
+                            let mut connection = destination.connect()?;
+                            connection.send(WORKER_HELLO, deadline).await?;
+                            expect(&mut connection, BROKER_HELLO, deadline).await?;
+                            Ok(connection)
+                        })
+                        .await?;
+                    reached(Stage::Connected);
+                    reached(Stage::Standby);
+                    standby(connection).await
                 }
-            })
+                Self::Broker => {
+                    let (listener, launcher) =
+                        delivery::receive_companion(&image, deadline).await?;
+                    let mut connection = listener.accept(deadline).await?;
+                    expect(&mut connection, WORKER_HELLO, deadline).await?;
+                    connection.send(BROKER_HELLO, deadline).await?;
+                    launcher.connected(deadline).await?;
+                    reached(Stage::Connected);
+                    reached(Stage::Standby);
+                    standby(connection).await
+                }
+            }
+        })
     }
 }
 

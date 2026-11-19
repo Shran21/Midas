@@ -148,7 +148,10 @@ mod windows {
     fn participant(role: Participant) -> ExitCode {
         match role.run() {
             Ok(()) => ExitCode::SUCCESS,
-            Err(error) => report(Err(format!("remote transport: {error}"))),
+            Err(error) => {
+                eprintln!("error: remote transport: {error}");
+                ExitCode::from(midas_agent_windows::win::remote_ipc::participant::failure_code())
+            }
         }
     }
 

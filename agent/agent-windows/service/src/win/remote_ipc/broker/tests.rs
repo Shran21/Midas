@@ -233,6 +233,7 @@ async fn release_participants(parent: &Peer, token: &OwnedHandle, session: u32, 
     for reachable in [false, true] {
         let id = uuid::Uuid::new_v4();
         let worker = user_process(token, image, id, "remote-worker");
+        let worker_process = worker.query_handle().unwrap();
         let role = Token::read(token).unwrap().user_worker(session).unwrap();
         let peer = Peer::worker(worker.query_handle().unwrap(), image, role, session).unwrap();
         let fixture = Fixture::new();
@@ -276,9 +277,9 @@ async fn release_participants(parent: &Peer, token: &OwnedHandle, session: u32, 
         }
         let worker_receipt = result.unwrap_or_else(|error| {
             panic!(
-                "agent worker must confirm the control connection: {error} after {:?} (companion ready after {companion_ready:?}, worker exited: {:?}, companion {})",
+                "agent worker must confirm the control connection: {error} after {:?} (companion ready after {companion_ready:?}, worker {}, companion {})",
                 started.elapsed(),
-                worker.has_exited(),
+                process_state(&worker_process),
                 process_state(&broker_process)
             )
         });
