@@ -39,32 +39,59 @@ pub async fn start_pair(
     Ok([running_broker, running_worker])
 }
 
+type ServiceChannel = super::Connection<tokio::net::windows::named_pipe::NamedPipeServer>;
+
 /// Starts a privileged worker under one deadline. The service is both its launcher and its
 /// control endpoint, so startup delivery and the worker's greeting are awaited together.
 pub async fn start_privileged(
     parent: &Peer,
     worker: SuspendedWorker,
     deadline: tokio::time::Instant,
-) -> io::Result<(
-    RunningWorker,
-    super::Connection<tokio::net::windows::named_pipe::NamedPipeServer>,
-)> {
+) -> io::Result<(RunningWorker, ServiceChannel)> {
+    start_direct(parent, worker, deadline, false).await
+}
+
+/// Starts the consent window in the user's session; like a privileged worker, it talks only
+/// to the service.
+pub async fn start_consent(
+    parent: &Peer,
+    worker: SuspendedWorker,
+    deadline: tokio::time::Instant,
+) -> io::Result<(RunningWorker, ServiceChannel)> {
+    start_direct(parent, worker, deadline, true).await
+}
+
+async fn start_direct(
+    parent: &Peer,
+    worker: SuspendedWorker,
+    deadline: tokio::time::Instant,
+    consent: bool,
+) -> io::Result<(RunningWorker, ServiceChannel)> {
     let id = worker.bootstrap_id.ok_or_else(denied)?;
     let peer = worker.peer()?;
-    if !matches!(
-        peer.role,
+    let (allowed, hello) = match &peer.role {
         super::identity::Role::Worker {
             kind: super::Worker::Privileged,
             ..
-        }
-    ) {
+        } => (!consent, super::participant::WORKER_HELLO),
+        super::identity::Role::Worker {
+            kind: super::Worker::User { .. },
+            ..
+        } => (consent, super::participant::CONSENT_HELLO),
+        super::identity::Role::Broker => (false, super::participant::WORKER_HELLO),
+    };
+    if !allowed {
         return Err(denied());
     }
     let binding = worker.binding(parent)?;
     let listener = super::Listener::bind(parent, peer.duplicate()?)?;
     let endpoint = super::endpoint_id(listener.name())?;
     let (worker, handle_value) = worker.transfer_broker(parent, parent)?;
-    let sender = delivery::Sender::for_privileged(id, peer)?;
+    let sender = if consent {
+        delivery::Sender::bind(id, peer)?
+    } else {
+        delivery::Sender::for_privileged(id, peer)?
+    };
     if tokio::time::Instant::now() >= deadline {
         return Err(io::ErrorKind::TimedOut.into());
     }
@@ -73,8 +100,7 @@ pub async fn start_privileged(
         sender.send(handle_value, endpoint, &binding, parent, deadline),
         async {
             let mut connection = listener.accept(deadline).await?;
-            super::participant::expect(&mut connection, super::participant::WORKER_HELLO, deadline)
-                .await?;
+            super::participant::expect(&mut connection, hello, deadline).await?;
             connection
                 .send(super::participant::BROKER_HELLO, deadline)
                 .await?;

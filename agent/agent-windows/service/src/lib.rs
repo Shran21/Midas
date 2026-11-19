@@ -3,6 +3,7 @@
 pub use midas_agent_core::host::{config, runner};
 
 pub mod capture;
+pub mod consent;
 pub mod ipc;
 pub mod sessions;
 pub mod status;

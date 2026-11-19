@@ -1,0 +1,96 @@
+const hu = {
+  title: "Távsegítés kérése",
+  intro:
+    "A bejelentkezett felhasználó a saját gépén látja a nevedet, a szervezetet és a kért műveleteket, és ő dönt. Válasz nélkül a kérés 60 másodperc után lejár.",
+  normal: "Távoli vezérlés kérése",
+  administrative: "Rendszergazdai távvezérlés kérése",
+  uac: "Windows rendszergazdai engedélykérések (UAC) kezelése",
+  sending: "Kérés küldése…",
+  unsupported:
+    "Ezen a gépen nincs bekapcsolva a távsegítés. A kéréshez az agent távsegítési beállítását be kell kapcsolni.",
+  target: (device: string, session: string) =>
+    `Célgép: ${device} · ${session}. munkamenet`,
+  mode: (administrative: boolean, uac: boolean) =>
+    `Mód: ${administrative ? "rendszergazdai távvezérlés" : "normál távvezérlés"}${uac ? ", UAC-kezeléssel" : ""}`,
+  waiting: (who: string) => `Várakozás ${who} jóváhagyására.`,
+  remaining: (seconds: number) => `A kérés ${seconds} másodperc múlva lejár.`,
+  active:
+    "A felhasználó engedélyezte a kérést, a felhatalmazás érvényes. A kép és a vezérlés megjelenítése még nem érhető el.",
+  activeRemaining: (seconds: number) =>
+    `A felhatalmazás még ${seconds} másodpercig érvényes.`,
+  declined: (who: string) =>
+    `${who} elutasította a kérést. Nem jött létre kapcsolat.`,
+  expired: (who: string) =>
+    `${who} nem válaszolt, a kérés lejárt. Nem jött létre kapcsolat.`,
+  unavailable:
+    "Most nem kérhető helyi jóváhagyás: nincs bejelentkezett felhasználó, vagy már fut egy távsegítés. Nem jött létre kapcsolat.",
+  cancelled: "Visszavontad a kérést. Nem jött létre kapcsolat.",
+  ended: "A kapcsolat véget ért.",
+  failedFresh:
+    "A felhasználó engedélyezte a kérést, de ehhez a módhoz friss passkey-hitelesítés kell. Hitelesíts újra, majd küldj új kérést.",
+  failed:
+    "A kérés nem teljesült, mert a jogosultság vagy a gép kapcsolata időközben megváltozott. Nem jött létre kapcsolat.",
+  someone: "a felhasználó",
+  cancel: "Kérés visszavonása",
+  end: "Kapcsolat bontása",
+  again: "Új kérés",
+  fresh:
+    "Ehhez a módhoz friss passkey-hitelesítés kell. Hitelesíts újra, majd küldd el ismét a kérést.",
+  authenticate: "Újrahitelesítés",
+  busy: "A gépen már folyamatban van egy távsegítés vagy kérés. Próbáld újra később.",
+  offline:
+    "A gép most nem érhető el, vagy a kijelölt munkamenet elavult. Kérd le ismét a munkameneteket.",
+  denied: "Nincs jogosultságod ehhez a kéréshez.",
+  error:
+    "A kérés nem küldhető el. Ellenőrizd a kapcsolatot, majd próbáld újra.",
+};
+
+const en: {
+  [Key in keyof typeof hu]: (typeof hu)[Key] extends string
+    ? string
+    : (typeof hu)[Key];
+} = {
+  title: "Request remote support",
+  intro:
+    "The signed-in user sees your name, your organisation and the requested actions on their computer, and decides. Without an answer, the request expires after 60 seconds.",
+  normal: "Request remote control",
+  administrative: "Request administrative remote control",
+  uac: "Handle Windows administrator prompts (UAC)",
+  sending: "Sending request…",
+  unsupported:
+    "Remote support is not turned on for this device. Turn on the agent's remote support setting to send requests.",
+  target: (device, session) => `Device: ${device} · session ${session}`,
+  mode: (administrative, uac) =>
+    `Mode: ${administrative ? "administrative remote control" : "normal remote control"}${uac ? ", with UAC handling" : ""}`,
+  waiting: (who) => `Waiting for ${who} to answer.`,
+  remaining: (seconds) => `The request expires in ${seconds} seconds.`,
+  active:
+    "The user allowed the request and the authorization is valid. Remote view and control are not available yet.",
+  activeRemaining: (seconds) =>
+    `The authorization remains valid for ${seconds} seconds.`,
+  declined: (who) => `${who} declined the request. No connection was made.`,
+  expired: (who) =>
+    `${who} did not answer and the request expired. No connection was made.`,
+  unavailable:
+    "Local consent cannot be requested now: nobody is signed in, or remote support is already running. No connection was made.",
+  cancelled: "You withdrew the request. No connection was made.",
+  ended: "The connection has ended.",
+  failedFresh:
+    "The user allowed the request, but this mode needs a fresh passkey sign-in. Sign in again, then send a new request.",
+  failed:
+    "The request did not complete because a permission or the device connection changed meanwhile. No connection was made.",
+  someone: "the user",
+  cancel: "Withdraw request",
+  end: "End connection",
+  again: "New request",
+  fresh:
+    "This mode needs a fresh passkey sign-in. Sign in again, then send the request again.",
+  authenticate: "Sign in again",
+  busy: "Remote support or a request is already in progress on this device. Try again later.",
+  offline:
+    "The device is not reachable now, or the selected session is out of date. Fetch the sessions again.",
+  denied: "You do not have permission for this request.",
+  error: "The request could not be sent. Check the connection and try again.",
+};
+
+export const requestCopy = { hu, en };

@@ -30,7 +30,8 @@ const hu = {
     "Üres munkamenethez is szükséges az ügyfél és a szerver engedélye, a megfelelő jogosultság, karbantartási időablak és friss hitelesítés.",
   workstation:
     "Az üres munkamenet nem jogosít fel felügyelet nélküli munkaállomás-vezérlésre.",
-  connectionPending: "A távoli kapcsolat indítása még nem érhető el.",
+  connectionPending:
+    "A távoli kép és vezérlés még nem érhető el. A kérés most a helyi jóváhagyásig és a rövid felhatalmazásig jut el.",
   expired: "A lista elévült. Új kijelöléshez kérd le ismét a munkameneteket.",
   refreshed: "Lekérve",
   validity:
@@ -79,7 +80,8 @@ const en: Record<keyof typeof hu, string> = {
     "A vacant session still requires customer and server opt-in, the appropriate permissions, a maintenance window and fresh authentication.",
   workstation:
     "A vacant session does not authorize unattended workstation control.",
-  connectionPending: "Starting a remote connection is not available yet.",
+  connectionPending:
+    "Remote view and control are not available yet. A request currently goes as far as local consent and a short authorization.",
   expired:
     "The list has expired. Fetch sessions again before choosing a target.",
   refreshed: "Fetched",

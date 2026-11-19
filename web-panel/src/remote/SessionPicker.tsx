@@ -2,8 +2,10 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { ApiError, api, type DeviceSummary, type RemoteSessions } from "../api";
 import { Icon } from "../Icon";
 import type { Language } from "../i18n";
+import { RequestButtons, RequestStatus, type Started } from "./AttendedRequest";
 import { sessionCopy } from "./copy";
 import {
+  finished,
   fresh,
   OBSERVATION_LIFETIME,
   readSessions,
@@ -77,6 +79,7 @@ function Picker({
   const c = sessionCopy[language];
   const id = useId();
   const [state, setState] = useState<State>({ kind: "idle" });
+  const [started, setStarted] = useState<Started | null>(null);
   const request = useRef<AbortController | null>(null);
   const requestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshButton = useRef<HTMLButtonElement>(null);
@@ -89,7 +92,7 @@ function Picker({
   const selected = ready?.catalogue.sessions.find(
     (session) => selectionKey(session.selection) === ready.selected,
   );
-  const started = state.kind === "ready" ? state.started : null;
+  const fetchedAt = state.kind === "ready" ? state.started : null;
   const isReady = ready !== null;
 
   useLayoutEffect(() => {
@@ -119,21 +122,21 @@ function Picker({
   }, []);
 
   useEffect(() => {
-    if (started === null) return;
+    if (fetchedAt === null) return;
     const timer = setTimeout(
       () => {
         if (selectionArea.current?.contains(document.activeElement))
           refreshButton.current?.focus();
         setState((previous) =>
-          previous.kind === "ready" && previous.started === started
+          previous.kind === "ready" && previous.started === fetchedAt
             ? { kind: "expired" }
             : previous,
         );
       },
-      Math.max(0, OBSERVATION_LIFETIME - (performance.now() - started)),
+      Math.max(0, OBSERVATION_LIFETIME - (performance.now() - fetchedAt)),
     );
     return () => clearTimeout(timer);
-  }, [started]);
+  }, [fetchedAt]);
 
   const load = async () => {
     if (request.current || document.visibilityState !== "visible") return;
@@ -238,6 +241,19 @@ function Picker({
           {state.denied ? c.denied : c.failed}
         </p>
       )}
+      {started && (
+        <RequestStatus
+          key={started.request.id}
+          tenant={tenant}
+          device={device}
+          csrf={csrf}
+          language={language}
+          started={started}
+          fail={fail}
+          onChange={setStarted}
+          onDismiss={() => setStarted(null)}
+        />
+      )}
       {ready && ready.catalogue.sessions.length === 0 && (
         <div className="remote-empty" role="status">
           <strong>{c.noSessions}</strong>
@@ -337,6 +353,23 @@ function Picker({
           <p id={`${id}-validity`} className="muted remote-validity">
             {c.validity}
           </p>
+          {selected &&
+            selected.presence === "occupied" &&
+            device.permissions.includes("remote.control") && (
+              <RequestButtons
+                key={selectionKey(selected.selection)}
+                tenant={tenant}
+                device={device}
+                session={selected.selection}
+                account={selected.account}
+                csrf={csrf}
+                language={language}
+                blocked={started !== null && !finished(started.request.state)}
+                fail={fail}
+                confirmIdentity={confirmIdentity}
+                onStarted={setStarted}
+              />
+            )}
           {selected &&
             device.kind === "server" &&
             device.permissions.includes("remote.control") &&

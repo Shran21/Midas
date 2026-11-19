@@ -2,26 +2,35 @@
 //!
 //! `dev_fleet ca` writes an agent CA into `MIDAS_DEV_DIR`. `dev_fleet run` enrolls the devices
 //! of every tenant with preapproved tokens (stored once through `MIDAS_ADMIN_DATABASE_URL`) and
-//! then reports metrics, inventory and health checks over mTLS until stopped.
+//! then reports metrics, inventory and health checks over mTLS until stopped. Windows devices also
+//! list three signed-in sessions whose users answer remote-support requests by themselves: the
+//! first allows, the second declines and the third never answers.
 use midas_server::database::driver as sqlx;
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::Arc,
-    time::Duration,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
 };
 
 use midas_agent_core::{
     connection::{Settings, Status, run},
-    enrollment::{EnrollError, Identity, Server, enroll},
+    enrollment::{EnrollError, Identity, Server, device_identity, enroll},
     health::{self, Checker, Thresholds},
     inventory::{self, Collector, Snapshot, insert},
     metrics::{self, Buffer},
+    remote::{
+        Consent, ConsentRequest, DesktopKind, Lease, Observation, Presence, Worker,
+        transport::{Backend, Native},
+    },
+    sessions::Probe,
 };
 use midas_protocol::{
     HealthState, Sample,
     enrollment::{EnrollAnswer, EnrollRequest, Kind, Platform},
+    sessions::{CAPABILITY as SESSIONS, OsSession, Presence as SessionPresence},
 };
+use midas_remote_auth::{Error as GrantError, Target};
 use rcgen::{BasicConstraints, CertificateParams, DnType, IsCa, KeyPair};
 use rustls::{ClientConfig, RootCertStore, pki_types::CertificateDer, pki_types::pem::PemObject};
 use sha2::{Digest, Sha256};
@@ -166,12 +175,16 @@ async fn fleet(directory: &Path) -> Result<(), Error> {
             }
         };
         let tls = identity.client_config(roots.clone(), &certificate)?;
+        let desk = device_identity(&certificate)
+            .filter(|_| profile.platform == Platform::Windows)
+            .map(|(tenant, device)| (tenant, device, Arc::new(Desk::new())));
         handles.push(tokio::spawn(simulate(
             profile,
             tls,
             agent,
             state.clone(),
             quiet,
+            desk,
         )));
     }
     println!(
@@ -455,12 +468,90 @@ fn checker(profile: &Profile) -> Checker {
     })
 }
 
+/// Local development only: three signed-in users who answer consent requests on their own.
+struct Desk {
+    sessions: [(u32, &'static str, Uuid); 3],
+    lease: Mutex<Option<Lease>>,
+}
+
+impl Desk {
+    fn new() -> Self {
+        Self {
+            sessions: [
+                (1, "Kiss Anna", Uuid::new_v4()),
+                (2, "Nagy Péter", Uuid::new_v4()),
+                (3, "Szabó Éva", Uuid::new_v4()),
+            ],
+            lease: Mutex::new(None),
+        }
+    }
+
+    fn list(&self) -> Vec<OsSession> {
+        self.sessions
+            .iter()
+            .map(|(id, account, generation)| OsSession {
+                id: *id,
+                generation: generation.as_bytes().to_vec(),
+                presence: SessionPresence::Occupied as i32,
+                account: (*account).into(),
+                station: if *id == 1 {
+                    "Console".into()
+                } else {
+                    format!("RDP-Tcp#{id}")
+                },
+                console: *id == 1,
+                locked: Some(false),
+            })
+            .collect()
+    }
+}
+
+impl Native for Desk {
+    fn observe(&self, target: Target) -> Result<Observation, GrantError> {
+        let (_, _, generation) = self
+            .sessions
+            .iter()
+            .find(|(id, _, generation)| *id == target.session && *generation == target.generation)
+            .ok_or(GrantError::Target)?;
+        Ok(Observation {
+            target,
+            presence: Presence::Occupied,
+            desktop: DesktopKind::User,
+            desktop_epoch: *generation,
+        })
+    }
+
+    fn activate(&self, lease: Lease) -> Result<(), GrantError> {
+        lease.capture(self.observe(lease.target())?, Worker::User)?;
+        *self.lease.lock().unwrap_or_else(|e| e.into_inner()) = Some(lease);
+        Ok(())
+    }
+
+    fn consent(&self, request: &ConsentRequest, stopped: &dyn Fn() -> bool) -> Consent {
+        let answer = match request.target.session {
+            1 => Some(Consent::Allowed),
+            2 => Some(Consent::Declined),
+            _ => None,
+        };
+        let delay = answer.map_or(request.timeout, |_| Duration::from_secs(4));
+        let asked = Instant::now();
+        while asked.elapsed() < delay {
+            if stopped() {
+                return Consent::Cancelled;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        answer.unwrap_or(Consent::Expired)
+    }
+}
+
 async fn simulate(
     profile: Profile,
     tls: Arc<ClientConfig>,
     port: u16,
     state: PathBuf,
     quiet: bool,
+    desk: Option<(Uuid, Uuid, Arc<Desk>)>,
 ) {
     let mut noise = Noise(profile.name.bytes().fold(17, |seed, byte| {
         seed.wrapping_mul(31).wrapping_add(u64::from(byte))
@@ -476,7 +567,7 @@ async fn simulate(
         Platform::Windows => "windows",
         Platform::Linux => "linux",
     };
-    let settings = Settings {
+    let mut settings = Settings {
         metrics: Some(buffer.clone()),
         inventory: Some(inventory_state.clone()),
         health: Some(health_state.clone()),
@@ -491,6 +582,12 @@ async fn simulate(
         .to_vec(),
         ..Settings::new("127.0.0.1".into(), port, tls, platform)
     };
+    if let Some((tenant, device, desk)) = desk {
+        settings.capabilities.push(SESSIONS.into());
+        let listed = desk.clone();
+        settings.sessions = Some(Probe::new(Arc::new(move || Some(listed.list()))));
+        settings.remote = Backend::new(tenant, device, desk).ok();
+    }
     let (status, mut watched) = watch::channel(Status::Connecting { attempt: 0 });
     let (stop, stopped) = watch::channel(false);
     let collector: Collector = {

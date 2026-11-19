@@ -3,9 +3,11 @@ import test from "node:test";
 import type { DeviceSummary, RemoteSessions } from "../src/api.ts";
 import { deviceActions } from "../src/devices/model.ts";
 import {
+  finished,
   fresh,
   OBSERVATION_LIFETIME,
   readDecision,
+  readRequest,
   readSessions,
   selectionKey,
   unavailableReason,
@@ -173,4 +175,68 @@ test("query availability requires both scoped permissions, active enrollment, co
     )?.blocked,
     null,
   );
+});
+
+test("attended requests are read only for the expected request and session", () => {
+  const id = "0b2f35c5-6a8e-4a43-9b7e-3a8d1f0c2e11";
+  const waiting = {
+    id,
+    mode: "administrative",
+    uac: true,
+    os_session_id: "2",
+    state: "waiting",
+    answer_by: 1_700_000_060,
+  };
+  assert.deepEqual(readRequest(waiting, { id, os_session_id: "2" }), {
+    id,
+    mode: "administrative",
+    uac: true,
+    os_session_id: "2",
+    state: "waiting",
+    until: 1_700_000_060,
+    reason: null,
+  });
+  assert.equal(
+    readRequest({ ...waiting, state: "active", until: 1_700_000_090 })?.until,
+    1_700_000_090,
+  );
+  assert.equal(
+    readRequest({
+      ...waiting,
+      state: "failed",
+      reason: "fresh_passkey_required",
+    })?.reason,
+    "fresh_passkey_required",
+  );
+  for (const state of [
+    "declined",
+    "expired",
+    "unavailable",
+    "cancelled",
+    "ended",
+  ])
+    assert.equal(readRequest({ ...waiting, state })?.state, state);
+  for (const invalid of [
+    null,
+    { ...waiting, id: "00000000-0000-0000-0000-000000000000" },
+    { ...waiting, mode: "full" },
+    { ...waiting, uac: "yes" },
+    { ...waiting, os_session_id: "0" },
+    { ...waiting, answer_by: 1.5 },
+    { ...waiting, answer_by: undefined },
+    { ...waiting, state: "active" },
+    { ...waiting, state: "failed", reason: "<b>" },
+    { ...waiting, state: "granted" },
+  ])
+    assert.equal(readRequest(invalid), null);
+  assert.equal(
+    readRequest(waiting, {
+      id: "5f0a8c1e-2b3d-4e5f-8a9b-0c1d2e3f4a5b",
+      os_session_id: "2",
+    }),
+    null,
+  );
+  assert.equal(readRequest(waiting, { id, os_session_id: "3" }), null);
+  assert.ok(!finished("waiting") && !finished("active"));
+  assert.ok(finished("declined") && finished("ended") && finished("failed"));
 });

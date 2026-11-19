@@ -3327,3 +3327,18 @@ h1[tabindex="-1"]:focus {
 .remote-check .button {
   justify-self: start;
 }
+.remote-request,
+.remote-request-status {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.remote-request {
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+}
+.remote-request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

@@ -95,6 +95,8 @@ mod windows {
         RemoteBroker,
         #[command(hide = true)]
         RemotePrivilegedWorker,
+        #[command(hide = true)]
+        RemoteConsent,
     }
 
     type Prepared = (Config, Option<zeroize::Zeroizing<String>>);
@@ -164,6 +166,7 @@ mod windows {
             Command::RemoteWorker => participant(Participant::Worker),
             Command::RemoteBroker => participant(Participant::Broker),
             Command::RemotePrivilegedWorker => participant(Participant::Privileged),
+            Command::RemoteConsent => participant(Participant::Consent),
             Command::Service => match service::dispatch() {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(error) => report(Err(error.to_string())),

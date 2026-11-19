@@ -92,7 +92,7 @@ startup = subprocess.run(['reg', 'query', run_key, '/v', 'MIDAS Agent'], capture
 assert startup.returncode == 0 and 'midas-tray.exe' in startup.stdout, startup.stdout
 installed = pathlib.Path(os.environ['ProgramFiles']) / 'MIDAS' / 'Agent'
 assert (installed / 'midas-tray.exe').is_file() and (installed / 'midas-agent.exe').is_file()
-for role in ('remote-worker', 'remote-broker', 'remote-privileged-worker'):
+for role in ('remote-worker', 'remote-broker', 'remote-privileged-worker', 'remote-consent'):
     result = subprocess.run([installed / 'midas-agent.exe', role], capture_output=True, timeout=10)
     # 0x22: identity refused; 0x23: no service-provided startup locator. Neither touches a pipe.
     assert result.returncode in (0x22, 0x23) and b'remote transport:' in result.stderr, (role, result)

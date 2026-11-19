@@ -4,20 +4,30 @@
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
-use midas_agent_core::remote::{DesktopKind, Lease, Observation, Presence, transport::Native};
+use midas_agent_core::remote::{
+    Consent, ConsentRequest, DesktopKind, Lease, Observation, Presence, transport::Native,
+};
 use midas_protocol::sessions::{OsSession, Presence as WirePresence};
 use midas_remote_auth::{Error, Mode, Rights, Target};
 
 use super::{
     Peer, STARTUP_TIMEOUT,
-    bootstrap::{start_pair, start_privileged},
+    bootstrap::{start_consent, start_pair, start_privileged},
     broker::SuspendedBroker,
+    denied,
     launch::{RunningWorker, SuspendedWorker, supervise},
     tokens::PreparedToken,
 };
-use crate::win::sessions::Observer;
+use crate::{
+    consent::{Answer, Question, decode_answer},
+    win::sessions::Observer,
+};
+
+/// How long after its deadline the window's own answer may still arrive.
+const ANSWER_GRACE: Duration = Duration::from_secs(2);
 
 type Channel = super::Connection<tokio::net::windows::named_pipe::NamedPipeServer>;
 
@@ -81,6 +91,78 @@ impl Coordinator {
             }
         }
     }
+
+    fn busy(&self) -> bool {
+        self.active
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .is_some_and(|task| !task.is_finished())
+    }
+
+    /// Opens the window as the signed-in user of the target session and waits for its answer.
+    fn ask(
+        &self,
+        request: &ConsentRequest,
+        stopped: &dyn Fn() -> bool,
+    ) -> std::io::Result<Consent> {
+        let answer_by = tokio::time::Instant::now() + request.timeout;
+        // While a session runs, its technician could answer a second window with remote input.
+        if self.busy() {
+            return Ok(Consent::Unavailable);
+        }
+        let Ok(session) = select(request.target, self.observer.collect()) else {
+            return Ok(Consent::Unavailable);
+        };
+        if presence(&session) != Presence::Occupied {
+            return Ok(Consent::Unavailable);
+        }
+        let token = PreparedToken::user(&self.parent, self.observer.clone(), session)?;
+        let window = SuspendedWorker::spawn_consent(&self.parent, token, &self.image)?;
+        self.runtime.block_on(async {
+            let startup = (tokio::time::Instant::now() + STARTUP_TIMEOUT).min(answer_by);
+            let (running, mut connection) = start_consent(&self.parent, window, startup).await?;
+            let seconds = answer_by
+                .saturating_duration_since(tokio::time::Instant::now())
+                .as_secs();
+            if seconds == 0 {
+                return Ok(Consent::Expired);
+            }
+            let question = Question {
+                request: request.request,
+                operator: request.operator_name.clone(),
+                customer: request.customer_name.clone(),
+                administrative: request.rights.mode == Mode::Administrative,
+                uac: request.rights.uac,
+                seconds: seconds as u32,
+            }
+            .encode()
+            .ok_or_else(denied)?;
+            connection.send(&question, answer_by).await?;
+            let revoked = async {
+                while !stopped() {
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
+            };
+            let frame = tokio::select! {
+                frame = connection.receive(answer_by + ANSWER_GRACE) => frame,
+                () = revoked => return Ok(Consent::Cancelled),
+            };
+            drop(running);
+            match frame {
+                Ok(frame) => match decode_answer(&frame) {
+                    Some((id, answer)) if id == request.request => Ok(match answer {
+                        Answer::Allow => Consent::Allowed,
+                        Answer::Decline => Consent::Declined,
+                        Answer::Expired => Consent::Expired,
+                    }),
+                    _ => Err(denied()),
+                },
+                Err(error) if error.kind() == std::io::ErrorKind::TimedOut => Ok(Consent::Expired),
+                Err(error) => Err(error),
+            }
+        })
+    }
 }
 
 /// The session the target names, only while the observer still reports the same generation.
@@ -124,6 +206,15 @@ impl Native for Coordinator {
             desktop: DesktopKind::User,
             desktop_epoch: target.generation,
         })
+    }
+
+    fn consent(&self, request: &ConsentRequest, stopped: &dyn Fn() -> bool) -> Consent {
+        let answer = self.ask(request, stopped).unwrap_or_else(|error| {
+            tracing::warn!(request = %request.request, %error, "local consent could not be asked");
+            Consent::Unavailable
+        });
+        tracing::info!(request = %request.request, ?answer, "local consent answered");
+        answer
     }
 
     fn activate(&self, lease: Lease) -> Result<(), Error> {

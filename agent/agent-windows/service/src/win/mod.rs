@@ -2,6 +2,7 @@
 //! Reviewed Win32 calls. Each unsafe block states why its pointers and handles are valid.
 
 pub mod capture;
+pub mod consent;
 pub mod health;
 pub mod inventory;
 pub mod remote_ipc;

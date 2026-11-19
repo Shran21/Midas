@@ -28,7 +28,11 @@ A szolgáltatás függőségei miatt a `midas-agent.exe` a `shell32.dll`-t és a
 
 Az emelt segéd (`remote-privileged-worker`) a cél munkamenetben futó, külön SYSTEM-tokenpéldánnyal indul. Ez a [munkamenet-tokenek](windows-session-tokens.md) szerint készül, és ehhez nincs külön közvetítő. A `start_privileged` a szolgáltatás saját lekérdezési kezelőjét juttatja át a még felfüggesztett segédbe, és a segéd folyamatához kötött vezérlőcsatornát nyit. A végpont azonosítóját csak SYSTEM által megnyitható, egyszer használható indítási csövön küldi el. A segéd előbb a saját tokenjét ellenőrzi: SYSTEM-e, a megfelelő munkamenetben fut-e, rendszerintegritású-e, és nincs-e UIAccess vagy AppContainer. Ezután a szolgáltatást ellenőrzi: SYSTEM, 0-s munkamenet, azonos telepített program. Csak ezután jelentkezik a csatornán. A szolgáltatás itt egyszerre indító és ellenoldal, ezért az indítási nyugtát és a segéd üdvözlését együtt várja meg. A csatorna lezárásakor a segéd kilép. A Windows CI valódi SYSTEM-segéddel ellenőrzi az utat a konzolmunkamenetben. A közvetlen, szolgáltatás nélküli indítást az MSI-próba utasítja el.
 
-A szolgáltatáskoordinátor, a helyi jóváhagyás és a segédek tényleges műveletei (képernyő- és bevitelkezelés) még hátravannak. A kézi Windows 11/WTS/RDP/UAC-próbák a végső elfogadás részei.
+### Jóváhagyó ablak
+
+A jóváhagyó ablak (`remote-consent`) a normál segéddel azonos felhasználói tokennel és indítási csővel indul, de az emelt segédhez hasonlóan közvetítő nélkül, közvetlenül a szolgáltatáshoz kapcsolódik (`start_consent`). A közvetlen, szolgáltatás nélküli indítást az MSI-próba ugyanúgy elutasítja. A Windows CI elszigetelt SYSTEM-próbája a résztvevő protokollját egy standard felhasználói tokennel futó folyamatban ellenőrzi; ott az ablakot rögzített válasz helyettesíti, ami csak a tesztprogramban létezik.
+
+A segédek tényleges műveletei (képernyő- és bevitelkezelés) még hátravannak. A kézi Windows 11/WTS/RDP/UAC-próbák a végső elfogadás részei.
 
 ## English
 
@@ -58,4 +62,8 @@ Because of the service's dependencies, `midas-agent.exe` delay-loads `shell32.dl
 
 The privileged worker (`remote-privileged-worker`) starts with a separate SYSTEM token copy in the target session. The copy is prepared as described in [session tokens](windows-session-tokens.md#english), and the worker has no companion. `start_privileged` transfers the service's own query handle into the still-suspended worker and opens a control endpoint bound to that worker's process. It sends the endpoint identifier over a single-use, SYSTEM-only startup pipe. The worker first checks its own token: SYSTEM, the right session, system integrity, and no UIAccess or AppContainer. It then checks the service: SYSTEM, session zero and the same installed image. Only then does it greet on the channel. The service is both launcher and counterpart here, so it awaits the startup receipt and the worker's greeting together. When the channel closes, the worker exits. Windows CI exercises this path with a real SYSTEM worker in the console session. The MSI trial refuses direct invocation without the service.
 
-The service coordinator, local consent and the workers' actual operations (capture and input) remain to be integrated. Final acceptance includes manual Windows 11/WTS/RDP/UAC trials.
+### Consent window
+
+The consent window (`remote-consent`) starts with the same user token and startup pipe as the ordinary worker, but like the privileged worker it connects directly to the service, without a companion (`start_consent`). The MSI trial refuses direct invocation without the service in the same way. The isolated SYSTEM trial in Windows CI exercises the participant protocol in a process running with a standard-user token; there a fixed answer, which exists only in the test program, replaces the window.
+
+The workers' actual operations (capture and input) remain to be integrated. Final acceptance includes manual Windows 11/WTS/RDP/UAC trials.

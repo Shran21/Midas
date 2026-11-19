@@ -116,6 +116,18 @@ impl SuspendedWorker {
         Self::spawn_with(broker, token, installed_image, argument)
     }
 
+    /// The consent window runs as the signed-in user of the target session, never as SYSTEM.
+    pub fn spawn_consent(
+        broker: &Peer,
+        token: PreparedToken,
+        installed_image: &Path,
+    ) -> io::Result<Self> {
+        if !matches!(token.kind(), super::Worker::User { .. }) {
+            return Err(denied());
+        }
+        Self::spawn_with(broker, token, installed_image, "remote-consent")
+    }
+
     /// Test fixtures run a child test of the same image in place of the release command.
     #[cfg(test)]
     pub(super) fn spawn_fixture(

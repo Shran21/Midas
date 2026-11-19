@@ -81,6 +81,93 @@ function uuid(value: unknown): value is string {
   );
 }
 
+export type RequestState =
+  | "waiting"
+  | "active"
+  | "declined"
+  | "expired"
+  | "unavailable"
+  | "cancelled"
+  | "ended"
+  | "failed";
+
+export type RemoteRequest = {
+  id: string;
+  mode: "normal" | "administrative";
+  uac: boolean;
+  os_session_id: string;
+  state: RequestState;
+  /** Unix seconds: the local window closes (waiting) or the grant ends (active). */
+  until: number | null;
+  reason: string | null;
+};
+
+/** A local answer longer than this is never shown, whatever the server says. */
+export const CONSENT_LIFETIME = 60_000;
+
+export function finished(state: RequestState) {
+  return state !== "waiting" && state !== "active";
+}
+
+export function readRequest(
+  value: unknown,
+  expected?: { id: string; os_session_id: string },
+): RemoteRequest | null {
+  if (
+    !record(value) ||
+    !uuid(value.id) ||
+    (value.mode !== "normal" && value.mode !== "administrative") ||
+    typeof value.uac !== "boolean" ||
+    typeof value.os_session_id !== "string" ||
+    !/^[1-9]\d{0,9}$/.test(value.os_session_id) ||
+    (expected !== undefined &&
+      (value.id !== expected.id ||
+        value.os_session_id !== expected.os_session_id))
+  )
+    return null;
+  const time = (field: unknown) =>
+    typeof field === "number" && Number.isSafeInteger(field) && field > 0
+      ? field
+      : null;
+  let until: number | null = null;
+  let reason: string | null = null;
+  switch (value.state) {
+    case "waiting":
+      until = time(value.answer_by);
+      if (until === null) return null;
+      break;
+    case "active":
+      until = time(value.until);
+      if (until === null) return null;
+      break;
+    case "failed":
+      if (
+        typeof value.reason !== "string" ||
+        !/^[a-z_]{1,64}$/.test(value.reason)
+      )
+        return null;
+      reason = value.reason;
+      break;
+    case "declined":
+    case "expired":
+    case "unavailable":
+    case "cancelled":
+    case "ended":
+      break;
+    default:
+      return null;
+  }
+  return {
+    id: value.id,
+    mode: value.mode,
+    uac: value.uac,
+    os_session_id: value.os_session_id,
+    state: value.state,
+    until,
+    reason,
+  };
+}
+
 export function readSessions(value: unknown): RemoteSessions | null {
   if (
     !record(value) ||

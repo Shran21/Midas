@@ -466,6 +466,43 @@ export const api = {
       csrf,
       signal,
     }),
+  requestRemote: (
+    tenant: string,
+    device: string,
+    body: {
+      mode: "normal" | "administrative";
+      uac: boolean;
+      session: SessionSelection;
+    },
+    csrf: string,
+    signal: AbortSignal,
+  ) =>
+    request<unknown>(`${devicePath(tenant, device)}/remote-requests`, {
+      method: "POST",
+      body,
+      csrf,
+      signal,
+    }),
+  remoteRequest: (
+    tenant: string,
+    device: string,
+    id: string,
+    signal: AbortSignal,
+  ) =>
+    request<unknown>(
+      `${devicePath(tenant, device)}/remote-requests/${encodeURIComponent(id)}`,
+      { signal },
+    ),
+  cancelRemoteRequest: (
+    tenant: string,
+    device: string,
+    id: string,
+    csrf: string,
+  ) =>
+    request<void>(
+      `${devicePath(tenant, device)}/remote-requests/${encodeURIComponent(id)}`,
+      { method: "DELETE", csrf },
+    ),
   inventory: (tenant: string, device: string) =>
     request<InventoryView>(`${devicePath(tenant, device)}/inventory`),
   policy: (tenant: string, device: string) =>
