@@ -102,6 +102,7 @@ pub struct SuspendedWorker {
     process: Process,
     token: PreparedToken,
     identity: Peer,
+    pub(super) bootstrap_id: Option<uuid::Uuid>,
 }
 
 impl SuspendedWorker {
@@ -118,7 +119,12 @@ impl SuspendedWorker {
         if command.len() > 32_767 {
             return Err(denied());
         }
-        let environment = environment()?;
+        let bootstrap_id =
+            matches!(token.kind(), super::Worker::User { .. }).then(uuid::Uuid::new_v4);
+        let environment = match bootstrap_id {
+            Some(id) => super::bootstrap::delivery::worker_environment(id)?,
+            None => environment()?,
+        };
         let mut desktop = super::super::wide("winsta0\\default");
         let process = Process::create(Some(&mut desktop), |startup, flags, information| {
             // SAFETY: all buffers remain alive; the token is owned, handles are not inherited,
@@ -150,6 +156,7 @@ impl SuspendedWorker {
             process,
             token,
             identity,
+            bootstrap_id,
         })
     }
 
@@ -170,12 +177,14 @@ impl SuspendedWorker {
             process,
             token,
             identity,
+            bootstrap_id,
         } = self;
         let (process, value) = process.transfer_peer(broker)?;
         let worker = Self {
             process,
             token,
             identity,
+            bootstrap_id,
         };
         worker.binding(parent)?;
         Ok((worker, value))

@@ -209,13 +209,13 @@ fn logon(session: u32) -> OwnedHandle {
     token
 }
 
-fn user_process(token: &OwnedHandle, image: &Path) -> Process {
+fn user_process(token: &OwnedHandle, image: &Path, launch_id: uuid::Uuid) -> Process {
     let application = image_path(image).unwrap();
     let mut command = super::super::super::wide(&format!(
         "\"{}\" --exact {USER_CHILD} --ignored",
         image.display()
     ));
-    let environment = environment().unwrap();
+    let environment = super::super::bootstrap::delivery::worker_environment(launch_id).unwrap();
     let mut desktop = [0u16];
     Process::create(Some(&mut desktop), |startup, flags, information| {
         // SAFETY: this CI-only standard-user fixture starts suspended; all buffers outlive creation.
@@ -320,7 +320,19 @@ fn ordinary_bootstrap_child() {
             assert_eq!(before, Token::read(&token).unwrap());
             peer
         });
+        let mut expected_endpoint = [0; 16];
+        pipe.read_exact(&mut expected_endpoint).await.unwrap();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        let delivery = super::super::bootstrap::delivery::receive(&image, deadline)
+            .await
+            .and_then(|received| {
+                received.verify_fixture(
+                    outcome.as_ref().map_err(|_| denied())?,
+                    uuid::Uuid::from_bytes(expected_endpoint),
+                )
+            });
         let message = match &outcome {
+            Ok(_) if delivery.is_err() => format!("metadata delivery failed: {delivery:?}"),
             Ok(_) => "verified".to_owned(),
             Err(error) => error
                 .downcast_ref::<String>()
@@ -414,7 +426,8 @@ fn isolated_system_query_access() {
     let user_token = logon(session);
     let other_logon = logon(session);
     println!("two standard-user logons acquired");
-    let user = user_process(&user_token, &image);
+    let launch_id = uuid::Uuid::new_v4();
+    let user = user_process(&user_token, &image, launch_id);
     println!("suspended user fixture created");
     let role = Token::read(&user_token)
         .unwrap()
@@ -502,7 +515,7 @@ fn isolated_system_query_access() {
     child
         .check_worker(owner.peer().unwrap(), &user_peer)
         .unwrap();
-    let wrong = user_process(&user_token, &image);
+    let wrong = user_process(&user_token, &image, uuid::Uuid::new_v4());
     let wrong_peer = Peer::worker(
         wrong.query_handle().unwrap(),
         &image,
@@ -538,6 +551,11 @@ fn isolated_system_query_access() {
         )
         .unwrap()
     });
+    let endpoint = uuid::Uuid::new_v4();
+    let sender = runtime.block_on(async {
+        super::super::bootstrap::delivery::Sender::bind(launch_id, user_peer.duplicate().unwrap())
+            .unwrap()
+    });
     let user = user.resume().unwrap();
     runtime.block_on(async {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -547,11 +565,19 @@ fn isolated_system_query_access() {
                 .check(super::super::peer_pid(&bootstrap_pipe, true).unwrap())
                 .unwrap();
             bootstrap_pipe.write_u64_le(handle_value).await.unwrap();
-            let length = bootstrap_pipe.read_u32_le().await.unwrap() as usize;
+            bootstrap_pipe.write_all(endpoint.as_bytes()).await.unwrap();
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+            let binding = fixture.binding();
+            let (sent, length) = tokio::join!(
+                sender.send(handle_value, endpoint, &binding, &pinned, deadline),
+                bootstrap_pipe.read_u32_le(),
+            );
+            let length = length.unwrap() as usize;
             assert!(length > 0 && length <= 1024);
             let mut reply = vec![0u8; length];
             bootstrap_pipe.read_exact(&mut reply).await.unwrap();
             assert_eq!(String::from_utf8_lossy(&reply), "verified");
+            sent.expect("system metadata sender");
             user_peer.recheck().unwrap();
         })
         .await

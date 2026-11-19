@@ -14,7 +14,9 @@ Indítás előtt ismét ellenőrizni kell a munkamenetet és a közvetítőt. A 
 
 A helyi tesztek normál folyamatokkal vizsgálják az átadott objektum azonosságát, az eredeti kezelők megőrzését, a hibás bemenetek elutasítását és a sikertelen előkészítés utáni gyermekleállítást. A külön Windows-CI egy ténylegesen futó standard felhasználói segédben ellenőrzi az importálást, a szerepet, az öröklés tiltását és a jogosultságbővítés elutasítását. Ugyanez a próba együtt állítja le a normál segédet és a SYSTEM-közvetítőt.
 
-A számérték és a végpontadatok védett kézbesítése még nincs a termékbe kötve. A CI ehhez külön tesztcsatornát használ, és a WTS-munkamenetjelzést tesztforrás adja. A fogadott számérték önmagában nem hitelesítés vagy távoli műveleti engedély. A terméknek továbbra is védett kezdeti kézbesítésre, kétoldali, rögzített folyamatellenőrzésre, aláírt munkamenetengedélyre és műveletenkénti jogosultságvizsgálatra van szüksége. A végrehajtói belépési pontok, a szolgáltatáskoordinátor és a képernyő-/bevitelkezelés hátravan; új távoli képesség nincs bekapcsolva. A végső Windows 11/WTS/RDP/UAC-próbák továbbra is kötelezők.
+A `Prepared::deliver` egyszer használható helyi csatornát nyit a segéd indítása előtt. A segéd az indítójától kapott azonosítóval keresi meg a csatornát. A megnyitott példányon ellenőrzi a SYSTEM-tulajdonost, a szolgáltatói munkamenetet és a küldő folyamatazonosítóját. A szolgáltatás a kijelölt segéd ellenőrzése után adja át a kezelő értékét és a vezérlőcsatorna UUID-jét. A segéd az ellenőrzött közvetítőhöz köti a végpontot, és visszaigazolja az átvételt. Lejárat, munkamenetvesztés vagy sikertelen átadás esetén az indító leállítja a segédet.
+
+A szolgáltatáskoordinátor, a közvetítő saját kezdeti kapcsolata, a végrehajtói belépési pontok és a képernyő-/bevitelkezelés még hátravan. A kézi Windows 11/WTS/RDP/UAC-próbák a végső elfogadás részei.
 
 ## English
 
@@ -30,4 +32,6 @@ Startup rechecks both the session and companion. Supervise the worker and compan
 
 Local tests use ordinary processes to check transferred-object identity, preservation of original handles, invalid-input refusal and child termination after failed preparation. Separate Windows CI verifies import, role, non-inheritance and denial of access expansion inside an actual running standard-user worker. The same trial stops the ordinary worker and SYSTEM companion together.
 
-Protected delivery of the numeric value and endpoint metadata is not yet integrated into the product. CI uses a separate fixture channel and a test source for WTS session events. A received number is not authentication or a remote execution grant. The product still requires protected bootstrap delivery, mutual pinned-process verification, signed session grants and per-operation authorization. Executor entry points, service coordination and capture/input remain; no new remote capability is enabled. Final Windows 11/WTS/RDP/UAC trials remain mandatory.
+`Prepared::deliver` opens a single-use local pipe before resuming the worker. The worker locates the pipe using the identifier supplied by its launcher. It checks the SYSTEM owner, service session and server PID on the open instance. The service verifies the selected worker before delivering the handle value and the control endpoint UUID. The worker binds the endpoint to the verified companion and acknowledges receipt. Expiry, session loss or delivery failure stops the worker during startup.
+
+The service coordinator, companion-side bootstrap, executor entry points and capture/input remain to be integrated. Final acceptance includes manual Windows 11/WTS/RDP/UAC trials.

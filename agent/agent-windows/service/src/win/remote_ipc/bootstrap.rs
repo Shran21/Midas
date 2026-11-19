@@ -22,6 +22,8 @@ use super::{
 
 pub(super) const QUERY_ACCESS: u32 = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE;
 
+pub mod delivery;
+
 /// Owns the suspended worker and its single query-only companion handle transfer.
 pub struct Prepared {
     worker: SuspendedWorker,
@@ -30,6 +32,29 @@ pub struct Prepared {
 }
 
 impl Prepared {
+    /// Resumes the worker and returns it only after it acknowledges the verified metadata.
+    pub async fn deliver(
+        self,
+        parent: &Peer,
+        endpoint: &str,
+        deadline: tokio::time::Instant,
+    ) -> io::Result<RunningWorker> {
+        let id = self.worker.bootstrap_id.ok_or_else(denied)?;
+        let endpoint = super::endpoint_id(endpoint)?;
+        let binding = self.worker.binding(parent)?;
+        let value = self.handle_value;
+        let sender = delivery::Sender::bind(id, self.worker.peer()?)?;
+        let broker = self.broker.duplicate()?;
+        if tokio::time::Instant::now() >= deadline {
+            return Err(io::ErrorKind::TimedOut.into());
+        }
+        let running = self.resume(parent)?;
+        sender
+            .send(value, endpoint, &binding, &broker, deadline)
+            .await?;
+        Ok(running)
+    }
+
     pub fn new(
         parent: &Peer,
         broker: &SuspendedBroker,

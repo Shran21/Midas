@@ -107,10 +107,7 @@ pub fn connect(name: &str, broker: Peer) -> io::Result<Connection<NamedPipeClien
 }
 
 fn open(name: &str, peer: Peer) -> io::Result<Connection<NamedPipeClient>> {
-    let suffix = name.strip_prefix(PREFIX).ok_or_else(denied)?;
-    if uuid::Uuid::parse_str(suffix).is_err() || suffix.len() != 36 {
-        return Err(denied());
-    }
+    endpoint_id(name)?;
     let pipe = OpenOptions::new()
         .access_mode(CLIENT_ACCESS)
         .custom_flags(FILE_FLAG_OVERLAPPED)
@@ -125,6 +122,14 @@ fn open(name: &str, peer: Peer) -> io::Result<Connection<NamedPipeClient>> {
         peer,
         server: false,
     })
+}
+
+fn endpoint_id(name: &str) -> io::Result<uuid::Uuid> {
+    let suffix = name
+        .strip_prefix(PREFIX)
+        .filter(|s| s.len() == 36)
+        .ok_or_else(denied)?;
+    uuid::Uuid::parse_str(suffix).map_err(|_| denied())
 }
 
 /// Serialized, bounded control frames. Timeout, cancellation or failed verification closes the channel.
