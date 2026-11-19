@@ -348,8 +348,16 @@ async fn privileged_participant(parent: &Peer, session: u32, image: &Path) {
         .into_iter()
         .find(|candidate| candidate.id == session)
         .expect("console session");
-    let token =
-        super::super::tokens::PreparedToken::privileged(parent, observer.clone(), target).unwrap();
+    let described = format!(
+        "session {}, presence {}, locked {:?}, user present {}",
+        target.id,
+        target.presence,
+        target.locked,
+        !target.account.is_empty()
+    );
+    println!("privileged target: {described}");
+    let token = super::super::tokens::PreparedToken::privileged(parent, observer.clone(), target)
+        .unwrap_or_else(|error| panic!("privileged token for {described}: {error}"));
     let worker = super::super::launch::SuspendedWorker::spawn_fixture(
         parent,
         token,

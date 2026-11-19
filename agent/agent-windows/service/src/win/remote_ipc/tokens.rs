@@ -64,32 +64,43 @@ impl PreparedToken {
         observer: Arc<Observer>,
         target: OsSession,
     ) -> io::Result<Self> {
-        let broker_state = broker_token(broker)?;
-        let binding = observer.bind(&target)?;
-        check_target(&target, observer.collect(), false)?;
+        let broker_state = step("check service identity", broker_token(broker))?;
+        let binding = step("bind session", observer.bind(&target))?;
+        step(
+            "check session",
+            check_target(&target, observer.collect(), false),
+        )?;
         let source = if target.presence == Presence::Occupied as i32 {
-            let state = Token::read(&wts_token(target.id)?)?;
-            state.observed_user(target.id)?;
+            let state = step("query session user token", wts_token(target.id))
+                .and_then(|token| Token::read(&token))?;
+            step("check session user", state.observed_user(target.id))?;
             Source::Occupied(state)
         } else {
-            vacant(wts_token(target.id))?;
+            step("confirm vacant session", vacant(wts_token(target.id)))?;
             Source::Vacant
         };
-        let original = current_token(TOKEN_QUERY | TOKEN_DUPLICATE)?;
+        let original = step(
+            "open service token",
+            current_token(TOKEN_QUERY | TOKEN_DUPLICATE),
+        )?;
         if Token::read(&original)? != broker_state {
             return Err(denied());
         }
-        let adjusted = duplicate(&original, LAUNCH_ACCESS | TOKEN_ADJUST_SESSIONID)?;
+        let adjusted = step(
+            "copy service token",
+            duplicate(&original, LAUNCH_ACCESS | TOKEN_ADJUST_SESSIONID),
+        )?;
         // SAFETY: only the newly duplicated primary token is moved to this validated session.
-        check(unsafe {
+        let moved = check(unsafe {
             SetTokenInformation(
                 adjusted.as_raw_handle(),
                 TokenSessionId,
                 ptr::from_ref(&target.id).cast(),
                 size_of::<u32>() as u32,
             )
-        })?;
-        let handle = reduce(&adjusted)?;
+        });
+        step("move token to session", moved)?;
+        let handle = step("narrow token rights", reduce(&adjusted))?;
         let expected = Token::read(&handle)?;
         if !expected.allows(&Role::Worker {
             kind: Worker::Privileged,
@@ -108,7 +119,7 @@ impl PreparedToken {
             binding,
             source,
         };
-        prepared.check(broker)?;
+        step("recheck prepared token", prepared.check(broker))?;
         Ok(prepared)
     }
 
@@ -246,6 +257,11 @@ fn broker_token(broker: &Peer) -> io::Result<Token> {
         return Err(denied());
     }
     Ok(token)
+}
+
+/// Names the failed preparation step; the token and session values themselves are not secrets.
+fn step<T>(name: &str, result: io::Result<T>) -> io::Result<T> {
+    result.map_err(|error| io::Error::new(error.kind(), format!("{name}: {error}")))
 }
 
 fn vacant(result: io::Result<OwnedHandle>) -> io::Result<()> {
