@@ -4,7 +4,7 @@
 
 ## Magyar
 
-A MIDAS-047 eddig megvalósított része a közös felhatalmazási szerződés, az auditált szerveroldali kiadás, az agentoldali ellenőrzés és ezek mTLS-csatornás összekötése. A csatorna külön bekötött, megbízható natív végrehajtót igényel; a Windows- és Linux-szolgáltatás ezt még nem állítja be és nem hirdeti a képességet. A Windows-folyamathoz kötött [helyi vezérlőcsatorna](windows-remote-ipc.md) könyvtára is elkészült. A folyamatok védett indítása, a csatorna bekötése és az éles kép-/bevitelkezelés hátravan. Új távvezérlési HTTP-végpont nem nyílt meg, a webes hozzáférés-ellenőrzés továbbra sem ad végrehajtható engedélyt.
+A MIDAS-047 eddig megvalósított része a közös felhatalmazási szerződés, az auditált szerveroldali kiadás, az agentoldali ellenőrzés és ezek mTLS-csatornás összekötése. A csatorna külön bekötött, megbízható natív végrehajtót igényel. A Windows-szolgáltatás [koordinátora](windows-worker-lifecycle.md) elkészült, de a képességet csak az agent `remote_support` beállításának bekapcsolásakor hirdeti; ez alapból ki van kapcsolva. A Linux-szolgáltatás nem kínálja. A Windows-folyamathoz kötött [helyi vezérlőcsatorna](windows-remote-ipc.md) könyvtára is elkészült. A folyamatok védett indítása, a csatorna bekötése és az éles kép-/bevitelkezelés hátravan. Új távvezérlési HTTP-végpont nem nyílt meg, a webes hozzáférés-ellenőrzés továbbra sem ad végrehajtható engedélyt.
 
 ### Aláírt szerződés
 
@@ -52,13 +52,13 @@ A sorba állított bevitel egyszer használható `InputPermit` példányt kap. V
 
 ### Következő integráció és elfogadás
 
-Még szükséges az aktív munkamenetek teljes koordinátora, a jogosultság- és szabályzatváltozások azonnali továbbítása, az automatikus megújítás minden alkalommal új ellenőrzéssel, a normál segéd, védett transzport és emelt komponens külön Windows-identitása, valamint az elkészült IPC-könyvtár bekötése a védett folyamatindítóba és végrehajtókba. A könyvtár `Worker` és `Observation` értékeit a privilegizált natív komponensnek kell előállítania; ezek nem helyettesítik az operációs rendszerből végzett folyamat-, token- és asztalellenőrzést. A helyi jóváhagyás a MIDAS-048 része.
+Még szükséges a jogosultság- és szabályzatváltozások azonnali továbbítása, az automatikus megújítás minden alkalommal új ellenőrzéssel, valamint a segédek tényleges műveletei (képernyő- és bevitelkezelés). A könyvtár `Worker` és `Observation` értékeit a privilegizált natív komponensnek kell előállítania; ezek nem helyettesítik az operációs rendszerből végzett folyamat-, token- és asztalellenőrzést. A helyi jóváhagyás a MIDAS-048 része.
 
 Valódi mTLS-kapcsolaton, elkülönített adatbázissal és teszt-végrehajtóval ellenőrzött a kézbesítés, a megszakítás, az ütköző kérések és az előkészítés közben változó jogosultság, passkey, szabályzat, tanúsítvány és auditálási hiba. A teszt-végrehajtó nem Windows-folyamatazonosság vagy UAC-próba. Az automatizált próbák az aláírást, adatváltoztatást, cél- és jogcserét, egyszeri felhasználást, késleltetést, lejáratot, visszavonást, foglalt/ismeretlen célt, UAC-szétválasztást, asztalváltást és az adatbázisos kiadás negatív eseteit ellenőrzik. A tényleges SYSTEM/RDP/UAC- és folyamat-elkülönítési próbákat a [végső kézi ellenőrzések](vegso-ellenorzes.md) részeként kell elvégezni. A MIDAS-047 még nem lezárt.
 
 ## English
 
-MIDAS-047 currently implements the shared authorization contract, audited server issuance, agent enforcement and their mTLS-channel integration. The channel requires an explicitly wired trusted native backend; neither the Windows nor Linux service configures one or advertises this capability yet. The process-bound [Windows control IPC library](windows-remote-ipc.md#english) is also implemented. Protected process startup, channel integration and production capture/input integration remain. No remote-control HTTP endpoint has been added; the web access check still provides no executable grant.
+MIDAS-047 currently implements the shared authorization contract, audited server issuance, agent enforcement and their mTLS-channel integration. The channel requires an explicitly wired trusted native backend. The Windows service [coordinator](windows-worker-lifecycle.md#english) is implemented, but it advertises the capability only when the agent setting `remote_support` is on, which is off by default. The Linux service does not offer it. The process-bound [Windows control IPC library](windows-remote-ipc.md#english) is also implemented. Protected process startup, channel integration and production capture/input integration remain. No remote-control HTTP endpoint has been added; the web access check still provides no executable grant.
 
 ### Signed contract
 
@@ -100,6 +100,6 @@ Queued input receives a single-use `InputPermit`. Execution rechecks the lease, 
 
 ### Remaining integration and acceptance
 
-The full active-session coordinator, immediate propagation of permission/policy changes, automatic renewal with fresh checks, separate Windows identities for user worker/protected transport/privileged component, and integration of the IPC library with protected startup and execution remain required. The privileged native component supplies library `Worker` and `Observation` values; these do not replace OS process, token and desktop verification. Actual local consent belongs to MIDAS-048.
+Immediate propagation of permission/policy changes, automatic renewal with fresh checks and the workers' actual operations (capture and input) remain required. The privileged native component supplies library `Worker` and `Observation` values; these do not replace OS process, token and desktop verification. Actual local consent belongs to MIDAS-048.
 
 Real mTLS connections with an isolated database and test backend verify delivery, cancellation, conflicting requests and changes to permissions, passkey freshness, policy, credentials and audit availability during preparation. The test backend does not establish Windows process identity or validate UAC. Automated checks cover signatures, tampering, target/rights substitution, single use, delay, expiry, revocation, occupied/unknown targets, UAC separation, desktop switching and negative database issuance cases. Actual SYSTEM/RDP/UAC and process-isolation trials remain part of [final manual verification](vegso-ellenorzes.md#english). MIDAS-047 is not complete.

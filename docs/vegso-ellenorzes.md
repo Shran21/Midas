@@ -13,6 +13,7 @@ Jelenleg nincs rögzített végső kézi elfogadás. Minden eredményhez kell az
 | MIDAS-018, -019, -020 | Windows 11-es UAC-próba; résztvevős és képernyőolvasós használhatósági próba; a WebRTC-döntés projektgazdai elfogadása. |
 | MIDAS-023, -024 | Windows-szolgáltatás és Linux-csomag telepítési, újraindítási és eltávolítási próbája a vállalt rendszereken. |
 | Windows távsegítés | Valódi szolgáltatás, konzol és több RDP-munkamenet; zárolás, leválasztás, kijelentkezés és felhasználóváltás; helyi jóváhagyás, elutasítás és megszakítás; normál/rendszergazdai mód és UAC secure desktop. A kész funkciókat kell együtt kipróbálni. |
+| Távsegítési koordinátor (MIDAS-041, -047) | Telepített agenten bekapcsolt `remote_support` mellett: üres szerveres munkamenetre kiadott, rendszergazdai vagy UAC-jogú engedély elindítja az emelt segédet a cél munkamenetben; normál módú engedély és foglalt munkamenet elutasítva; visszavonás, lejárat, kapcsolatvesztés és munkamenet-váltás leállítja a segédet; a napló titkot nem tartalmaz. Utána a beállítás visszakapcsolása. |
 | Hálózat és képátvitel | Valós kép és bevitel, adaptív felbontás/bitráta/képfrissítés, hálózati romlás, helyreállás és a támogatott kódolók a végső tesztmátrix szerint. |
 | Tartomány | Elkülönített AD-tesztkörnyezetben felderítés, delegált beléptetés és hibakezelés. Teszttartomány jelenleg nem áll rendelkezésre. |
 | Telepítés és üzemeltetés | A kész frissítési, visszaállítási, jogosultság-visszavonási és vészleállítási folyamatok, továbbá a vállalt független biztonsági felülvizsgálat eredménye. |
@@ -31,6 +32,7 @@ No final manual acceptance is recorded yet. Each result must identify the tested
 | MIDAS-018, -019, -020 | Windows 11 UAC trial; participant and screen-reader usability trial; owner acceptance of the WebRTC decision. |
 | MIDAS-023, -024 | Windows service and Linux package installation, restart and removal trials on the committed systems. |
 | Windows remote support | Actual service, console and multiple RDP sessions; locking, disconnecting, signing out and switching users; local consent, refusal and termination; normal/administrative modes and UAC secure desktop. Test the completed functions together. |
+| Remote support coordinator (MIDAS-041, -047) | On an installed agent with `remote_support` on: a grant with administrative or UAC rights for a vacant server session starts the privileged worker in the target session; a normal-mode grant and an occupied session are refused; revocation, expiry, connection loss and a session change stop the worker; the log contains no secrets. Afterwards, turn the setting off again. |
 | Network and media | Actual video and input, adaptive resolution/bitrate/frame rate, degraded networks, recovery and supported encoders according to the final test matrix. |
 | Directory integration | Discovery, delegated domain join and failure handling in an isolated AD test environment. No test domain is currently available. |
 | Deployment and operations | Completed update, restore, permission revocation and emergency-stop workflows, plus the committed independent security review. |

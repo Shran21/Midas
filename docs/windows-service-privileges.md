@@ -32,7 +32,7 @@ A helyi tesztek a futó tesztfolyamat tokenjének hozzá nem rendelt másolatain
 
 A GitHub Windows-telepítőpróbája a ténylegesen telepített SYSTEM-szolgáltatás sikeres előkészítési és leállítási visszaállítási bejegyzését is megköveteli. Ez nem tesztel WTS-felhasználóváltást vagy UAC-kezelést.
 
-A normál segéd és a közvetítő [hitelesített indítási kapcsolatot](windows-bootstrap-handles.md) létesít. A `remote.grants` képesség meghirdetéséhez még be kell kötni a szolgáltatáskoordinátort, a jóváhagyást és a képernyő-/bevitelkezelést, majd el kell végezni a telepített rendszer próbáit.
+A normál segéd és a közvetítő [hitelesített indítási kapcsolatot](windows-bootstrap-handles.md) létesít. A szolgáltatás a [koordinátort](windows-worker-lifecycle.md) a jogosultságok előkészítése után köti be. A `remote.grants` képességet csak a `remote_support` beállítás bekapcsolásakor hirdeti; ez alapból és az MSI-telepítés után is ki van kapcsolva, amíg a jóváhagyás és a képernyő-/bevitelkezelés be nem kerül, és a telepített rendszer próbái meg nem történnek.
 
 ## English
 
@@ -64,4 +64,4 @@ Local tests use unassigned copies of the test process's token. They exercise act
 
 The GitHub Windows installer trial also requires preparation and shutdown-restoration records from the installed SYSTEM service. This does not exercise WTS user transitions or UAC handling.
 
-The ordinary worker and companion establish an [authenticated startup connection](windows-bootstrap-handles.md#english). Advertising `remote.grants` still requires the service coordinator, consent and capture/input integration, followed by installed-system trials.
+The ordinary worker and companion establish an [authenticated startup connection](windows-bootstrap-handles.md#english). The service wires the [coordinator](windows-worker-lifecycle.md#english) after preparing privileges. It advertises `remote.grants` only when the `remote_support` setting is on; that setting is off by default and after MSI installation until consent and capture/input are integrated and the installed-system trials are done.

@@ -4,6 +4,7 @@ canary token to show the token never reaches the MSI log or a process command li
 Run on CI only (`--install`); a development machine should only build the package.
 """
 import argparse
+import json
 import os
 import pathlib
 import secrets
@@ -70,6 +71,7 @@ assert canary not in decoded and canary[13:] not in decoded, 'the token reached 
 assert str(token_file) in decoded, 'the log should name the token file, which is not secret'
 config = (data / 'config.json').read_text(encoding='utf-8')
 assert '127.0.0.1' in config and canary not in config, 'config written without the token'
+assert json.loads(config).get('remote_support') is False, 'the installer leaves remote support off'
 staged = (data / 'enrollment-token').read_text(encoding='ascii').strip()
 assert staged == canary, 'the token is staged in the protected data directory'
 acl = subprocess.run(['icacls', str(data / 'enrollment-token')], capture_output=True, text=True, check=True).stdout

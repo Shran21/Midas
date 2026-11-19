@@ -365,16 +365,22 @@ pub async fn serve(
         ));
         (shared, schedule)
     });
-    let remote = probes.remote.and_then(|native| {
-        let backend =
-            crate::enrollment::device_identity(&certificate).and_then(|(tenant, device)| {
-                crate::remote::transport::Backend::new(tenant, device, native).ok()
-            });
-        if backend.is_none() {
-            tracing::warn!("remote grants disabled: the agent certificate names no device");
-        }
-        backend
-    });
+    if probes.remote.is_some() && !config.remote_support {
+        tracing::info!("remote grants are off in the agent configuration");
+    }
+    let remote = probes
+        .remote
+        .filter(|_| config.remote_support)
+        .and_then(|native| {
+            let backend =
+                crate::enrollment::device_identity(&certificate).and_then(|(tenant, device)| {
+                    crate::remote::transport::Backend::new(tenant, device, native).ok()
+                });
+            if backend.is_none() {
+                tracing::warn!("remote grants disabled: the agent certificate names no device");
+            }
+            backend
+        });
     let settings = Settings {
         remote,
         sessions: probes.sessions,

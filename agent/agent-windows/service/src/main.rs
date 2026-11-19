@@ -114,6 +114,7 @@ mod windows {
                 .name
                 .or_else(|| std::env::var("COMPUTERNAME").ok())
                 .ok_or("name is required")?,
+            remote_support: false,
         };
         let token = target
             .token_file

@@ -68,6 +68,10 @@ pub struct Config {
     pub server_ca: String,
     pub kind: Kind,
     pub name: String,
+    /// Offers remote grants when the platform has a native backend. Off until consent and
+    /// capture/input are integrated and the installed-system trials are done.
+    #[serde(default)]
+    pub remote_support: bool,
 }
 
 impl Config {
@@ -174,6 +178,7 @@ mod tests {
             server_ca: "-----BEGIN CERTIFICATE-----\nAA==\n-----END CERTIFICATE-----\n".into(),
             kind: Kind::Workstation,
             name: "PC-01".into(),
+            remote_support: false,
         }
     }
 
@@ -202,6 +207,18 @@ mod tests {
         }
         let text = r#"{"server":"m.example","port":1,"enrollment_port":2,"server_ca":"x","kind":"server","name":"n","extra":1}"#;
         assert!(serde_json::from_str::<Config>(text).is_err());
+        let earlier = r#"{"server":"m.example","port":1,"enrollment_port":2,"server_ca":"x","kind":"server","name":"n"}"#;
+        assert!(
+            !serde_json::from_str::<Config>(earlier)
+                .unwrap()
+                .remote_support
+        );
+        let enabled = earlier.replace('}', r#","remote_support":true}"#);
+        assert!(
+            serde_json::from_str::<Config>(&enabled)
+                .unwrap()
+                .remote_support
+        );
     }
 
     #[test]

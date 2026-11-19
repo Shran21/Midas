@@ -36,6 +36,16 @@ A futó segéd megtartja a token előkészítésekor létrejött natív munkamen
 
 A megfigyelő sorosítja a natív adatgyűjtést, hogy egy korábban elkezdett lekérés ne írhasson felül újabb eredményt. A kötés még a cél újbóli ellenőrzése előtt feliratkozik a változásokra. A változatlan megfigyelés megtartja, a már érvénytelen kötést egy későbbi sikeres lekérés sem éleszti újra. A jelenlegi konzervatív szabály az adott gép megfigyelt munkamenetlistájának bármely változására bont; nem vált át automatikusan másik felhasználóra vagy új bejelentkezésre. Az UAC asztalváltásának külön ellenőrzése továbbra is a műveleti végrehajtó feladata.
 
+### Szolgáltatáskoordinátor
+
+A `remote_ipc::coordinator` a Windows-szolgáltatás natív háttere a távoli engedélyekhez. Az `observe` a kért munkamenetet friss WTS-adatból keresi meg. Csak azonos azonosítójú és generációjú munkamenetet fogad el, a foglaltságot pedig ugyanabból az adatból adja, amelyet a szerver is lát. Az elfogadott lease-nél az `activate` újra lekéri a munkamenetet, és kiválasztja a segédet:
+
+- üres munkamenetben nincs felhasználói token, ezért csak az [emelt segéd](windows-bootstrap-handles.md) szolgálhatja ki, és csak rendszergazdai vagy UAC-jogot tartalmazó engedéllyel;
+- foglalt munkamenetben a felhasználó saját normál segéde és SYSTEM-közvetítője indul, de ehhez a helyi jóváhagyás (MIDAS-048) kell, addig a lease elutasítja;
+- ismeretlen állapotú munkamenetet elutasít.
+
+Egyszerre egy támogatási munkamenet futhat. A segédeket a lease végéig felügyeli: visszavonás, csatornavesztés, lejárat, munkamenet-változás vagy bármelyik segéd kilépése az egész csoportot leállítja. Indítási hibánál a segédek leállnak, az engedély nem aktiválódik, és a napló a hiba okát rögzíti, titok nélkül. Az asztalfajtát a koordinátor egyelőre normál asztalnak jelenti; a biztonsági asztal felismerése a képernyő- és bevitelkezeléssel együtt készül. A szolgáltatás a képességet csak a `remote_support` beállítás bekapcsolásakor hirdeti, ez alapból ki van kapcsolva.
+
 ### Ellenőrzés és hátralévő integráció
 
 A tesztek saját jogosultsággal indított valódi Windows-folyamatokkal ellenőrzik a felfüggesztett állapotot, a gyermekindítás tiltását, a kifejezett leállítást, a hibás ismételt indítást és a felügyelő váratlan kilépését. Nem végeznek szolgáltatástelepítést vagy SYSTEM/UAC-próbát.
@@ -44,7 +54,7 @@ A felügyelet próbái lefedik az egyik segéd kilépését követő csoportos l
 
 A munkamenetkötés próbái a jelzéssel egyidejű és késői várakozást, a megváltozott vagy hibás natív adatot, a megfigyelő megszűnését és végleges leállítását is lefedik. Mesterséges munkamenetadatokkal, valódi helyi folyamatokon ellenőrzött, hogy a felügyelet indulása előtt és közben érkező érvénytelenítés a társfolyamatot is leállítja.
 
-A [páros indítás](windows-bootstrap-handles.md) mindkét irányban kezeli a védett kezelőátadást. A szolgáltatásba kötés, az emelt végrehajtó és a jogosultságok műveletenkénti ellenőrzése még hátravan. A normál segéd bemenetét minden művelet előtt ellenőrizni kell. A telepített szolgáltatás és segéd kapcsolata, a natív WTS-tokenválasztás, az RDP, az UAC és a valós asztalváltások a végső kézi próbák részei.
+A [páros indítás](windows-bootstrap-handles.md) mindkét irányban kezeli a védett kezelőátadást. A koordinátor a szolgáltatásba kötve indítja a segédeket; a műveletenkénti jogosultság-ellenőrzés a tényleges képernyő- és bevitelkezeléssel együtt készül. A normál segéd bemenetét minden művelet előtt ellenőrizni kell. A telepített szolgáltatás és segéd kapcsolata, a natív WTS-tokenválasztás, az RDP, az UAC és a valós asztalváltások a végső kézi próbák részei.
 
 ## English
 
@@ -80,6 +90,16 @@ A running worker retains the native session binding created during token prepara
 
 The observer serializes native collection so an earlier query cannot overwrite a newer result. A binding subscribes before rechecking its target. Unchanged observations preserve it; a subsequent successful observation never revives an invalidated binding. The current conservative policy disconnects on any change to the machine's observed session list; it never silently follows another user or new logon. UAC desktop transitions still require separate checks in the operation executor.
 
+### Service coordinator
+
+`remote_ipc::coordinator` is the Windows service's native backend for remote grants. `observe` finds the requested session in fresh WTS data. It accepts only a session with the same ID and generation and reports presence from the same data the server sees. For an accepted lease, `activate` queries the session again and chooses the worker:
+
+- a vacant session has no user token, so only the [privileged worker](windows-bootstrap-handles.md#english) can serve it, and only for a grant with administrative or UAC rights;
+- an occupied session starts the user's own ordinary worker and its SYSTEM companion, but that requires local consent (MIDAS-048), and until then the lease refuses it;
+- a session in an unknown state is refused.
+
+One support session runs at a time. The workers are supervised until the lease ends: revocation, channel loss, expiry, a session change or any worker exiting stops the whole group. On a startup failure the workers stop, the grant is not activated, and the log records the cause without secrets. For now the coordinator reports the ordinary desktop; secure-desktop detection comes with capture and input. The service advertises the capability only when the `remote_support` setting is on, which is off by default.
+
 ### Verification and remaining integration
 
 Tests launch real Windows processes with the test account's privileges to verify suspension, child-process refusal, explicit termination, invalid repeated resumes and owner crashes. They install no service and perform no SYSTEM/UAC trial.
@@ -88,4 +108,4 @@ Supervision tests cover group shutdown after one worker exits, supervisor cancel
 
 Session-binding tests cover concurrent and late waiters, changed or failed native data, observer loss and permanent stop. Using synthetic session data with real local processes, tests verify that invalidation before or during supervision also stops companion workers.
 
-[Paired startup](windows-bootstrap-handles.md#english) handles protected transfer in both directions. Service integration, the elevated executor and per-operation authorization remain. Every operation must validate ordinary-worker input. Final manual trials cover the installed service and worker, native WTS token selection, RDP, UAC and real desktop transitions.
+[Paired startup](windows-bootstrap-handles.md#english) handles protected transfer in both directions. The coordinator starts the workers from the service; per-operation authorization comes with actual capture and input. Every operation must validate ordinary-worker input. Final manual trials cover the installed service and worker, native WTS token selection, RDP, UAC and real desktop transitions.

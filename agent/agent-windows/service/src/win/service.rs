@@ -111,14 +111,17 @@ fn service_main(_arguments: Vec<OsString>) {
         .enable_all()
         .build()
     {
-        Ok(runtime) => runtime.block_on(crate::run_agent(
-            paths,
-            stopped,
-            SessionRule::ActiveConsole,
-            PIPE.into(),
-            Some(probe),
-            None,
-        )),
+        Ok(runtime) => {
+            let remote = coordinator(&broker, observer.clone(), runtime.handle().clone());
+            runtime.block_on(crate::run_agent(
+                paths,
+                stopped,
+                SessionRule::ActiveConsole,
+                PIPE.into(),
+                Some(probe),
+                remote,
+            ))
+        }
         Err(error) => tracing::error!(%error, "runtime could not start"),
     }
     observer.stop();
@@ -130,6 +133,24 @@ fn service_main(_arguments: Vec<OsString>) {
         tracing::info!("service worker privileges restored");
     }
     let _ = control.set_service_status(finished);
+}
+
+/// The native backend for remote grants; without it the service simply does not offer them.
+fn coordinator(
+    broker: &super::remote_ipc::startup::Broker,
+    observer: std::sync::Arc<super::sessions::Observer>,
+    runtime: tokio::runtime::Handle,
+) -> Option<std::sync::Arc<dyn midas_agent_core::remote::transport::Native>> {
+    let coordinator = std::env::current_exe().and_then(|image| {
+        super::remote_ipc::coordinator::Coordinator::new(image, broker.peer()?, observer, runtime)
+    });
+    match coordinator {
+        Ok(coordinator) => Some(std::sync::Arc::new(coordinator)),
+        Err(error) => {
+            tracing::error!(%error, "remote support coordinator unavailable");
+            None
+        }
+    }
 }
 
 /// Restricts the data directory to SYSTEM and Administrators, removing inherited access.
