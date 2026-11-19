@@ -250,8 +250,10 @@ async fn release_participants(parent: &Peer, token: &OwnedHandle, session: u32, 
         let (worker, handle) = worker.transfer_peer(&broker_peer).unwrap();
         let sender = delivery::Sender::bind(id, peer).unwrap();
         let endpoint = uuid::Uuid::new_v4();
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        let started = std::time::Instant::now();
+        let deadline = tokio::time::Instant::now() + super::super::STARTUP_TIMEOUT;
         let listening = broker.listen(endpoint, deadline).await.unwrap();
+        let companion_ready = started.elapsed();
         let worker = RunningWorker::bound(worker.resume().unwrap(), binding.clone()).unwrap();
         let destination = if reachable {
             endpoint
@@ -272,7 +274,15 @@ async fn release_participants(parent: &Peer, token: &OwnedHandle, session: u32, 
             );
             continue;
         }
-        let worker_receipt = result.expect("agent worker must confirm the control connection");
+        let worker_receipt = result.unwrap_or_else(|error| {
+            panic!(
+                "agent worker must confirm the control connection: {error} after {:?} (companion ready after {companion_ready:?}, worker exited: {:?}, companion {})",
+                started.elapsed(),
+                worker.has_exited(),
+                process_state(&broker_process)
+            )
+        });
+        let worker_confirmed = started.elapsed();
         assert!(
             matches!(worker_receipt.connected(deadline).await, Err(e) if e.kind() == io::ErrorKind::PermissionDenied)
         );
@@ -280,6 +290,10 @@ async fn release_participants(parent: &Peer, token: &OwnedHandle, session: u32, 
             .connected()
             .await
             .expect("independent companion confirmation");
+        println!(
+            "release pair: companion ready after {companion_ready:?}, worker confirmed after {worker_confirmed:?}, companion confirmed after {:?}",
+            started.elapsed()
+        );
         assert!(!broker.has_exited().unwrap() && !worker.has_exited().unwrap());
         drop(worker);
         assert_eq!(
@@ -297,6 +311,20 @@ async fn release_participants(parent: &Peer, token: &OwnedHandle, session: u32, 
             code, 0,
             "companion should exit cleanly after worker disconnect"
         );
+    }
+}
+
+fn process_state(process: &OwnedHandle) -> String {
+    let mut code = u32::MAX;
+    // SAFETY: the retained process handle is open and code is writable.
+    if unsafe { GetExitCodeProcess(process.as_raw_handle(), &mut code) } == 0 {
+        return format!("state unknown: {}", io::Error::last_os_error());
+    }
+    // STILL_ACTIVE: the process has not exited.
+    if code == 259 {
+        "still running".into()
+    } else {
+        format!("exited with {code:#x}")
     }
 }
 

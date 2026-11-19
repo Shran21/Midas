@@ -5,7 +5,9 @@ use tokio::{
     time::Instant,
 };
 
-use super::{Connection, IO_TIMEOUT, bootstrap::delivery, denied};
+#[cfg(test)]
+use super::IO_TIMEOUT;
+use super::{Connection, STARTUP_TIMEOUT, bootstrap::delivery, denied};
 
 const WORKER_HELLO: &[u8] = b"worker-ready/1";
 const BROKER_HELLO: &[u8] = b"broker-ready/1";
@@ -23,7 +25,7 @@ impl Participant {
             .enable_time()
             .build()?
             .block_on(async {
-                let deadline = Instant::now() + IO_TIMEOUT;
+                let deadline = Instant::now() + STARTUP_TIMEOUT;
                 match self {
                     Self::Worker => {
                         let connection =

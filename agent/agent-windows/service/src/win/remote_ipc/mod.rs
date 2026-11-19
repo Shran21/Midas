@@ -37,6 +37,9 @@ use identity::Role;
 const PREFIX: &str = r"\\.\pipe\midas-remote-";
 const MAX_FRAME: usize = 65_536;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
+/// A freshly resumed process may need longer than one I/O step to start and connect, for example
+/// while the executable is scanned on its first run.
+pub(in crate::win::remote_ipc) const STARTUP_TIMEOUT: Duration = Duration::from_secs(20);
 const MAGIC: &[u8; 4] = b"MRC1";
 const CLIENT_ACCESS: u32 = FILE_GENERIC_READ | FILE_WRITE_DATA;
 
@@ -93,7 +96,7 @@ impl Listener {
     }
 
     pub async fn accept(self, deadline: Instant) -> io::Result<Connection<NamedPipeServer>> {
-        bounded(deadline, self.pipe.connect()).await?;
+        until(deadline, self.pipe.connect()).await?;
         self.peer.check(peer_pid(&self.pipe, true)?)?;
         Ok(Connection {
             pipe: Some(self.pipe),
@@ -212,6 +215,19 @@ async fn bounded<T>(
         return Err(io::ErrorKind::TimedOut.into());
     }
     timeout_at(deadline.min(now + IO_TIMEOUT), operation)
+        .await
+        .map_err(|_| io::Error::from(io::ErrorKind::TimedOut))?
+}
+
+/// Waits for a peer to arrive until the caller's deadline; established-channel I/O uses `bounded`.
+async fn until<T>(
+    deadline: Instant,
+    operation: impl Future<Output = io::Result<T>>,
+) -> io::Result<T> {
+    if deadline <= Instant::now() {
+        return Err(io::ErrorKind::TimedOut.into());
+    }
+    timeout_at(deadline, operation)
         .await
         .map_err(|_| io::Error::from(io::ErrorKind::TimedOut))?
 }

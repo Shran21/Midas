@@ -132,27 +132,34 @@ impl Sender {
             self.peer.check(ipc::peer_pid(pipe, true)?)
         };
         let (magic, acknowledgement) = self.recipient.markers();
+        let mut phase = "startup connection";
         let exchange = async {
-            self.pipe.connect().await?;
+            ipc::until(deadline, self.pipe.connect()).await?;
             check(&self.pipe)?;
             let mut message = [0; 28];
             message[..4].copy_from_slice(magic);
             message[4..12].copy_from_slice(&handle.to_le_bytes());
             message[12..].copy_from_slice(endpoint.as_bytes());
-            self.pipe.write_all(&message).await?;
+            phase = "startup record";
+            ipc::bounded(deadline, self.pipe.write_all(&message)).await?;
+            phase = "startup receipt";
             let mut ack = [0; 4];
-            self.pipe.read_exact(&mut ack).await?;
+            ipc::bounded(deadline, self.pipe.read_exact(&mut ack)).await?;
             if &ack != acknowledgement {
                 return Err(denied());
             }
             check(&self.pipe)?;
-            self.pipe.write_all(b"OK").await
+            ipc::bounded(deadline, self.pipe.write_all(b"OK")).await
         };
-        tokio::select! {
+        let result = tokio::select! {
             biased;
             _ = binding.ended() => Err(denied()),
-            result = ipc::bounded(deadline, exchange) => result,
-        }?;
+            result = exchange => result,
+        };
+        result.map_err(|error| match error.kind() {
+            io::ErrorKind::TimedOut => io::Error::new(error.kind(), format!("timed out: {phase}")),
+            _ => error,
+        })?;
         Ok(Sent {
             pipe: self.pipe,
             peer: self.peer,
