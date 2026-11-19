@@ -11,9 +11,10 @@ use windows_sys::Win32::{
         JobObjects::IsProcessInJob,
         RemoteDesktop::WTSGetActiveConsoleSessionId,
         Threading::{
-            GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_CREATE_PROCESS,
-            PROCESS_DUP_HANDLE, PROCESS_QUERY_INFORMATION, PROCESS_TERMINATE, PROCESS_VM_OPERATION,
-            PROCESS_VM_READ, PROCESS_VM_WRITE, WaitForSingleObject,
+            GetCurrentProcess, GetExitCodeProcess, OpenProcess, OpenProcessToken,
+            PROCESS_CREATE_PROCESS, PROCESS_DUP_HANDLE, PROCESS_QUERY_INFORMATION,
+            PROCESS_TERMINATE, PROCESS_VM_OPERATION, PROCESS_VM_READ, PROCESS_VM_WRITE,
+            WaitForSingleObject,
         },
     },
 };
@@ -129,13 +130,14 @@ fn token_acl_update_is_scoped_read_back_and_requires_write_dac() {
 async fn companion_child() {
     let image = std::env::current_exe().unwrap();
     let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
-    let listener = delivery::receive_listener(&image, deadline).await.unwrap();
+    let (listener, launcher) = delivery::receive_companion(&image, deadline).await.unwrap();
     let mut connection = listener.accept(deadline).await.unwrap();
     assert_eq!(
         &*connection.receive(deadline).await.unwrap(),
         b"worker ready"
     );
     connection.send(b"companion ready", deadline).await.unwrap();
+    launcher.connected(deadline).await.unwrap();
     tokio::time::sleep(Duration::from_secs(60)).await;
 }
 
@@ -192,12 +194,14 @@ fn logon(session: u32) -> OwnedHandle {
     token
 }
 
-fn user_process(token: &OwnedHandle, image: &Path, launch_id: uuid::Uuid) -> Process {
+fn user_process(
+    token: &OwnedHandle,
+    image: &Path,
+    launch_id: uuid::Uuid,
+    arguments: &str,
+) -> Process {
     let application = image_path(image).unwrap();
-    let mut command = super::super::super::wide(&format!(
-        "\"{}\" --exact {USER_CHILD} --ignored",
-        image.display()
-    ));
+    let mut command = super::super::super::wide(&format!("\"{}\" {arguments}", image.display()));
     let environment = super::super::bootstrap::delivery::worker_environment(launch_id).unwrap();
     let mut desktop = [0u16];
     Process::create(Some(&mut desktop), |startup, flags, information| {
@@ -223,6 +227,77 @@ fn user_process(token: &OwnedHandle, image: &Path, launch_id: uuid::Uuid) -> Pro
 
 fn bootstrap_name(pid: u32) -> String {
     format!(r"\\.\pipe\midas-test-bootstrap-{pid}")
+}
+
+async fn release_participants(parent: &Peer, token: &OwnedHandle, session: u32, image: &Path) {
+    for reachable in [false, true] {
+        let id = uuid::Uuid::new_v4();
+        let worker = user_process(token, image, id, "remote-worker");
+        let role = Token::read(token).unwrap().user_worker(session).unwrap();
+        let peer = Peer::worker(worker.query_handle().unwrap(), image, role, session).unwrap();
+        let fixture = Fixture::new();
+        let binding = fixture.binding();
+        let broker = SuspendedBroker::create(
+            parent,
+            peer.duplicate().unwrap(),
+            binding.clone(),
+            image,
+            "remote-broker",
+        )
+        .unwrap();
+        let broker_process = broker.process.query_handle().unwrap();
+        let broker_peer = broker.peer().unwrap();
+        let (worker, handle) = worker.transfer_peer(&broker_peer).unwrap();
+        let sender = delivery::Sender::bind(id, peer).unwrap();
+        let endpoint = uuid::Uuid::new_v4();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        let listening = broker.listen(endpoint, deadline).await.unwrap();
+        let worker = RunningWorker::bound(worker.resume().unwrap(), binding.clone()).unwrap();
+        let destination = if reachable {
+            endpoint
+        } else {
+            uuid::Uuid::new_v4()
+        };
+        let result = sender
+            .send(handle, destination, &binding, &broker_peer, deadline)
+            .await;
+        if !reachable {
+            assert!(
+                result.is_err(),
+                "worker confirmed an unavailable control endpoint"
+            );
+            assert!(
+                listening.connected().await.is_err(),
+                "broker confirmed a missing worker"
+            );
+            continue;
+        }
+        let worker_receipt = result.expect("agent worker must confirm the control connection");
+        assert!(
+            matches!(worker_receipt.connected(deadline).await, Err(e) if e.kind() == io::ErrorKind::PermissionDenied)
+        );
+        let broker = listening
+            .connected()
+            .await
+            .expect("independent companion confirmation");
+        assert!(!broker.has_exited().unwrap() && !worker.has_exited().unwrap());
+        drop(worker);
+        assert_eq!(
+            // SAFETY: bounded wait on the retained CI companion while its own job is still open.
+            unsafe { WaitForSingleObject(broker_process.as_raw_handle(), 5000) },
+            WAIT_OBJECT_0
+        );
+        let mut code = u32::MAX;
+        assert_ne!(
+            // SAFETY: the retained handle belongs to the exited companion and code is writable.
+            unsafe { GetExitCodeProcess(broker_process.as_raw_handle(), &mut code) },
+            0
+        );
+        assert_eq!(
+            code, 0,
+            "companion should exit cleanly after worker disconnect"
+        );
+    }
 }
 
 #[test]
@@ -416,7 +491,8 @@ fn isolated_system_query_access() {
     let other_logon = logon(session);
     println!("two standard-user logons acquired");
     let launch_id = uuid::Uuid::new_v4();
-    let user = user_process(&user_token, &image, launch_id);
+    let user_args = format!("--exact {USER_CHILD} --ignored");
+    let user = user_process(&user_token, &image, launch_id, &user_args);
     println!("suspended user fixture created");
     let role = Token::read(&user_token)
         .unwrap()
@@ -504,7 +580,7 @@ fn isolated_system_query_access() {
     child
         .check_worker(owner.peer().unwrap(), &user_peer)
         .unwrap();
-    let wrong = user_process(&user_token, &image, uuid::Uuid::new_v4());
+    let wrong = user_process(&user_token, &image, uuid::Uuid::new_v4(), &user_args);
     let wrong_peer = Peer::worker(
         wrong.query_handle().unwrap(),
         &image,
@@ -569,7 +645,7 @@ fn isolated_system_query_access() {
         super::super::bootstrap::delivery::Sender::bind(launch_id, user_peer.duplicate().unwrap())
             .unwrap()
     });
-    let running = runtime
+    let listening = runtime
         .block_on(async {
             child
                 .listen(
@@ -610,6 +686,7 @@ fn isolated_system_query_access() {
         "ordinary worker imported the query-only companion handle without elevation or inheritance"
     );
     println!("paired worker and companion exchanged authenticated control frames");
+    let running = runtime.block_on(listening.connected()).unwrap();
     assert!(!running.has_exited().unwrap());
     let stale_fixture = Fixture::new();
     let role = Token::read(&user_token)
@@ -650,6 +727,15 @@ fn isolated_system_query_access() {
         );
     }
     drop(bootstrap_pipe);
+    runtime.block_on(release_participants(
+        owner.peer().unwrap(),
+        &user_token,
+        session,
+        &image.with_file_name("midas-agent.exe"),
+    ));
+    println!(
+        "release agent pair confirmed readiness, refused a missing endpoint and stopped on disconnect"
+    );
     owner.finish().unwrap();
     println!(
         "SYSTEM companion: selected logon can query; mutation, other logon and stale binding refused"

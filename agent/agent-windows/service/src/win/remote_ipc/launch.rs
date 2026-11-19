@@ -114,13 +114,15 @@ impl SuspendedWorker {
         let directory = image_path(installed_image.parent().ok_or_else(denied)?)?;
         let mut command = vec![b'"' as u16];
         command.extend_from_slice(&application[..application.len() - 1]);
-        command.extend("\" remote-worker".encode_utf16());
+        let (argument, bootstrap_id) = match token.kind() {
+            super::Worker::User { .. } => ("remote-worker", Some(uuid::Uuid::new_v4())),
+            super::Worker::Privileged => ("remote-privileged-worker", None),
+        };
+        command.extend(format!("\" {argument}").encode_utf16());
         command.push(0);
         if command.len() > 32_767 {
             return Err(denied());
         }
-        let bootstrap_id =
-            matches!(token.kind(), super::Worker::User { .. }).then(uuid::Uuid::new_v4);
         let environment = match bootstrap_id {
             Some(id) => super::bootstrap::delivery::worker_environment(id)?,
             None => environment()?,

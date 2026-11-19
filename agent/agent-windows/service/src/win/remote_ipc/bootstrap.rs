@@ -33,8 +33,9 @@ pub async fn start_pair(
 ) -> io::Result<[RunningWorker; 2]> {
     let worker = Prepared::new(parent, &broker, worker)?;
     let endpoint = uuid::Uuid::new_v4();
-    let running_broker = broker.listen(endpoint, deadline).await?;
+    let listening = broker.listen(endpoint, deadline).await?;
     let running_worker = worker.deliver_to(parent, endpoint, deadline).await?;
+    let running_broker = listening.connected().await?;
     Ok([running_broker, running_worker])
 }
 

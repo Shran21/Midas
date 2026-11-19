@@ -24,7 +24,7 @@ Az elkülönített Windows-CI külön SYSTEM-próbát futtat egy ideiglenes stan
 
 A CI tesztgazdája [WMI-indítással](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/create-method-in-class-win32-process) kilép az indító feladat munkamenethez kötött csoportjából, és ezt natív lekérdezéssel igazolja. Ez csak a tesztgazdára vonatkozik; a termék minden segédje megtartja a saját, létrehozáskor hozzárendelt folyamatcsoportját és annak kilépési tilalmát.
 
-A [páros indítás](windows-bootstrap-handles.md) mindkét folyamatnak átadja a másik lekérdezési kezelőjét. A közvetítő felkészíti a vezérlőcsatornát a kijelölt segéd fogadására. A távvezérléshez a végrehajtói belépési pontokat, a szolgáltatáskoordinátort és a képernyő-/bevitelkezelést is be kell kötni. Az aláírókulcs és a védett asztalhoz szükséges felhatalmazás a normál segéd hatáskörén kívül marad.
+A [páros indítás](windows-bootstrap-handles.md) mindkét folyamatnak átadja a másik lekérdezési kezelőjét. A közvetítő fogadja a kijelölt segédet, majd a saját csatornáján igazolja a kapcsolat létrejöttét a szolgáltatásnak. A távvezérléshez az emelt végrehajtót, a szolgáltatáskoordinátort és a képernyő-/bevitelkezelést is be kell kötni. Az aláírókulcs és a védett asztalhoz szükséges felhatalmazás a normál segéd hatáskörén kívül marad.
 
 ## English
 
@@ -48,4 +48,4 @@ Isolated Windows CI runs a SYSTEM trial with two real logons of one temporary st
 
 The CI host uses [WMI creation](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/create-method-in-class-win32-process) to leave its launcher's session-bound job and verifies this natively. This applies only to the test host; every product worker retains its own at-creation job and prohibition on breakaway.
 
-[Paired startup](windows-bootstrap-handles.md#english) transfers a query handle for the other process to each participant. The companion binds the control pipe for its selected worker. Remote control still requires executor entry points, service coordination and capture/input. Signing keys and authority over the secure desktop remain outside the ordinary worker.
+[Paired startup](windows-bootstrap-handles.md#english) transfers a query handle for the other process to each participant. The companion accepts its assigned worker and confirms the connection to the service on its own pipe. Remote control still requires the elevated executor, service coordination and capture/input. Signing keys and authority over the secure desktop remain outside the ordinary worker.

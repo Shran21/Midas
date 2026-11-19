@@ -32,6 +32,7 @@ use crate::win::{self, sessions::Binding};
 
 const MAGIC: &[u8; 4] = b"MBT1";
 const ACK: &[u8; 4] = b"MBA1";
+const CONNECTED: &[u8; 4] = b"MBC1";
 
 #[derive(Clone, Copy)]
 enum Recipient {
@@ -124,7 +125,7 @@ impl Sender {
         binding: &Binding,
         counterpart: &Peer,
         deadline: Instant,
-    ) -> io::Result<()> {
+    ) -> io::Result<Sent> {
         let check = |pipe: &NamedPipeServer| {
             binding.check()?;
             counterpart.recheck()?;
@@ -151,7 +152,35 @@ impl Sender {
             biased;
             _ = binding.ended() => Err(denied()),
             result = ipc::bounded(deadline, exchange) => result,
+        }?;
+        Ok(Sent {
+            pipe: self.pipe,
+            peer: self.peer,
+        })
+    }
+}
+
+pub(in crate::win::remote_ipc) struct Sent {
+    pipe: NamedPipeServer,
+    peer: Peer,
+}
+
+impl Sent {
+    pub(in crate::win::remote_ipc) async fn connected(
+        mut self,
+        deadline: Instant,
+    ) -> io::Result<()> {
+        if self.peer.role != Role::Broker {
+            return Err(denied());
         }
+        self.peer.check(ipc::peer_pid(&self.pipe, true)?)?;
+        let mut reply = [0u8; 4];
+        ipc::bounded(deadline, self.pipe.read_exact(&mut reply)).await?;
+        if &reply != CONNECTED {
+            return Err(denied());
+        }
+        self.peer.check(ipc::peer_pid(&self.pipe, true)?)?;
+        ipc::bounded(deadline, self.pipe.write_all(b"OK")).await
     }
 }
 
@@ -168,15 +197,28 @@ impl Destination {
 
 /// Reads the locator from the service-created worker environment.
 pub async fn receive(installed_image: &Path, deadline: Instant) -> io::Result<Destination> {
+    receive_worker(installed_image, deadline, async |destination| {
+        Ok(destination)
+    })
+    .await
+}
+
+pub(in crate::win::remote_ipc) async fn receive_worker<T>(
+    installed_image: &Path,
+    deadline: Instant,
+    ready: impl AsyncFnOnce(Destination) -> io::Result<T>,
+) -> io::Result<T> {
     no_impersonation()?;
     Token::read(&current_token(TOKEN_QUERY)?)?.user_worker(win::current_session()?)?;
-    receive_record(Recipient::Worker, deadline, |handle, endpoint| {
-        Ok(Destination {
+    receive_record(Recipient::Worker, deadline, async |handle, endpoint| {
+        ready(Destination {
             broker: import_broker(handle, installed_image)?,
             endpoint,
         })
+        .await
     })
     .await
+    .map(|(worker, _)| worker)
 }
 
 /// Confirms readiness only after the companion has bound the ordinary worker's control pipe.
@@ -184,20 +226,53 @@ pub async fn receive_listener(
     installed_image: &Path,
     deadline: Instant,
 ) -> io::Result<ipc::Listener> {
+    receive_companion(installed_image, deadline)
+        .await
+        .map(|(listener, _)| listener)
+}
+
+pub(in crate::win::remote_ipc) async fn receive_companion(
+    installed_image: &Path,
+    deadline: Instant,
+) -> io::Result<(ipc::Listener, Launcher)> {
     no_impersonation()?;
     let broker = Peer::broker(current_process()?, installed_image)?;
-    receive_record(Recipient::Broker, deadline, |handle, endpoint| {
+    receive_record(Recipient::Broker, deadline, async |handle, endpoint| {
         let worker = Peer::ordinary(import_process(handle)?, installed_image)?;
         ipc::Listener::bind_at(&broker, worker, endpoint)
     })
     .await
 }
 
+pub(in crate::win::remote_ipc) struct Launcher {
+    pipe: NamedPipeClient,
+    pid: u32,
+}
+
+impl Launcher {
+    pub(in crate::win::remote_ipc) async fn connected(
+        mut self,
+        deadline: Instant,
+    ) -> io::Result<()> {
+        verify_sender(&self.pipe, self.pid)?;
+        ipc::bounded(deadline, async {
+            self.pipe.write_all(CONNECTED).await?;
+            let mut accepted = [0; 2];
+            self.pipe.read_exact(&mut accepted).await?;
+            if &accepted != b"OK" {
+                return Err(denied());
+            }
+            Ok(())
+        })
+        .await
+    }
+}
+
 async fn receive_record<T>(
     recipient: Recipient,
     deadline: Instant,
-    prepare: impl FnOnce(u64, Uuid) -> io::Result<T>,
-) -> io::Result<T> {
+    prepare: impl AsyncFnOnce(u64, Uuid) -> io::Result<T>,
+) -> io::Result<(T, Launcher)> {
     let (magic, acknowledgement) = recipient.markers();
     let locator = std::env::var(recipient.env()).map_err(|_| denied())?;
     let (pid, id) = locator.split_once(':').ok_or_else(denied)?;
@@ -218,7 +293,7 @@ async fn receive_record<T>(
         }
         let handle = u64::from_le_bytes(message[4..12].try_into().map_err(|_| denied())?);
         let endpoint = Uuid::from_slice(&message[12..]).map_err(|_| denied())?;
-        let result = prepare(handle, endpoint)?;
+        let result = prepare(handle, endpoint).await?;
         verify_sender(&pipe, launcher)?;
         pipe.write_all(acknowledgement).await?;
         let mut confirmed = [0; 2];
@@ -226,7 +301,13 @@ async fn receive_record<T>(
         if &confirmed != b"OK" {
             return Err(denied());
         }
-        Ok(result)
+        Ok((
+            result,
+            Launcher {
+                pipe,
+                pid: launcher,
+            },
+        ))
     })
     .await
 }
@@ -352,7 +433,7 @@ mod tests {
                     .unwrap();
             }
         );
-        assert_eq!(sent.unwrap_err().kind(), io::ErrorKind::PermissionDenied);
+        assert!(matches!(sent, Err(e) if e.kind() == io::ErrorKind::PermissionDenied));
     }
 
     #[tokio::test]
@@ -386,6 +467,6 @@ mod tests {
                 );
             }
         );
-        assert_eq!(result.unwrap_err().kind(), io::ErrorKind::PermissionDenied);
+        assert!(matches!(result, Err(e) if e.kind() == io::ErrorKind::PermissionDenied));
     }
 }

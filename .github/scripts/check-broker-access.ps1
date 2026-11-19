@@ -8,6 +8,8 @@ $binary = @($artifacts | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object
     $_.reason -eq 'compiler-artifact' -and $_.profile.test -and $_.target.name -eq 'midas_agent_windows'
 })
 if ($binary.Count -ne 1 -or -not $binary[0].executable) { throw 'Ambiguous Windows test fixture.' }
+$releaseAgent = Join-Path $PSScriptRoot '..\..\target\release\midas-agent.exe'
+if (-not (Test-Path -LiteralPath $releaseAgent -PathType Leaf)) { throw 'Missing agent release binary.' }
 $taskName = 'MIDAS-BrokerTrial-' + [guid]::NewGuid().ToString('N')
 $trialRoot = Join-Path $env:ProgramFiles $taskName
 if (Test-Path -LiteralPath $trialRoot) { throw 'Trial directory already exists.' }
@@ -26,12 +28,14 @@ $registered = $false
 $systemHost = $null
 try {
     Copy-Item -LiteralPath $binary[0].executable -Destination (Join-Path $resolvedRoot 'trial.exe')
+    Copy-Item -LiteralPath $releaseAgent -Destination (Join-Path $resolvedRoot 'midas-agent.exe')
     $fileAcl = [Security.AccessControl.FileSecurity]::new()
     $fileAcl.SetAccessRuleProtection($true, $false)
     foreach ($entry in @(@('S-1-5-18', 'FullControl'), @('S-1-5-32-544', 'FullControl'), @('S-1-5-32-545', 'ReadAndExecute'))) {
         $fileAcl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new($entry[0]), $entry[1], 'Allow'))
     }
     Set-Acl -LiteralPath (Join-Path $resolvedRoot 'trial.exe') -AclObject $fileAcl
+    Set-Acl -LiteralPath (Join-Path $resolvedRoot 'midas-agent.exe') -AclObject $fileAcl
     $scriptPath = Join-Path $resolvedRoot 'run.ps1'
     @'
 $ErrorActionPreference = 'Stop'

@@ -65,9 +65,6 @@ jobs:
         run: just lint
       - name: Test
         run: just test
-      - name: Isolated SYSTEM broker access (Windows)
-        if: runner.os == 'Windows'
-        run: .github/scripts/check-broker-access.ps1
       - name: Install test database (Windows)
         if: runner.os == 'Windows'
         run: python .github/scripts/install-postgres.py
@@ -81,6 +78,9 @@ jobs:
         run: just test-database
       - name: Build
         run: just release
+      - name: Isolated SYSTEM broker access (Windows)
+        if: runner.os == 'Windows'
+        run: .github/scripts/check-broker-access.ps1
       - name: Agent installer (Windows)
         if: runner.os == 'Windows'
         run: python .github/scripts/check-msi.py --install

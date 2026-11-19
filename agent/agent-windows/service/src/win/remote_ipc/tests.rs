@@ -11,7 +11,7 @@ fn deadline() -> Instant {
     Instant::now() + Duration::from_secs(5)
 }
 
-async fn pair() -> (Connection<NamedPipeServer>, Connection<NamedPipeClient>) {
+pub(super) async fn pair() -> (Connection<NamedPipeServer>, Connection<NamedPipeClient>) {
     let listener = Listener::create(local(), uuid::Uuid::new_v4()).unwrap();
     let client = open(listener.name(), local()).unwrap();
     (listener.accept(deadline()).await.unwrap(), client)

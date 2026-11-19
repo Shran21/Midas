@@ -12,7 +12,7 @@ A hívónak a saját, korábban ellenőrzött SYSTEM-közvetítőjét, egy [munk
 
 A token ugyanazokon a szerepellenőrzéseken megy át, mint az [IPC azonossága](windows-remote-ipc.md): normál segédnél pontos felhasználó, bejelentkezés és munkamenet, közepes integritás, emelés és UIAccess nélkül; privilegizált segédnél SYSTEM és a kiválasztott munkamenet. Az előkészítő WTS-ből kéri le a felhasználói tokent, szükség esetén kiválasztja a megfelelő kapcsolt korlátozott tokent, illetve külön SYSTEM-másolatot készít a privilegizált szerephez.
 
-Az indítás teljes helyi útvonalat, rögzített `remote-worker` argumentumot, a telepítési könyvtárat és a `winsta0\default` asztalt használja. Az indító külön környezetet állít össze a Windows rendszerkönyvtára alapján (`PATH`, `SystemRoot`, `WINDIR`). A normál segéd megkapja a saját egyszer használható indítási csatornájának azonosítóját is. A folyamat örökölt kezelők nélkül indul, a meglévő asztaljogosultságokkal.
+Az indítás teljes helyi útvonalat, a telepítési könyvtárat és a `winsta0\default` asztalt használja. A normál segéd rögzített argumentuma `remote-worker`. Az emelt segédhez a `remote-privileged-worker` név van fenntartva, a végrehajtója még fejlesztendő. Az indító külön környezetet állít össze a Windows rendszerkönyvtára alapján (`PATH`, `SystemRoot`, `WINDIR`). A normál segéd megkapja a saját egyszer használható indítási csatornájának azonosítóját is. A folyamat örökölt kezelők nélkül indul, a meglévő asztaljogosultságokkal.
 
 A létrejött folyamat felfüggesztve marad, amíg a tényleges program, token, szerep és munkamenet ellenőrzése sikerül. Az ellenőrzés az elindítás előtt és után is megtörténik. A közvetítő és az átadott token indítás közbeni változása elutasítást okoz. A [CreateProcessAsUserW](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessasuserw) ideiglenesen módosíthatja a hívó privilégiumait; a szolgáltatásnak ezért a szükséges induló jogosultságokat a közvetítő rögzítése előtt kell rendeznie. A könyvtár nem követi automatikusan a megváltozott tokent.
 
@@ -44,7 +44,7 @@ A felügyelet próbái lefedik az egyik segéd kilépését követő csoportos l
 
 A munkamenetkötés próbái a jelzéssel egyidejű és késői várakozást, a megváltozott vagy hibás natív adatot, a megfigyelő megszűnését és végleges leállítását is lefedik. Mesterséges munkamenetadatokkal, valódi helyi folyamatokon ellenőrzött, hogy a felügyelet indulása előtt és közben érkező érvénytelenítés a társfolyamatot is leállítja.
 
-A [páros indítás](windows-bootstrap-handles.md) mindkét irányban kezeli a védett kezelőátadást. A szolgáltatásba kötés, a végrehajtók belépési pontjai és a jogosultságok műveletenkénti ellenőrzése még hátravan. A normál segéd bemenetét minden művelet előtt ellenőrizni kell. A telepített szolgáltatás és segéd kapcsolata, a natív WTS-tokenválasztás, az RDP, az UAC és a valós asztalváltások a végső kézi próbák részei.
+A [páros indítás](windows-bootstrap-handles.md) mindkét irányban kezeli a védett kezelőátadást. A szolgáltatásba kötés, az emelt végrehajtó és a jogosultságok műveletenkénti ellenőrzése még hátravan. A normál segéd bemenetét minden művelet előtt ellenőrizni kell. A telepített szolgáltatás és segéd kapcsolata, a natív WTS-tokenválasztás, az RDP, az UAC és a valós asztalváltások a végső kézi próbák részei.
 
 ## English
 
@@ -56,7 +56,7 @@ The caller supplies its previously verified SYSTEM broker, a [session-bound Prep
 
 Tokens use the same role checks as [IPC identity](windows-remote-ipc.md#english): an ordinary worker must match the exact user, logon and session, with medium integrity, no elevation and no UIAccess; a privileged worker requires SYSTEM in the selected session. Preparation acquires the user token through WTS, selects the appropriate linked limited token when needed, or creates a separate SYSTEM copy for the privileged role.
 
-Creation uses an explicit local image, the fixed `remote-worker` argument, the installation directory and `winsta0\default`. The launcher builds a fresh environment with `PATH`, `SystemRoot` and `WINDIR` derived from the Windows system directory. An ordinary worker also receives its single-use startup pipe locator. The child starts without inherited handles and uses existing desktop permissions.
+Creation uses an explicit local image, the installation directory and `winsta0\default`. Ordinary workers use the fixed `remote-worker` argument. The launcher reserves `remote-privileged-worker` for the pending elevated executor. The launcher builds a fresh environment with `PATH`, `SystemRoot` and `WINDIR` derived from the Windows system directory. An ordinary worker also receives its single-use startup pipe locator. The child starts without inherited handles and uses existing desktop permissions.
 
 The new process remains suspended until its actual image, token, role and session pass verification. Identity is checked again before and after resuming. Changes to the broker or supplied token during creation cause rejection. [CreateProcessAsUserW](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessasuserw) can temporarily change the caller's privileges, so the service must establish required startup privileges before pinning the broker. The library never silently follows a changed token.
 
@@ -88,4 +88,4 @@ Supervision tests cover group shutdown after one worker exits, supervisor cancel
 
 Session-binding tests cover concurrent and late waiters, changed or failed native data, observer loss and permanent stop. Using synthetic session data with real local processes, tests verify that invalidation before or during supervision also stops companion workers.
 
-[Paired startup](windows-bootstrap-handles.md#english) handles protected transfer in both directions. Service integration, executor entry points and per-operation authorization remain. Every operation must validate ordinary-worker input. Final manual trials cover the installed service and worker, native WTS token selection, RDP, UAC and real desktop transitions.
+[Paired startup](windows-bootstrap-handles.md#english) handles protected transfer in both directions. Service integration, the elevated executor and per-operation authorization remain. Every operation must validate ordinary-worker input. Final manual trials cover the installed service and worker, native WTS token selection, RDP, UAC and real desktop transitions.

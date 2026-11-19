@@ -18,7 +18,9 @@ A `Prepared::deliver` egyszer használható helyi csatornát nyit a segéd indí
 
 A `start_pair` elsőként a közvetítőt indítja el. A közvetítő SYSTEM-re korlátozott indítási csatornán kapja meg a normál segéd lekérdezési kezelőjének értékét és a vezérlőcsatorna azonosítóját. Ellenőrzi a segéd programját, elsődleges tokenjét és munkamenetét, majd létrehozza az adott bejelentkezésre korlátozott vezérlőcsatornát. Csak a visszaigazolása után indul a normál segéd. A két indításnak közös határideje van. Megszakításkor vagy hibánál mindkét folyamat leáll. A Windows CI a két folyamat közötti üzenetváltást is vizsgálja.
 
-A szolgáltatáskoordinátor, a végrehajtói belépési pontok és a képernyő-/bevitelkezelés még hátravan. A kézi Windows 11/WTS/RDP/UAC-próbák a végső elfogadás részei.
+A kiadási `midas-agent.exe` két belső parancsa használja ezt a kapcsolatot. A `remote-broker` a kijelölt segédtől várja az első verziózott üzenetet. A `remote-worker` a közvetítő válaszának ellenőrzése után jelzi, hogy csatlakozott. Az indító ezután a SYSTEM-közvetítő saját csatornáján is ellenőrzi a kapcsolat létrejöttét. Mindkét folyamat eseményre vár egy szálon. A készenlét alatt beérkező adat lezárja a csatornát. A Windows CI a kiadási programmal ellenőrzi a sikeres kapcsolatot, a hiányzó végpont elutasítását és a közvetítő kilépését a segéd leállása után. Az MSI-próba a telepített példány közvetlen, szolgáltatás nélküli indításának elutasítását is ellenőrzi.
+
+A szolgáltatáskoordinátor, a helyi jóváhagyás, a külön emelt végrehajtó és a képernyő-/bevitelkezelés még hátravan. A kézi Windows 11/WTS/RDP/UAC-próbák a végső elfogadás részei.
 
 ## English
 
@@ -38,4 +40,6 @@ Local tests use ordinary processes to check transferred-object identity, preserv
 
 `start_pair` starts the companion first. A SYSTEM-only startup pipe delivers the numeric query handle for the ordinary worker and the control endpoint identifier. The companion checks the worker image, primary token and session before binding the control pipe for that logon. Only its acknowledgement releases the ordinary worker for startup. Both stages share a deadline. Failure or cancellation stops both processes. Windows CI also checks that the two processes can exchange control frames.
 
-The service coordinator, executor entry points and capture/input remain to be integrated. Final acceptance includes manual Windows 11/WTS/RDP/UAC trials.
+Two internal commands of the release `midas-agent.exe` use this connection. The `remote-broker` command expects the first versioned message from the assigned worker. The `remote-worker` command reports connection after verifying the companion's reply. The launcher then requires independent confirmation on the SYSTEM companion's own pipe. Both processes wait for disconnection on a single-threaded runtime. Any data received during standby closes the channel. Windows CI exercises a successful connection, refusal of a missing endpoint and companion exit after worker termination with the release executable. The MSI trial also checks that the installed executable refuses direct invocation of either role without the service.
+
+The service coordinator, local consent, separate elevated executor and capture/input remain to be integrated. Final acceptance includes manual Windows 11/WTS/RDP/UAC trials.

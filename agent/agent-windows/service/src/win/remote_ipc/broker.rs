@@ -37,6 +37,29 @@ pub struct SuspendedBroker {
     bootstrap_id: uuid::Uuid,
 }
 
+pub(super) struct ListeningBroker {
+    running: RunningWorker,
+    receipt: delivery::Sent,
+    worker: Peer,
+    binding: Binding,
+    deadline: tokio::time::Instant,
+}
+
+impl ListeningBroker {
+    pub(super) async fn connected(self) -> io::Result<RunningWorker> {
+        self.binding.check()?;
+        self.worker.recheck()?;
+        tokio::select! {
+            biased;
+            _ = self.binding.ended() => return Err(denied()),
+            result = self.receipt.connected(self.deadline) => result?,
+        }
+        self.worker.recheck()?;
+        self.binding.check()?;
+        Ok(self.running)
+    }
+}
+
 impl SuspendedBroker {
     /// Both images and the suspended user must come from the trusted installed launcher.
     pub fn spawn(
@@ -118,7 +141,7 @@ impl SuspendedBroker {
         mut self,
         endpoint: uuid::Uuid,
         deadline: tokio::time::Instant,
-    ) -> io::Result<RunningWorker> {
+    ) -> io::Result<ListeningBroker> {
         let sender = delivery::Sender::for_broker(self.bootstrap_id, self.peer()?)?;
         let worker = self.preparation.user.duplicate()?;
         let binding = self.preparation.binding.clone();
@@ -128,10 +151,16 @@ impl SuspendedBroker {
             return Err(io::ErrorKind::TimedOut.into());
         }
         let running = self.resume()?;
-        sender
+        let receipt = sender
             .send(handle, endpoint, &binding, &worker, deadline)
             .await?;
-        Ok(running)
+        Ok(ListeningBroker {
+            running,
+            receipt,
+            worker,
+            binding,
+            deadline,
+        })
     }
 
     pub fn resume(self) -> io::Result<RunningWorker> {

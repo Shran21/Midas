@@ -4,6 +4,7 @@ pub mod bootstrap;
 pub mod broker;
 mod identity;
 pub mod launch;
+pub mod participant;
 pub mod startup;
 pub mod tokens;
 pub use identity::{Peer, Worker};

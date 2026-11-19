@@ -32,7 +32,7 @@ A helyi tesztek a futó tesztfolyamat tokenjének hozzá nem rendelt másolatain
 
 A GitHub Windows-telepítőpróbája a ténylegesen telepített SYSTEM-szolgáltatás sikeres előkészítési és leállítási visszaállítási bejegyzését is megköveteli. Ez nem tesztel WTS-felhasználóváltást vagy UAC-kezelést.
 
-Az előkészített közvetítő még nem indít távvezérlést, és az agent ettől nem hirdeti meg a `remote.grants` képességet. A normál segéd hitelesített kezdeti kapcsolata, a végrehajtók belépési pontjai, a szolgáltatáskoordinátor, a képernyő-/bevitelkezelés és a végső telepített próbák továbbra is szükségesek.
+A normál segéd és a közvetítő [hitelesített indítási kapcsolatot](windows-bootstrap-handles.md) létesít. A `remote.grants` képesség meghirdetéséhez még be kell kötni a szolgáltatáskoordinátort, a jóváhagyást és a képernyő-/bevitelkezelést, majd el kell végezni a telepített rendszer próbáit.
 
 ## English
 
@@ -64,4 +64,4 @@ Local tests use unassigned copies of the test process's token. They exercise act
 
 The GitHub Windows installer trial also requires preparation and shutdown-restoration records from the installed SYSTEM service. This does not exercise WTS user transitions or UAC handling.
 
-Preparing the broker starts no remote control and does not advertise `remote.grants`. Authenticated ordinary-worker bootstrap, executor entry points, the service coordinator, capture/input and final installed trials remain required.
+The ordinary worker and companion establish an [authenticated startup connection](windows-bootstrap-handles.md#english). Advertising `remote.grants` still requires the service coordinator, consent and capture/input integration, followed by installed-system trials.

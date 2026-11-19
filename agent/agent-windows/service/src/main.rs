@@ -18,7 +18,7 @@ mod windows {
         config::{self, Config, Paths},
         ipc::{self, SessionRule},
         run_agent, runner,
-        win::service,
+        win::{remote_ipc::participant::Participant, service},
     };
     use midas_protocol::enrollment::{Kind, Platform};
 
@@ -89,6 +89,10 @@ mod windows {
         /// Entry point used by the service control manager.
         #[command(hide = true)]
         Service,
+        #[command(hide = true)]
+        RemoteWorker,
+        #[command(hide = true)]
+        RemoteBroker,
     }
 
     type Prepared = (Config, Option<zeroize::Zeroizing<String>>);
@@ -141,9 +145,18 @@ mod windows {
         }
     }
 
+    fn participant(role: Participant) -> ExitCode {
+        match role.run() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => report(Err(format!("remote transport: {error}"))),
+        }
+    }
+
     pub fn main() -> ExitCode {
         let cli = Cli::parse();
         match cli.command {
+            Command::RemoteWorker => participant(Participant::Worker),
+            Command::RemoteBroker => participant(Participant::Broker),
             Command::Service => match service::dispatch() {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(error) => report(Err(error.to_string())),
