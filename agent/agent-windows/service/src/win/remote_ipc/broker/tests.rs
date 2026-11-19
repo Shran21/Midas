@@ -527,6 +527,30 @@ fn isolated_system_query_access() {
         .enable_all()
         .build()
         .unwrap();
+    runtime.block_on(async {
+        let listener =
+            super::super::Listener::bind(owner.peer().unwrap(), user_peer.duplicate().unwrap())
+                .unwrap();
+        let occupied = super::super::endpoint_id(listener.name()).unwrap();
+        let blocked = SuspendedBroker::create(
+            owner.peer().unwrap(),
+            user_peer.duplicate().unwrap(),
+            fixture.binding(),
+            &image,
+            &format!("--exact {CHILD} --ignored"),
+        )
+        .unwrap();
+        let process = blocked.process.query_handle().unwrap();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        assert!(blocked.listen(occupied, deadline).await.is_err());
+        assert_eq!(
+            // SAFETY: waits for this fixture's own companion after failed startup.
+            unsafe { WaitForSingleObject(process.as_raw_handle(), 5000) },
+            WAIT_OBJECT_0
+        );
+        user_peer.recheck().unwrap();
+        drop(listener);
+    });
     let mut bootstrap_pipe = runtime.block_on(async {
         let mut options = tokio::net::windows::named_pipe::ServerOptions::new();
         options

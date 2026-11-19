@@ -187,6 +187,15 @@ async fn separate_process_exchange_is_bound_to_the_spawned_child() {
 }
 
 #[tokio::test]
+async fn a_second_listener_cannot_claim_a_bootstrap_endpoint() {
+    let id = uuid::Uuid::new_v4();
+    let first = Listener::create(local(), id).unwrap();
+    assert!(Listener::create(local(), id).is_err());
+    let _client = open(first.name(), local()).unwrap();
+    first.accept(deadline()).await.unwrap();
+}
+
+#[tokio::test]
 async fn another_process_with_the_same_image_and_user_cannot_replace_the_expected_child() {
     let child = TestChild::spawn();
     let pinned = peer(child.0.as_handle().try_clone_to_owned().unwrap());
