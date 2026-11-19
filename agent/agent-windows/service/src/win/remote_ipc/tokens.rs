@@ -88,7 +88,7 @@ impl PreparedToken {
         }
         let adjusted = step(
             "copy service token",
-            duplicate(&original, LAUNCH_ACCESS | TOKEN_ADJUST_SESSIONID),
+            system_copy(&original, LAUNCH_ACCESS | TOKEN_ADJUST_SESSIONID),
         )?;
         // SAFETY: only the newly duplicated primary token is moved to this validated session.
         let moved = check(unsafe {
@@ -336,6 +336,26 @@ fn duplicate(source: &OwnedHandle, access: u32) -> io::Result<OwnedHandle> {
             source.as_raw_handle(),
             access,
             ptr::null(),
+            SecurityIdentification,
+            TokenPrimary,
+            &mut handle,
+        )
+    })?;
+    // SAFETY: DuplicateTokenEx returned one owned handle to the new token object.
+    Ok(unsafe { OwnedHandle::from_raw_handle(handle) })
+}
+
+/// Copies the service token with its own descriptor that grants access only to SYSTEM, instead of
+/// one derived from the process default DACL, so the session of the copy can be set.
+fn system_copy(source: &OwnedHandle, access: u32) -> io::Result<OwnedHandle> {
+    let mut attributes = crate::win::SecurityAttributes::from_sddl("D:P(A;;GA;;;SY)")?;
+    let mut handle = ptr::null_mut();
+    // SAFETY: the descriptor stays alive for the call and applies only to the new token object.
+    check(unsafe {
+        DuplicateTokenEx(
+            source.as_raw_handle(),
+            access,
+            attributes.as_mut_ptr().cast(),
             SecurityIdentification,
             TokenPrimary,
             &mut handle,
