@@ -109,24 +109,50 @@ impl SuspendedWorker {
     /// The service supplies a prepared native token and an administrator-protected installed image.
     /// No PID, token handle, image path or command line may come from a remote request.
     pub fn spawn(broker: &Peer, token: PreparedToken, installed_image: &Path) -> io::Result<Self> {
+        let argument = match token.kind() {
+            super::Worker::User { .. } => "remote-worker",
+            super::Worker::Privileged => "remote-privileged-worker",
+        };
+        Self::spawn_with(broker, token, installed_image, argument)
+    }
+
+    /// Test fixtures run a child test of the same image in place of the release command.
+    #[cfg(test)]
+    pub(super) fn spawn_fixture(
+        broker: &Peer,
+        token: PreparedToken,
+        installed_image: &Path,
+        arguments: &str,
+    ) -> io::Result<Self> {
+        Self::spawn_with(broker, token, installed_image, arguments)
+    }
+
+    fn spawn_with(
+        broker: &Peer,
+        token: PreparedToken,
+        installed_image: &Path,
+        argument: &str,
+    ) -> io::Result<Self> {
         token.check(broker)?;
         let application = image_path(installed_image)?;
         let directory = image_path(installed_image.parent().ok_or_else(denied)?)?;
         let mut command = vec![b'"' as u16];
         command.extend_from_slice(&application[..application.len() - 1]);
-        let (argument, bootstrap_id) = match token.kind() {
-            super::Worker::User { .. } => ("remote-worker", Some(uuid::Uuid::new_v4())),
-            super::Worker::Privileged => ("remote-privileged-worker", None),
-        };
+        let bootstrap_id = uuid::Uuid::new_v4();
         command.extend(format!("\" {argument}").encode_utf16());
         command.push(0);
         if command.len() > 32_767 {
             return Err(denied());
         }
-        let environment = match bootstrap_id {
-            Some(id) => super::bootstrap::delivery::worker_environment(id)?,
-            None => environment()?,
+        let environment = match token.kind() {
+            super::Worker::User { .. } => {
+                super::bootstrap::delivery::worker_environment(bootstrap_id)?
+            }
+            super::Worker::Privileged => {
+                super::bootstrap::delivery::privileged_environment(bootstrap_id)?
+            }
         };
+        let bootstrap_id = Some(bootstrap_id);
         let mut desktop = super::super::wide("winsta0\\default");
         let process = Process::create(Some(&mut desktop), |startup, flags, information| {
             // SAFETY: all buffers remain alive; the token is owned, handles are not inherited,

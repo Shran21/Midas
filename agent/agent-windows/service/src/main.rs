@@ -93,6 +93,8 @@ mod windows {
         RemoteWorker,
         #[command(hide = true)]
         RemoteBroker,
+        #[command(hide = true)]
+        RemotePrivilegedWorker,
     }
 
     type Prepared = (Config, Option<zeroize::Zeroizing<String>>);
@@ -160,6 +162,7 @@ mod windows {
         match cli.command {
             Command::RemoteWorker => participant(Participant::Worker),
             Command::RemoteBroker => participant(Participant::Broker),
+            Command::RemotePrivilegedWorker => participant(Participant::Privileged),
             Command::Service => match service::dispatch() {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(error) => report(Err(error.to_string())),

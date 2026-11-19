@@ -26,6 +26,7 @@ use super::*;
 
 const CHILD: &str = "win::remote_ipc::broker::tests::companion_child";
 const USER_CHILD: &str = "win::remote_ipc::broker::tests::ordinary_bootstrap_child";
+const PRIVILEGED_CHILD: &str = "win::remote_ipc::broker::tests::privileged_participant_child";
 
 #[test]
 fn ordinary_process_cannot_prepare_a_system_companion() {
@@ -327,6 +328,63 @@ fn process_state(process: &OwnedHandle) -> String {
     } else {
         format!("exited with {code:#x}")
     }
+}
+
+#[test]
+#[ignore = "privileged child fixture, launched only by the isolated SYSTEM trial"]
+fn privileged_participant_child() {
+    super::super::participant::Participant::Privileged
+        .run()
+        .unwrap();
+}
+
+/// A SYSTEM worker in the console session connects to the service's own control endpoint and
+/// stops when the service closes it.
+async fn privileged_participant(parent: &Peer, session: u32, image: &Path) {
+    let observer = std::sync::Arc::new(crate::win::sessions::Observer::default());
+    let target = observer
+        .collect()
+        .expect("native sessions")
+        .into_iter()
+        .find(|candidate| candidate.id == session)
+        .expect("console session");
+    let token =
+        super::super::tokens::PreparedToken::privileged(parent, observer.clone(), target).unwrap();
+    let worker = super::super::launch::SuspendedWorker::spawn_fixture(
+        parent,
+        token,
+        image,
+        &format!("--exact {PRIVILEGED_CHILD} --ignored"),
+    )
+    .unwrap();
+    let process = worker.peer().unwrap();
+    let started = std::time::Instant::now();
+    let deadline = tokio::time::Instant::now() + super::super::STARTUP_TIMEOUT;
+    let (running, connection) = super::super::bootstrap::start_privileged(parent, worker, deadline)
+        .await
+        .unwrap_or_else(|error| {
+            panic!(
+                "privileged worker must connect to the service: {error} after {:?}",
+                started.elapsed()
+            )
+        });
+    println!(
+        "privileged worker connected to the service after {:?}",
+        started.elapsed()
+    );
+    process.recheck().unwrap();
+    assert!(!running.has_exited().unwrap());
+    drop(connection);
+    for _ in 0..50 {
+        if running.has_exited().unwrap() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(
+        running.has_exited().unwrap(),
+        "privileged worker should stop after the service closes its channel"
+    );
 }
 
 #[test]
@@ -764,6 +822,14 @@ fn isolated_system_query_access() {
     ));
     println!(
         "release agent pair confirmed readiness, refused a missing endpoint and stopped on disconnect"
+    );
+    runtime.block_on(privileged_participant(
+        owner.peer().unwrap(),
+        session,
+        &image,
+    ));
+    println!(
+        "SYSTEM worker in the console session connected only to the service and stopped with it"
     );
     owner.finish().unwrap();
     println!(

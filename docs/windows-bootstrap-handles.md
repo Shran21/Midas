@@ -24,7 +24,11 @@ A résztvevők örökölt kezelők, így szabványos kimenet nélkül indulnak. 
 
 A szolgáltatás függőségei miatt a `midas-agent.exe` a `shell32.dll`-t és az `ole32.dll`-t késleltetve tölti be (`/DELAYLOAD`). Ez a két könyvtár betöltéskor a `user32`-t is inicializálja, ami olyan asztal nélkül, amelyet a folyamat tokenje használhat, `0xC0000142` hibával leállítja a folyamatot. A résztvevő parancsok nem hívják őket, ezért ezektől függetlenül indulnak; a szolgáltatás az első valódi hívásnál tölti be őket. A Windows CI ezt a kiadási programmal, egy asztalhoz nem jogosult standard felhasználói tokennel ellenőrzi.
 
-A szolgáltatáskoordinátor, a helyi jóváhagyás, a külön emelt végrehajtó és a képernyő-/bevitelkezelés még hátravan. A kézi Windows 11/WTS/RDP/UAC-próbák a végső elfogadás részei.
+### Emelt segéd
+
+Az emelt segéd (`remote-privileged-worker`) a cél munkamenetben futó, külön SYSTEM-tokenpéldánnyal indul. Ez a [munkamenet-tokenek](windows-session-tokens.md) szerint készül, és ehhez nincs külön közvetítő. A `start_privileged` a szolgáltatás saját lekérdezési kezelőjét juttatja át a még felfüggesztett segédbe, és a segéd folyamatához kötött vezérlőcsatornát nyit. A végpont azonosítóját csak SYSTEM által megnyitható, egyszer használható indítási csövön küldi el. A segéd előbb a saját tokenjét ellenőrzi: SYSTEM-e, a megfelelő munkamenetben fut-e, rendszerintegritású-e, és nincs-e UIAccess vagy AppContainer. Ezután a szolgáltatást ellenőrzi: SYSTEM, 0-s munkamenet, azonos telepített program. Csak ezután jelentkezik a csatornán. A szolgáltatás itt egyszerre indító és ellenoldal, ezért az indítási nyugtát és a segéd üdvözlését együtt várja meg. A csatorna lezárásakor a segéd kilép. A Windows CI valódi SYSTEM-segéddel ellenőrzi az utat a konzolmunkamenetben. A közvetlen, szolgáltatás nélküli indítást az MSI-próba utasítja el.
+
+A szolgáltatáskoordinátor, a helyi jóváhagyás és a segédek tényleges műveletei (képernyő- és bevitelkezelés) még hátravannak. A kézi Windows 11/WTS/RDP/UAC-próbák a végső elfogadás részei.
 
 ## English
 
@@ -50,4 +54,8 @@ Participants start without inherited handles and therefore without standard outp
 
 Because of the service's dependencies, `midas-agent.exe` delay-loads `shell32.dll` and `ole32.dll` (`/DELAYLOAD`). Both initialize `user32` when they load, which stops a process with `0xC0000142` unless its token may use its desktop. The participant commands never call them and therefore start without them; the service loads them on first actual use. Windows CI checks this with the release executable and a standard-user token that has no desktop access.
 
-The service coordinator, local consent, separate elevated executor and capture/input remain to be integrated. Final acceptance includes manual Windows 11/WTS/RDP/UAC trials.
+### Privileged worker
+
+The privileged worker (`remote-privileged-worker`) starts with a separate SYSTEM token copy in the target session. The copy is prepared as described in [session tokens](windows-session-tokens.md#english), and the worker has no companion. `start_privileged` transfers the service's own query handle into the still-suspended worker and opens a control endpoint bound to that worker's process. It sends the endpoint identifier over a single-use, SYSTEM-only startup pipe. The worker first checks its own token: SYSTEM, the right session, system integrity, and no UIAccess or AppContainer. It then checks the service: SYSTEM, session zero and the same installed image. Only then does it greet on the channel. The service is both launcher and counterpart here, so it awaits the startup receipt and the worker's greeting together. When the channel closes, the worker exits. Windows CI exercises this path with a real SYSTEM worker in the console session. The MSI trial refuses direct invocation without the service.
+
+The service coordinator, local consent and the workers' actual operations (capture and input) remain to be integrated. Final acceptance includes manual Windows 11/WTS/RDP/UAC trials.

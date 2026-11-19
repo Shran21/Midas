@@ -13,12 +13,13 @@ use tokio::{
 use super::IO_TIMEOUT;
 use super::{Connection, STARTUP_TIMEOUT, bootstrap::delivery, denied};
 
-const WORKER_HELLO: &[u8] = b"worker-ready/1";
-const BROKER_HELLO: &[u8] = b"broker-ready/1";
+pub(in crate::win::remote_ipc) const WORKER_HELLO: &[u8] = b"worker-ready/1";
+pub(in crate::win::remote_ipc) const BROKER_HELLO: &[u8] = b"broker-ready/1";
 
 pub enum Participant {
     Worker,
     Broker,
+    Privileged,
 }
 
 /// The last startup step a participant reached. Participants start without inherited handles, so
@@ -72,6 +73,19 @@ impl Participant {
                     reached(Stage::Standby);
                     standby(connection).await
                 }
+                Self::Privileged => {
+                    let connection =
+                        delivery::receive_privileged(&image, deadline, async |destination| {
+                            let mut connection = destination.connect()?;
+                            connection.send(WORKER_HELLO, deadline).await?;
+                            expect(&mut connection, BROKER_HELLO, deadline).await?;
+                            Ok(connection)
+                        })
+                        .await?;
+                    reached(Stage::Connected);
+                    reached(Stage::Standby);
+                    standby(connection).await
+                }
                 Self::Broker => {
                     let (listener, launcher) =
                         delivery::receive_companion(&image, deadline).await?;
@@ -88,7 +102,7 @@ impl Participant {
     }
 }
 
-async fn expect<S: AsyncRead + AsyncWrite + AsRawHandle + Unpin>(
+pub(in crate::win::remote_ipc) async fn expect<S: AsyncRead + AsyncWrite + AsRawHandle + Unpin>(
     connection: &mut Connection<S>,
     expected: &[u8],
     deadline: Instant,

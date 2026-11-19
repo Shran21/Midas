@@ -278,6 +278,16 @@ impl Token {
         Ok(kind)
     }
 
+    pub(super) fn privileged_worker(&self, session: u32) -> io::Result<()> {
+        if !self.allows(&Role::Worker {
+            kind: Worker::Privileged,
+            session,
+        }) {
+            return Err(denied());
+        }
+        Ok(())
+    }
+
     pub(super) fn needs_linked(&self, session: u32) -> io::Result<bool> {
         self.observed_user(session)?;
         if self.elevation_type == TokenElevationTypeFull as u32

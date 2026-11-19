@@ -39,6 +39,7 @@ const CONNECTED: &[u8; 4] = b"MBC1";
 enum Recipient {
     Worker,
     Broker,
+    Privileged,
 }
 
 impl Recipient {
@@ -46,6 +47,7 @@ impl Recipient {
         match self {
             Self::Worker => "MIDAS_WORKER_BOOTSTRAP",
             Self::Broker => "MIDAS_BROKER_BOOTSTRAP",
+            Self::Privileged => "MIDAS_PRIVILEGED_BOOTSTRAP",
         }
     }
 
@@ -53,6 +55,7 @@ impl Recipient {
         match self {
             Self::Worker => (MAGIC, ACK),
             Self::Broker => (b"MBL1", b"MBR1"),
+            Self::Privileged => (b"MBP1", b"MBQ1"),
         }
     }
 
@@ -71,6 +74,10 @@ pub(in crate::win::remote_ipc) fn worker_environment(id: Uuid) -> io::Result<Vec
 
 pub(in crate::win::remote_ipc) fn broker_environment(id: Uuid) -> io::Result<Vec<u16>> {
     Recipient::Broker.environment(id)
+}
+
+pub(in crate::win::remote_ipc) fn privileged_environment(id: Uuid) -> io::Result<Vec<u16>> {
+    Recipient::Privileged.environment(id)
 }
 
 fn name(id: Uuid) -> String {
@@ -101,6 +108,27 @@ impl Sender {
             id,
             broker,
             Recipient::Broker,
+            "O:SYD:P(D;;GA;;;NU)(A;;GA;;;SY)",
+        )
+    }
+
+    /// A privileged worker runs as SYSTEM in the target session; only SYSTEM may open its pipe.
+    pub(in crate::win::remote_ipc) fn for_privileged(id: Uuid, worker: Peer) -> io::Result<Self> {
+        no_impersonation()?;
+        if !matches!(
+            worker.role,
+            Role::Worker {
+                kind: super::super::Worker::Privileged,
+                ..
+            }
+        ) {
+            return Err(denied());
+        }
+        worker.recheck()?;
+        Self::create(
+            id,
+            worker,
+            Recipient::Privileged,
             "O:SYD:P(D;;GA;;;NU)(A;;GA;;;SY)",
         )
     }
@@ -220,6 +248,27 @@ pub(in crate::win::remote_ipc) async fn receive_worker<T>(
     Token::read(&current_token(TOKEN_QUERY)?)?.user_worker(win::current_session()?)?;
     reached(Stage::Identity);
     receive_record(Recipient::Worker, deadline, async |handle, endpoint| {
+        ready(Destination {
+            broker: import_broker(handle, installed_image)?,
+            endpoint,
+        })
+        .await
+    })
+    .await
+    .map(|(worker, _)| worker)
+}
+
+/// Reads the locator from the service-created privileged worker environment; the control
+/// endpoint belongs to the service itself.
+pub(in crate::win::remote_ipc) async fn receive_privileged<T>(
+    installed_image: &Path,
+    deadline: Instant,
+    ready: impl AsyncFnOnce(Destination) -> io::Result<T>,
+) -> io::Result<T> {
+    no_impersonation()?;
+    Token::read(&current_token(TOKEN_QUERY)?)?.privileged_worker(win::current_session()?)?;
+    reached(Stage::Identity);
+    receive_record(Recipient::Privileged, deadline, async |handle, endpoint| {
         ready(Destination {
             broker: import_broker(handle, installed_image)?,
             endpoint,
@@ -391,6 +440,11 @@ mod tests {
     use super::*;
     use ipc::identity::tests::local;
     use win::sessions::tests::Fixture;
+
+    #[test]
+    fn privileged_delivery_requires_a_privileged_worker() {
+        assert!(Sender::for_privileged(Uuid::new_v4(), local()).is_err());
+    }
 
     fn ordinary_listener() -> (Sender, String) {
         let worker = local();

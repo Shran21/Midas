@@ -39,6 +39,51 @@ pub async fn start_pair(
     Ok([running_broker, running_worker])
 }
 
+/// Starts a privileged worker under one deadline. The service is both its launcher and its
+/// control endpoint, so startup delivery and the worker's greeting are awaited together.
+pub async fn start_privileged(
+    parent: &Peer,
+    worker: SuspendedWorker,
+    deadline: tokio::time::Instant,
+) -> io::Result<(
+    RunningWorker,
+    super::Connection<tokio::net::windows::named_pipe::NamedPipeServer>,
+)> {
+    let id = worker.bootstrap_id.ok_or_else(denied)?;
+    let peer = worker.peer()?;
+    if !matches!(
+        peer.role,
+        super::identity::Role::Worker {
+            kind: super::Worker::Privileged,
+            ..
+        }
+    ) {
+        return Err(denied());
+    }
+    let binding = worker.binding(parent)?;
+    let listener = super::Listener::bind(parent, peer.duplicate()?)?;
+    let endpoint = super::endpoint_id(listener.name())?;
+    let (worker, handle_value) = worker.transfer_broker(parent, parent)?;
+    let sender = delivery::Sender::for_privileged(id, peer)?;
+    if tokio::time::Instant::now() >= deadline {
+        return Err(io::ErrorKind::TimedOut.into());
+    }
+    let running = worker.resume(parent)?;
+    let (_, connection) = tokio::try_join!(
+        sender.send(handle_value, endpoint, &binding, parent, deadline),
+        async {
+            let mut connection = listener.accept(deadline).await?;
+            super::participant::expect(&mut connection, super::participant::WORKER_HELLO, deadline)
+                .await?;
+            connection
+                .send(super::participant::BROKER_HELLO, deadline)
+                .await?;
+            Ok::<_, io::Error>(connection)
+        },
+    )?;
+    Ok((running, connection))
+}
+
 /// Owns the suspended worker and its single query-only companion handle transfer.
 pub struct Prepared {
     worker: SuspendedWorker,
