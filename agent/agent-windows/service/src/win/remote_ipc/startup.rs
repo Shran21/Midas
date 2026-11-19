@@ -269,7 +269,7 @@ fn lookup(name: windows_sys::core::PCWSTR) -> io::Result<LUID> {
     Ok(id)
 }
 
-fn current_process() -> io::Result<OwnedHandle> {
+pub(super) fn current_process() -> io::Result<OwnedHandle> {
     let mut handle = ptr::null_mut();
     // SAFETY: duplicate this process's pseudo handle into a query/synchronize-only, non-inheritable handle.
     if unsafe {

@@ -24,6 +24,20 @@ pub(super) const QUERY_ACCESS: u32 = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS
 
 pub mod delivery;
 
+/// Starts the matching pair under one deadline. A failed startup drops both job owners.
+pub async fn start_pair(
+    parent: &Peer,
+    broker: SuspendedBroker,
+    worker: SuspendedWorker,
+    deadline: tokio::time::Instant,
+) -> io::Result<[RunningWorker; 2]> {
+    let worker = Prepared::new(parent, &broker, worker)?;
+    let endpoint = uuid::Uuid::new_v4();
+    let running_broker = broker.listen(endpoint, deadline).await?;
+    let running_worker = worker.deliver_to(parent, endpoint, deadline).await?;
+    Ok([running_broker, running_worker])
+}
+
 /// Owns the suspended worker and its single query-only companion handle transfer.
 pub struct Prepared {
     worker: SuspendedWorker,
@@ -39,8 +53,17 @@ impl Prepared {
         endpoint: &str,
         deadline: tokio::time::Instant,
     ) -> io::Result<RunningWorker> {
+        self.deliver_to(parent, super::endpoint_id(endpoint)?, deadline)
+            .await
+    }
+
+    async fn deliver_to(
+        self,
+        parent: &Peer,
+        endpoint: uuid::Uuid,
+        deadline: tokio::time::Instant,
+    ) -> io::Result<RunningWorker> {
         let id = self.worker.bootstrap_id.ok_or_else(denied)?;
-        let endpoint = super::endpoint_id(endpoint)?;
         let binding = self.worker.binding(parent)?;
         let value = self.handle_value;
         let sender = delivery::Sender::bind(id, self.worker.peer()?)?;
@@ -96,6 +119,10 @@ impl Prepared {
 /// Protected delivery and the pipe's pinned peer checks remain required.
 /// The image must come from trusted installation configuration, never the received metadata.
 pub fn import_broker(handle_value: u64, installed_image: &Path) -> io::Result<Peer> {
+    Peer::broker(import_process(handle_value)?, installed_image)
+}
+
+fn import_process(handle_value: u64) -> io::Result<OwnedHandle> {
     no_impersonation()?;
     let value = usize::try_from(handle_value).map_err(|_| denied())?;
     if value == 0 || value > isize::MAX as usize {
@@ -129,7 +156,7 @@ pub fn import_broker(handle_value: u64, installed_image: &Path) -> io::Result<Pe
     if unsafe { GetProcessId(process.as_raw_handle()) } != pid {
         return Err(denied());
     }
-    Peer::broker(process, installed_image)
+    Ok(process)
 }
 
 #[cfg(test)]

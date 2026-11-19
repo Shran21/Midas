@@ -61,17 +61,21 @@ pub struct Listener {
 }
 
 impl Listener {
-    /// `broker` must pin this service process; `worker` must come from its trusted launcher.
+    /// The listener belongs to the pinned local broker and accepts only the launcher's worker.
     pub fn bind(broker: &Peer, worker: Peer) -> io::Result<Self> {
+        Self::bind_at(broker, worker, uuid::Uuid::new_v4())
+    }
+
+    fn bind_at(broker: &Peer, worker: Peer, endpoint: uuid::Uuid) -> io::Result<Self> {
         if broker.role != Role::Broker {
             return Err(denied());
         }
         broker.check(std::process::id())?;
-        Self::create(worker)
+        Self::create(worker, endpoint)
     }
 
-    fn create(peer: Peer) -> io::Result<Self> {
-        let name = format!("{PREFIX}{}", uuid::Uuid::new_v4());
+    fn create(peer: Peer, endpoint: uuid::Uuid) -> io::Result<Self> {
+        let name = format!("{PREFIX}{endpoint}");
         let mut options = ServerOptions::new();
         options
             .first_pipe_instance(true)

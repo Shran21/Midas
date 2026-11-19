@@ -21,9 +21,11 @@ use windows_sys::Win32::{
 
 use super::{
     super::{SecurityAttributes, sessions::Binding},
-    Peer, denied,
+    Peer,
+    bootstrap::delivery,
+    denied,
     identity::{Role, Token},
-    launch::{Process, RunningWorker, SuspendedWorker, environment, image_path},
+    launch::{Process, RunningWorker, SuspendedWorker, image_path},
     tokens::{current_token, no_impersonation},
 };
 
@@ -32,6 +34,7 @@ pub struct SuspendedBroker {
     process: Process,
     identity: Peer,
     preparation: Preparation,
+    bootstrap_id: uuid::Uuid,
 }
 
 impl SuspendedBroker {
@@ -68,7 +71,8 @@ impl SuspendedBroker {
         if command.len() > 32_767 {
             return Err(denied());
         }
-        let environment = environment()?;
+        let bootstrap_id = uuid::Uuid::new_v4();
+        let environment = delivery::broker_environment(bootstrap_id)?;
         let mut attributes = preparation.process_attributes()?;
         let process = Process::create(None, |startup, flags, information| {
             // SAFETY: the token, descriptor, buffers and extended job attributes stay alive; no inheritance.
@@ -95,6 +99,7 @@ impl SuspendedBroker {
             process,
             identity,
             preparation,
+            bootstrap_id,
         })
     }
 
@@ -107,6 +112,26 @@ impl SuspendedBroker {
         self.preparation.check()?;
         self.preparation.parent.same_process(parent)?;
         self.preparation.user.same_process(worker)
+    }
+
+    pub(super) async fn listen(
+        mut self,
+        endpoint: uuid::Uuid,
+        deadline: tokio::time::Instant,
+    ) -> io::Result<RunningWorker> {
+        let sender = delivery::Sender::for_broker(self.bootstrap_id, self.peer()?)?;
+        let worker = self.preparation.user.duplicate()?;
+        let binding = self.preparation.binding.clone();
+        let handle;
+        (self.process, handle) = self.process.transfer_peer(&worker)?;
+        if tokio::time::Instant::now() >= deadline {
+            return Err(io::ErrorKind::TimedOut.into());
+        }
+        let running = self.resume()?;
+        sender
+            .send(handle, endpoint, &binding, &worker, deadline)
+            .await?;
+        Ok(running)
     }
 
     pub fn resume(self) -> io::Result<RunningWorker> {

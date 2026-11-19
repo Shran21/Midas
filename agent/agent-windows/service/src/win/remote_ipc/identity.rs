@@ -65,6 +65,20 @@ impl Peer {
         Self::pin(process, installed_image, Role::Worker { kind, session })
     }
 
+    pub(super) fn ordinary(process: OwnedHandle, image: &Path) -> io::Result<Self> {
+        let snapshot = Snapshot::read(&process)?;
+        let session = snapshot.token.session;
+        let kind = snapshot.token.user_worker(session)?;
+        if snapshot.image != image {
+            return Err(denied());
+        }
+        Ok(Self {
+            process,
+            snapshot,
+            role: Role::Worker { kind, session },
+        })
+    }
+
     fn pin(process: OwnedHandle, image: &Path, role: Role) -> io::Result<Self> {
         let snapshot = Snapshot::read(&process)?;
         if snapshot.image != image || !snapshot.allows(&role) {

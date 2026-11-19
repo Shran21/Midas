@@ -12,7 +12,7 @@ fn deadline() -> Instant {
 }
 
 async fn pair() -> (Connection<NamedPipeServer>, Connection<NamedPipeClient>) {
-    let listener = Listener::create(local()).unwrap();
+    let listener = Listener::create(local(), uuid::Uuid::new_v4()).unwrap();
     let client = open(listener.name(), local()).unwrap();
     (listener.accept(deadline()).await.unwrap(), client)
 }
@@ -84,7 +84,7 @@ async fn invalid_or_oversized_frames_never_reach_the_caller() {
 #[tokio::test]
 async fn endpoints_refuse_role_confusion_remote_names_and_another_owner() {
     assert!(Listener::bind(&local(), local()).is_err());
-    let listener = Listener::create(local()).unwrap();
+    let listener = Listener::create(local(), uuid::Uuid::new_v4()).unwrap();
     assert!(connect(listener.name(), local()).is_err());
     assert!(open(r"\\host\pipe\midas-remote-invalid", local()).is_err());
     let mut options = ServerOptions::new();
@@ -171,7 +171,7 @@ fn child_endpoint() {
 async fn separate_process_exchange_is_bound_to_the_spawned_child() {
     let mut child = TestChild::spawn();
     let pinned = peer(child.0.as_handle().try_clone_to_owned().unwrap());
-    let listener = Listener::create(pinned).unwrap();
+    let listener = Listener::create(pinned, uuid::Uuid::new_v4()).unwrap();
     child.start(listener.name(), std::process::id());
     let mut connection = listener.accept(deadline()).await.unwrap();
     connection
@@ -190,7 +190,7 @@ async fn separate_process_exchange_is_bound_to_the_spawned_child() {
 async fn another_process_with_the_same_image_and_user_cannot_replace_the_expected_child() {
     let child = TestChild::spawn();
     let pinned = peer(child.0.as_handle().try_clone_to_owned().unwrap());
-    let listener = Listener::create(pinned).unwrap();
+    let listener = Listener::create(pinned, uuid::Uuid::new_v4()).unwrap();
     let _wrong_client = open(listener.name(), local()).unwrap();
     assert!(listener.accept(deadline()).await.is_err());
 }
@@ -198,7 +198,7 @@ async fn another_process_with_the_same_image_and_user_cannot_replace_the_expecte
 #[tokio::test]
 async fn wrong_server_identity_and_process_exit_are_refused() {
     let mut child = TestChild::spawn();
-    let listener = Listener::create(local()).unwrap();
+    let listener = Listener::create(local(), uuid::Uuid::new_v4()).unwrap();
     assert!(
         open(
             listener.name(),

@@ -1,6 +1,6 @@
 use std::time::Duration;
 use windows_sys::Win32::{
-    Foundation::{ERROR_ACCESS_DENIED, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, WAIT_OBJECT_0},
+    Foundation::{ERROR_ACCESS_DENIED, HANDLE, WAIT_OBJECT_0},
     Security::{
         ImpersonateLoggedOnUser, LOGON32_LOGON_INTERACTIVE, LOGON32_PROVIDER_DEFAULT, LogonUserW,
         RevertToSelf, SetTokenInformation, TOKEN_ADJUST_DEFAULT, TOKEN_ADJUST_GROUPS,
@@ -11,10 +11,9 @@ use windows_sys::Win32::{
         JobObjects::IsProcessInJob,
         RemoteDesktop::WTSGetActiveConsoleSessionId,
         Threading::{
-            CreateEventW, EVENT_MODIFY_STATE, GetCurrentProcess, OpenEventW, OpenProcess,
-            OpenProcessToken, PROCESS_CREATE_PROCESS, PROCESS_DUP_HANDLE,
-            PROCESS_QUERY_INFORMATION, PROCESS_TERMINATE, PROCESS_VM_OPERATION, PROCESS_VM_READ,
-            PROCESS_VM_WRITE, SetEvent, WaitForSingleObject,
+            GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_CREATE_PROCESS,
+            PROCESS_DUP_HANDLE, PROCESS_QUERY_INFORMATION, PROCESS_TERMINATE, PROCESS_VM_OPERATION,
+            PROCESS_VM_READ, PROCESS_VM_WRITE, WaitForSingleObject,
         },
     },
 };
@@ -125,35 +124,19 @@ fn token_acl_update_is_scoped_read_back_and_requires_write_dac() {
     assert_eq!(privileges(&source).unwrap(), original_privileges);
 }
 
-#[test]
+#[tokio::test]
 #[ignore = "child fixture, launched only by its owning test"]
-fn companion_child() {
-    let name = event_name(std::process::id());
-    // SAFETY: opens only the fixture event created before this child was resumed.
-    let event = unsafe { OpenEventW(EVENT_MODIFY_STATE, 0, name.as_ptr()) };
-    assert!(!event.is_null(), "ready event missing");
-    // SAFETY: the successful native call returned one owned event handle.
-    let event = unsafe { OwnedHandle::from_raw_handle(event) };
-    // SAFETY: the event remains owned through this signaling call.
-    assert_ne!(unsafe { SetEvent(event.as_raw_handle()) }, 0);
-    std::thread::sleep(Duration::from_secs(60));
-}
-
-fn event_name(pid: u32) -> Vec<u16> {
-    super::super::super::wide(&format!("Global\\MIDAS-BrokerTrialReady-{pid}"))
-}
-
-fn ready_event(pid: u32) -> OwnedHandle {
-    let name = event_name(pid);
-    // SAFETY: a non-inherited manual-reset event with this SYSTEM fixture's default descriptor.
-    let raw = unsafe { CreateEventW(ptr::null(), 1, 0, name.as_ptr()) };
-    assert!(!raw.is_null());
-    // SAFETY: inspect the preceding event creation's last-error value immediately.
-    let existed = unsafe { GetLastError() } == ERROR_ALREADY_EXISTS;
-    // SAFETY: successful CreateEventW returns one owned event handle.
-    let event = unsafe { OwnedHandle::from_raw_handle(raw) };
-    assert!(!existed, "ready event already exists");
-    event
+async fn companion_child() {
+    let image = std::env::current_exe().unwrap();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    let listener = delivery::receive_listener(&image, deadline).await.unwrap();
+    let mut connection = listener.accept(deadline).await.unwrap();
+    assert_eq!(
+        &*connection.receive(deadline).await.unwrap(),
+        b"worker ready"
+    );
+    connection.send(b"companion ready", deadline).await.unwrap();
+    tokio::time::sleep(Duration::from_secs(60)).await;
 }
 
 struct Impersonation;
@@ -323,14 +306,20 @@ fn ordinary_bootstrap_child() {
         let mut expected_endpoint = [0; 16];
         pipe.read_exact(&mut expected_endpoint).await.unwrap();
         let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
-        let delivery = super::super::bootstrap::delivery::receive(&image, deadline)
-            .await
-            .and_then(|received| {
-                received.verify_fixture(
-                    outcome.as_ref().map_err(|_| denied())?,
-                    uuid::Uuid::from_bytes(expected_endpoint),
-                )
-            });
+        let delivery: io::Result<()> = async {
+            let received = delivery::receive(&image, deadline).await?;
+            received.verify_fixture(
+                outcome.as_ref().map_err(|_| denied())?,
+                uuid::Uuid::from_bytes(expected_endpoint),
+            )?;
+            let mut connection = received.connect()?;
+            connection.send(b"worker ready", deadline).await?;
+            if &*connection.receive(deadline).await? != b"companion ready" {
+                return Err(denied());
+            }
+            Ok(())
+        }
+        .await;
         let message = match &outcome {
             Ok(_) if delivery.is_err() => format!("metadata delivery failed: {delivery:?}"),
             Ok(_) => "verified".to_owned(),
@@ -556,6 +545,16 @@ fn isolated_system_query_access() {
         super::super::bootstrap::delivery::Sender::bind(launch_id, user_peer.duplicate().unwrap())
             .unwrap()
     });
+    let running = runtime
+        .block_on(async {
+            child
+                .listen(
+                    endpoint,
+                    tokio::time::Instant::now() + Duration::from_secs(5),
+                )
+                .await
+        })
+        .expect("companion must bind its verified worker's endpoint before user startup");
     let user = user.resume().unwrap();
     runtime.block_on(async {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -586,13 +585,7 @@ fn isolated_system_query_access() {
     println!(
         "ordinary worker imported the query-only companion handle without elevation or inheritance"
     );
-    let ready = ready_event(pid);
-    let running = child.resume().unwrap();
-    assert_eq!(
-        // SAFETY: bounded wait on the event owned by this fixture's resumed child.
-        unsafe { WaitForSingleObject(ready.as_raw_handle(), 5000) },
-        WAIT_OBJECT_0
-    );
+    println!("paired worker and companion exchanged authenticated control frames");
     assert!(!running.has_exited().unwrap());
     let stale_fixture = Fixture::new();
     let role = Token::read(&user_token)
