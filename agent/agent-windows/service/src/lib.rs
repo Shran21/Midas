@@ -15,6 +15,7 @@ pub async fn run_agent(
     rule: ipc::SessionRule,
     pipe: String,
     sessions: Option<midas_agent_core::sessions::Probe>,
+    remote: Option<std::sync::Arc<dyn midas_agent_core::remote::transport::Native>>,
 ) {
     let (state, observed) = tokio::sync::watch::channel(runner::State::Starting);
     let status = match std::env::current_exe() {
@@ -36,6 +37,7 @@ pub async fn run_agent(
         paths,
         midas_protocol::enrollment::Platform::Windows,
         runner::Probes {
+            remote,
             sessions,
             inventory: Some(std::sync::Arc::new(win::inventory::collect)),
             health: Some(std::sync::Arc::new(win::health::check)),

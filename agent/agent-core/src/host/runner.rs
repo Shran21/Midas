@@ -284,6 +284,8 @@ async fn collect(paths: &Paths, config: &Config, state: &watch::Sender<State>) {
 #[derive(Clone, Default)]
 pub struct Probes {
     pub sessions: Option<crate::sessions::Probe>,
+    /// Protected native backend for remote grants; only a platform service provides one.
+    pub remote: Option<Arc<dyn crate::remote::transport::Native>>,
     pub inventory: Option<crate::inventory::Collector>,
     pub health: Option<crate::health::Checker>,
     /// Health check ids the platform implements; each becomes a `health.<id>` capability.
@@ -363,7 +365,18 @@ pub async fn serve(
         ));
         (shared, schedule)
     });
+    let remote = probes.remote.and_then(|native| {
+        let backend =
+            crate::enrollment::device_identity(&certificate).and_then(|(tenant, device)| {
+                crate::remote::transport::Backend::new(tenant, device, native).ok()
+            });
+        if backend.is_none() {
+            tracing::warn!("remote grants disabled: the agent certificate names no device");
+        }
+        backend
+    });
     let settings = Settings {
+        remote,
         sessions: probes.sessions,
         directory,
         metrics: Some(buffer),
@@ -397,6 +410,7 @@ mod tests {
         assert_eq!(Probes::default().capabilities(), ["metrics"]);
         let probes = Probes {
             sessions: None,
+            remote: None,
             inventory: Some(Arc::new(crate::inventory::Snapshot::new)),
             health: Some(Arc::new(|_: &crate::health::Thresholds| Vec::new())),
             checks: vec![crate::health::SERVICES, crate::health::STORAGE],

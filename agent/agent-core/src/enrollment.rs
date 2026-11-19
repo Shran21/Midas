@@ -15,6 +15,24 @@ use tokio_rustls::TlsConnector;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
+/// The tenant and device named by this agent's own certificate (`urn:midas:device:{tenant}:{device}`).
+pub fn device_identity(certificate_pem: &str) -> Option<(Uuid, Uuid)> {
+    const PREFIX: &[u8] = b"urn:midas:device:";
+    let length = PREFIX.len() + 36 + 1 + 36;
+    let certificate = CertificateDer::pem_slice_iter(certificate_pem.as_bytes())
+        .next()?
+        .ok()?;
+    let der: &[u8] = certificate.as_ref();
+    // A GeneralName uniformResourceIdentifier is context tag 6 with a short-form length.
+    let start = der.windows(2 + PREFIX.len()).position(|window| {
+        window[0] == 0x86 && usize::from(window[1]) == length && &window[2..] == PREFIX
+    })?;
+    let value = std::str::from_utf8(der.get(start + 2 + PREFIX.len()..start + 2 + length)?).ok()?;
+    let (tenant, device) = value.split_once(':')?;
+    let (tenant, device) = (Uuid::parse_str(tenant).ok()?, Uuid::parse_str(device).ok()?);
+    (!tenant.is_nil() && !device.is_nil()).then_some((tenant, device))
+}
+
 /// Enrollment endpoint on the server-authenticated HTTPS listener.
 #[derive(Clone)]
 pub struct Server {
@@ -181,6 +199,30 @@ async fn post(server: &Server, path: &str, body: Vec<u8>) -> Result<(u16, Bytes)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_device_identity_comes_from_the_certificate_uri() {
+        let (tenant, device) = (Uuid::new_v4(), Uuid::new_v4());
+        let key = KeyPair::generate().unwrap();
+        let mut params = CertificateParams::default();
+        params.subject_alt_names = vec![rcgen::SanType::URI(
+            format!("urn:midas:device:{tenant}:{device}")
+                .try_into()
+                .unwrap(),
+        )];
+        let pem = params.self_signed(&key).unwrap().pem();
+        assert_eq!(device_identity(&pem), Some((tenant, device)));
+
+        let mut other = CertificateParams::new(vec!["agent.example".into()]).unwrap();
+        other.subject_alt_names.push(rcgen::SanType::URI(
+            "urn:example:device:x".try_into().unwrap(),
+        ));
+        assert_eq!(
+            device_identity(&other.self_signed(&key).unwrap().pem()),
+            None
+        );
+        assert_eq!(device_identity("not a certificate"), None);
+    }
 
     #[test]
     fn keys_round_trip_and_requests_are_pem() {

@@ -227,6 +227,7 @@ mod windows {
                     SessionRule::Exactly(session),
                     pipe,
                     None,
+                    None,
                 ));
                 ExitCode::SUCCESS
             }

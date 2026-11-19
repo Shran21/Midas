@@ -202,6 +202,13 @@ impl Lease {
     pub fn id(&self) -> Uuid {
         self.claims.id
     }
+    /// The session the grant names; native code must still observe it before acting.
+    pub fn target(&self) -> Target {
+        self.claims.target
+    }
+    pub fn rights(&self) -> Rights {
+        self.claims.rights
+    }
     pub fn cancellation(&self) -> Cancellation {
         Cancellation(self.active.clone())
     }

@@ -117,6 +117,7 @@ fn service_main(_arguments: Vec<OsString>) {
             SessionRule::ActiveConsole,
             PIPE.into(),
             Some(probe),
+            None,
         )),
         Err(error) => tracing::error!(%error, "runtime could not start"),
     }
