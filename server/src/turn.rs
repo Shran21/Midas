@@ -95,8 +95,9 @@ mod tests {
         let server = relay.credentials(request, 1_700_000_000);
         assert_eq!(server.username, format!("1700000300:{request}"));
         assert_eq!(server.urls, ["turn:relay.example.com:3478?transport=udp"]);
-        // Base64(HMAC-SHA1(secret, user name)), as computed independently with Python's hmac.
-        assert_eq!(server.credential, "GozoELqXKWdUASMZYDSSF3gCU8k=");
+        // Base64(HMAC-SHA1(secret, user name)) for the made-up secret above, as computed
+        // independently with Python's hmac.
+        assert_eq!(server.credential, "GozoELqXKWdUASMZYDSSF3gCU8k="); // gitleaks:allow
     }
 
     #[test]
