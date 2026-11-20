@@ -100,6 +100,38 @@ export function readStats(text: string): Stats | null {
   };
 }
 
+/** The relays the server named for this session; anything malformed means none. */
+export function readIceServers(value: unknown): RTCIceServer[] {
+  if (typeof value !== "object" || value === null) return [];
+  const list = (value as { ice_servers?: unknown }).ice_servers;
+  if (!Array.isArray(list) || list.length > 4) return [];
+  const servers: RTCIceServer[] = [];
+  for (const item of list) {
+    if (typeof item !== "object" || item === null) return [];
+    const { urls, username, credential } = item as Record<string, unknown>;
+    if (
+      !Array.isArray(urls) ||
+      urls.length === 0 ||
+      urls.length > 4 ||
+      !urls.every(
+        (url) =>
+          typeof url === "string" &&
+          url.length <= 256 &&
+          /^turns?:[^\s"<>\\]+$/.test(url),
+      ) ||
+      typeof username !== "string" ||
+      username.length === 0 ||
+      username.length > 128 ||
+      typeof credential !== "string" ||
+      credential.length === 0 ||
+      credential.length > 128
+    )
+      return [];
+    servers.push({ urls: urls as string[], username, credential });
+  }
+  return servers;
+}
+
 /** Bits per second in the unit people read. */
 export function bitrate(bps: number, language: "hu" | "en") {
   const mega = bps >= 1_000_000;

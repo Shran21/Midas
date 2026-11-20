@@ -31,11 +31,55 @@ pub trait Native: Send + Sync {
         let _ = (request, stopped);
         Consent::Unavailable
     }
-    /// Answers the browser's WebRTC offer for the session the last activated lease started.
-    fn media(&self, offer: &str) -> Result<String, Error> {
-        let _ = offer;
+    /// Answers the browser's WebRTC offer for the session the last activated lease started; the
+    /// relays come with short-lived credentials from the server.
+    fn media(&self, offer: &str, relays: &[Relay]) -> Result<String, Error> {
+        let _ = (offer, relays);
         Err(Error::Target)
     }
+}
+
+/// A TURN relay the server named for one session, with its short-lived credential.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Relay {
+    pub urls: Vec<String>,
+    pub username: String,
+    pub credential: String,
+}
+
+impl std::fmt::Debug for Relay {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Relay")
+            .field("urls", &self.urls)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Relays the server sent, within bounds; anything else in the list refuses the offer.
+fn relays(wire: Vec<wire::Relay>) -> Result<Vec<Relay>, Error> {
+    if wire.len() > 4 {
+        return Err(Error::Invalid);
+    }
+    wire.into_iter()
+        .map(|relay| {
+            let bounded = |text: &str, limit: usize| {
+                !text.is_empty() && text.len() <= limit && !text.chars().any(char::is_control)
+            };
+            if relay.urls.is_empty()
+                || relay.urls.len() > 4
+                || !relay.urls.iter().all(|url| bounded(url, 256))
+                || !bounded(&relay.username, 128)
+                || !bounded(&relay.credential, 128)
+            {
+                return Err(Error::Invalid);
+            }
+            Ok(Relay {
+                urls: relay.urls,
+                username: relay.username,
+                credential: relay.credential,
+            })
+        })
+        .collect()
 }
 
 #[derive(Clone)]
@@ -118,6 +162,7 @@ enum Work {
     Media {
         request: Uuid,
         offer: String,
+        relays: Vec<Relay>,
         stop: Arc<Revocation>,
     },
     Renew {
@@ -302,10 +347,11 @@ impl Engine {
             Work::Media {
                 request,
                 offer,
+                relays,
                 stop,
             } => {
                 let answer = (self.active == Some(request) && stop.check().is_ok())
-                    .then(|| self.native.media(&offer).ok())
+                    .then(|| self.native.media(&offer, &relays).ok())
                     .flatten()
                     .filter(|answer| answer.len() <= wire::MAX_SDP && stop.check().is_ok())
                     .unwrap_or_default();
@@ -557,6 +603,7 @@ impl Transport {
         self.commands
             .try_send(Work::Media {
                 request,
+                relays: relays(offer.relays)?,
                 offer: offer.sdp,
                 stop: stop.clone(),
             })

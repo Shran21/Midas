@@ -26,6 +26,7 @@ use midas_agent_core::media::{
     },
     peer::{Answered, answer},
     session::{Input, Transport},
+    turn::{Server, allocate},
 };
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -57,49 +58,105 @@ const LISTENING: u8 = 5;
 /// How often the privileged worker looks at the input desktop.
 const POLL: Duration = Duration::from_millis(100);
 
-/// The service's request to the companion: candidate addresses and the browser's offer.
-pub fn offer_message(hosts: &[IpAddr], sdp: &str) -> Vec<u8> {
+/// The service's request to the companion: candidate addresses, the relay the agent may
+/// allocate on with its short-lived credential, and the browser's offer.
+pub fn offer_message(hosts: &[IpAddr], relay: Option<&Server>, sdp: &str) -> Vec<u8> {
     let mut message = vec![OFFER, hosts.len().min(16) as u8];
+    let address = |message: &mut Vec<u8>, host: &IpAddr| match host {
+        IpAddr::V4(v4) => {
+            message.push(4);
+            message.extend_from_slice(&v4.octets());
+        }
+        IpAddr::V6(v6) => {
+            message.push(6);
+            message.extend_from_slice(&v6.octets());
+        }
+    };
     for host in hosts.iter().take(16) {
-        match host {
-            IpAddr::V4(v4) => {
-                message.push(4);
-                message.extend_from_slice(&v4.octets());
-            }
-            IpAddr::V6(v6) => {
-                message.push(6);
-                message.extend_from_slice(&v6.octets());
+        address(&mut message, host);
+    }
+    match relay.filter(|relay| relay.username.len() <= 255 && relay.password.len() <= 255) {
+        Some(relay) => {
+            message.push(1);
+            address(&mut message, &relay.address.ip());
+            message.extend_from_slice(&relay.address.port().to_be_bytes());
+            for text in [&relay.username, &relay.password] {
+                message.push(text.len() as u8);
+                message.extend_from_slice(text.as_bytes());
             }
         }
+        None => message.push(0),
     }
     message.extend_from_slice(sdp.as_bytes());
     message
 }
 
-fn read_offer(message: &[u8]) -> Option<(Vec<IpAddr>, String)> {
+fn read_address(rest: &mut &[u8]) -> Option<IpAddr> {
+    let (&[family], tail) = rest.split_first_chunk::<1>()?;
+    let (host, tail) = match family {
+        4 => {
+            let (octets, tail) = tail.split_first_chunk::<4>()?;
+            (IpAddr::V4(Ipv4Addr::from(*octets)), tail)
+        }
+        6 => {
+            let (octets, tail) = tail.split_first_chunk::<16>()?;
+            (IpAddr::V6(Ipv6Addr::from(*octets)), tail)
+        }
+        _ => return None,
+    };
+    *rest = tail;
+    Some(host)
+}
+
+fn read_text(rest: &mut &[u8]) -> Option<String> {
+    let (&[length], tail) = rest.split_first_chunk::<1>()?;
+    let (text, tail) = tail.split_at_checked(usize::from(length))?;
+    *rest = tail;
+    String::from_utf8(text.to_vec())
+        .ok()
+        .filter(|text| !text.is_empty() && !text.chars().any(char::is_control))
+}
+
+fn read_offer(message: &[u8]) -> Option<(Vec<IpAddr>, Option<Server>, String)> {
     let (&[kind, count], mut rest) = message.split_first_chunk::<2>()?;
     if kind != OFFER || count > 16 {
         return None;
     }
     let mut hosts = Vec::new();
     for _ in 0..count {
-        let (&[family], tail) = rest.split_first_chunk::<1>()?;
-        let (host, tail) = match family {
-            4 => {
-                let (octets, tail) = tail.split_first_chunk::<4>()?;
-                (IpAddr::V4(Ipv4Addr::from(*octets)), tail)
-            }
-            6 => {
-                let (octets, tail) = tail.split_first_chunk::<16>()?;
-                (IpAddr::V6(Ipv6Addr::from(*octets)), tail)
-            }
-            _ => return None,
-        };
-        hosts.push(host);
-        rest = tail;
+        hosts.push(read_address(&mut rest)?);
     }
+    let (&[flag], tail) = rest.split_first_chunk::<1>()?;
+    rest = tail;
+    let relay = match flag {
+        0 => None,
+        1 => {
+            let host = read_address(&mut rest)?;
+            let (port, tail) = rest.split_first_chunk::<2>()?;
+            rest = tail;
+            let address = SocketAddr::new(host, u16::from_be_bytes(*port));
+            let username = read_text(&mut rest)?;
+            let password = read_text(&mut rest)?;
+            Some(Server {
+                address,
+                username,
+                password,
+            })
+        }
+        _ => return None,
+    };
     let sdp = String::from_utf8(rest.to_vec()).ok()?;
-    (!sdp.is_empty() && sdp.len() <= midas_protocol::remote::MAX_SDP).then_some((hosts, sdp))
+    (!sdp.is_empty() && sdp.len() <= midas_protocol::remote::MAX_SDP).then_some((hosts, relay, sdp))
+}
+
+/// The companion's answer, or `None` when it refused the offer.
+pub fn read_answer(message: &[u8]) -> Option<String> {
+    match message {
+        [ANSWER, sdp @ ..] => String::from_utf8(sdp.to_vec())
+            .ok()
+            .filter(|s| !s.is_empty()),
+        _ => None,
+    }
 }
 
 /// The service's request that the companion accept the session's privileged worker: a
@@ -121,16 +178,6 @@ fn read_listen(message: &[u8]) -> Option<(u64, uuid::Uuid)> {
 
 pub fn listening(reply: &[u8]) -> bool {
     reply == [LISTENING]
-}
-
-/// The companion's answer, or `None` when it refused the offer.
-pub fn read_answer(message: &[u8]) -> Option<String> {
-    match message {
-        [ANSWER, sdp @ ..] => String::from_utf8(sdp.to_vec())
-            .ok()
-            .filter(|s| !s.is_empty()),
-        _ => None,
-    }
 }
 
 async fn send_all<S: AsyncRead + AsyncWrite + Unpin>(
@@ -532,9 +579,18 @@ fn transport(
     }
 }
 
-/// Answers the offer and starts the transport thread; `None` refuses it.
-fn start(hosts: &[IpAddr], sdp: &str) -> Option<(String, Transport)> {
+/// How long the companion waits for the relay before answering with direct candidates only.
+const RELAY_WAIT: Duration = Duration::from_secs(3);
+
+/// Answers the offer and starts the transport thread; `None` refuses it. With a relay, the
+/// answer also carries the relayed and server-reflexive addresses.
+fn start(hosts: &[IpAddr], relay: Option<&Server>, sdp: &str) -> Option<(String, Transport)> {
     let socket = UdpSocket::bind(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0))).ok()?;
+    let allocation = relay.and_then(|relay| {
+        allocate(&socket, relay, Instant::now() + RELAY_WAIT)
+            .inspect_err(|error| tracing::warn!(?error, "relay not allocated"))
+            .ok()
+    });
     let mut hosts: Vec<IpAddr> = hosts.iter().copied().filter(IpAddr::is_ipv4).collect();
     if hosts.is_empty() {
         hosts = crate::win::network::local_addresses()
@@ -543,7 +599,8 @@ fn start(hosts: &[IpAddr], sdp: &str) -> Option<(String, Transport)> {
             .filter(IpAddr::is_ipv4)
             .collect();
     }
-    let Answered { answer, peer } = answer(sdp, socket, &hosts, software(), Instant::now()).ok()?;
+    let Answered { answer, peer } =
+        answer(sdp, socket, &hosts, allocation, software(), Instant::now()).ok()?;
     Some((
         answer,
         Transport::new(peer, Profile::Text, (1920, 1080), Instant::now()),
@@ -656,17 +713,25 @@ where
                 listening |= accepted;
                 vec![if accepted { LISTENING } else { REFUSED }]
             } else {
-                match read_offer(&message).filter(|_| !started) {
-                    Some((hosts, sdp)) => match start(&hosts, &sdp) {
-                        Some((answer, transport)) => {
-                            started = true;
-                            let _ = offers_sender.send(transport).await;
-                            let mut reply = vec![ANSWER];
-                            reply.extend_from_slice(answer.as_bytes());
-                            reply
-                        }
-                        None => vec![REFUSED],
-                    },
+                let offer = read_offer(&message).filter(|_| !started);
+                // Allocating on the relay waits on the network, so it runs off this thread.
+                let answered = match offer {
+                    Some((hosts, relay, sdp)) => {
+                        tokio::task::spawn_blocking(move || start(&hosts, relay.as_ref(), &sdp))
+                            .await
+                            .ok()
+                            .flatten()
+                    }
+                    None => None,
+                };
+                match answered {
+                    Some((answer, transport)) => {
+                        started = true;
+                        let _ = offers_sender.send(transport).await;
+                        let mut reply = vec![ANSWER];
+                        reply.extend_from_slice(answer.as_bytes());
+                        reply
+                    }
                     None => vec![REFUSED],
                 }
             };
@@ -818,9 +883,23 @@ mod tests {
             IpAddr::V4(Ipv4Addr::new(10, 0, 0, 5)),
             IpAddr::V6("2001:db8::1".parse().unwrap()),
         ];
-        let message = offer_message(&hosts, "v=0");
-        assert_eq!(read_offer(&message), Some((hosts.to_vec(), "v=0".into())));
-        assert_eq!(read_offer(&offer_message(&hosts, "")), None);
+        let message = offer_message(&hosts, None, "v=0");
+        assert_eq!(
+            read_offer(&message),
+            Some((hosts.to_vec(), None, "v=0".into()))
+        );
+        assert_eq!(read_offer(&offer_message(&hosts, None, "")), None);
+        let relay = Server {
+            address: "[2001:db8::7]:3478".parse().unwrap(),
+            username: "1700000300:request".into(),
+            password: "credential".into(),
+        };
+        let with_relay = offer_message(&hosts, Some(&relay), "v=0");
+        assert_eq!(
+            read_offer(&with_relay),
+            Some((hosts.to_vec(), Some(relay.clone()), "v=0".into()))
+        );
+        assert_eq!(read_offer(&with_relay[..with_relay.len() - 8]), None);
         assert_eq!(read_offer(&message[..5]), None);
         assert_eq!(read_offer(&[OFFER, 17]), None);
         assert_eq!(read_offer(&[ANSWER, 0]), None);
@@ -840,7 +919,7 @@ mod tests {
         let mut longer = message.clone();
         longer.push(0);
         assert_eq!(read_listen(&longer), None);
-        assert_eq!(read_listen(&offer_message(&[], "v=0")), None);
+        assert_eq!(read_listen(&offer_message(&[], None, "v=0")), None);
         assert!(listening(&[LISTENING]) && !listening(&[REFUSED]));
     }
 

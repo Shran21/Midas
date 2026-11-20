@@ -53,6 +53,20 @@ pub struct Arguments {
     pub smtp_password_file: Option<PathBuf>,
     #[arg(long, env = "MIDAS_SMTP_FROM", requires = "smtp_host")]
     pub smtp_from: Option<String>,
+    /// TURN relay URLs for remote support, comma separated: for example
+    /// `turn:relay.example.com:3478?transport=udp,turns:relay.example.com:443?transport=tcp`.
+    #[arg(
+        long = "turn-url",
+        env = "MIDAS_TURN_URLS",
+        value_delimiter = ',',
+        requires = "turn_secret_file"
+    )]
+    pub turn_urls: Vec<String>,
+    /// The relay's shared secret, for short-lived credentials.
+    #[arg(long, env = "MIDAS_TURN_SECRET_FILE")]
+    pub turn_secret_file: Option<PathBuf>,
+    #[arg(long, env = "MIDAS_TURN_CREDENTIAL_SECONDS", default_value_t = 300)]
+    pub turn_credential_seconds: u64,
 }
 
 impl Arguments {

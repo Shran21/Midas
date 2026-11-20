@@ -313,7 +313,7 @@ async fn release_participants(parent: &Peer, token: &OwnedHandle, session: u32, 
         let offered = std::time::Instant::now();
         let reply = control
             .exchange(
-                &super::super::media::offer_message(&[host], &browser_offer()),
+                &super::super::media::offer_message(&[host], None, &browser_offer()),
                 tokio::time::Instant::now() + Duration::from_secs(5),
             )
             .await
@@ -329,7 +329,7 @@ async fn release_participants(parent: &Peer, token: &OwnedHandle, session: u32, 
         );
         let again = control
             .exchange(
-                &super::super::media::offer_message(&[host], &browser_offer()),
+                &super::super::media::offer_message(&[host], None, &browser_offer()),
                 tokio::time::Instant::now() + Duration::from_secs(5),
             )
             .await

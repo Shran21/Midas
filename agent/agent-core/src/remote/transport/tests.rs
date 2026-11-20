@@ -80,8 +80,14 @@ impl Native for Broker {
         }
         Consent::Allowed
     }
-    fn media(&self, offer: &str) -> Result<String, Error> {
-        Ok(format!("answer:{offer}"))
+    fn media(&self, offer: &str, relays: &[Relay]) -> Result<String, Error> {
+        Ok(format!(
+            "answer:{offer}{}",
+            relays
+                .iter()
+                .map(|relay| format!(" via {}", relay.urls.join(",")))
+                .collect::<String>()
+        ))
     }
 }
 
@@ -543,6 +549,7 @@ async fn media_offers_reach_the_backend_only_for_the_accepted_request() {
     let offer = |request: &[u8]| wire::MediaOffer {
         request: request.to_vec(),
         sdp: "v=0".into(),
+        relays: Vec::new(),
     };
     assert_eq!(
         transport.media(offer(&f.prepare.request)),
@@ -570,8 +577,45 @@ async fn media_offers_reach_the_backend_only_for_the_accepted_request() {
         transport.media(wire::MediaOffer {
             request: f.prepare.request.clone(),
             sdp: "x".repeat(wire::MAX_SDP + 1),
+            relays: Vec::new(),
         }),
         Err(Error::Invalid)
+    );
+    // Relays from the server are bounded; an oversized list refuses the offer.
+    let relay = |url: &str| wire::Relay {
+        urls: vec![url.into()],
+        username: "1:request".into(),
+        credential: "secret".into(),
+    };
+    assert_eq!(
+        transport.media(wire::MediaOffer {
+            request: f.prepare.request.clone(),
+            sdp: "v=0".into(),
+            relays: vec![relay("turn:relay:3478"); 5],
+        }),
+        Err(Error::Invalid)
+    );
+    assert_eq!(
+        transport.media(wire::MediaOffer {
+            request: f.prepare.request.clone(),
+            sdp: "v=0".into(),
+            relays: vec![relay(
+                "turn:relay
+:3478"
+            )],
+        }),
+        Err(Error::Invalid)
+    );
+    transport
+        .media(wire::MediaOffer {
+            request: f.prepare.request.clone(),
+            sdp: "v=0".into(),
+            relays: vec![relay("turn:relay:3478")],
+        })
+        .unwrap();
+    assert_eq!(
+        media_answer(response(&mut transport).await),
+        "answer:v=0 via turn:relay:3478"
     );
     transport
         .revoke(wire::Revoke {

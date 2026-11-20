@@ -335,6 +335,58 @@ impl Enrollment {
         Ok(view)
     }
 
+    /// The relays the browser may use for an active request, with short-lived credentials; an
+    /// empty list without a configured relay. Checked like the picture: the whole mode's
+    /// permissions, for the requester only.
+    pub async fn remote_ice(
+        &self,
+        sessions: &Sessions,
+        token: &SessionToken,
+        tenant: Uuid,
+        device: Uuid,
+        id: Uuid,
+    ) -> Result<Option<Vec<crate::turn::IceServer>>> {
+        let target = Target {
+            tenant,
+            device: Some(device),
+        };
+        let decision = self
+            .authorizer
+            .authorize(sessions, token, target, Permission::RemoteControl)
+            .await?;
+        let Some((mode, uac, active)) = self
+            .remote_requests
+            .entries()
+            .get(&id)
+            .filter(|e| {
+                e.tenant == tenant && e.device == device && e.operator == decision.operator_id
+            })
+            .map(|e| {
+                let active = e
+                    .session
+                    .as_ref()
+                    .and_then(Weak::upgrade)
+                    .is_some_and(|session| session.is_active());
+                (e.mode, e.uac, active)
+            })
+        else {
+            return Ok(None);
+        };
+        self.authorizer
+            .authorize_attended_operation(sessions, token, target, mode, uac)
+            .await?;
+        if !active {
+            return Err(AccessError::Offline);
+        }
+        Ok(Some(
+            self.turn
+                .get()
+                .map(|relay| relay.credentials(id, unix_now()))
+                .into_iter()
+                .collect(),
+        ))
+    }
+
     /// The status of the caller's own request; other operators' requests are not visible.
     pub async fn remote_request(
         &self,
@@ -407,7 +459,20 @@ impl Enrollment {
             entry.offered = true;
             session
         };
-        let answer = session.media(sdp).await;
+        let relays = self
+            .turn
+            .get()
+            .map(|relay| {
+                let server = relay.credentials(id, unix_now());
+                wire::Relay {
+                    urls: server.urls,
+                    username: server.username,
+                    credential: server.credential,
+                }
+            })
+            .into_iter()
+            .collect();
+        let answer = session.media(sdp, relays).await;
         drop(session);
         let identity = sessions.validate(token, false).await?;
         let mut event = Event::new(

@@ -315,6 +315,8 @@ pub struct Enrollment {
     pub(crate) refreshed: Mutex<HashMap<Uuid, Instant>>,
     /// Teams and Slack delivery; set once the server key is known.
     pub(crate) webhooks: std::sync::OnceLock<Arc<crate::channels::Webhooks>>,
+    /// The TURN relay for remote support, when one is configured.
+    pub(crate) turn: std::sync::OnceLock<crate::turn::Relay>,
 }
 
 impl Enrollment {
@@ -330,7 +332,14 @@ impl Enrollment {
             changes: broadcast::channel(256).0,
             refreshed: Mutex::default(),
             webhooks: std::sync::OnceLock::new(),
+            turn: std::sync::OnceLock::new(),
         }
+    }
+
+    /// Offers this relay to browsers and agents of remote-support sessions; later calls are
+    /// ignored.
+    pub fn set_turn(&self, relay: crate::turn::Relay) {
+        let _ = self.turn.set(relay);
     }
 
     /// Enables Teams and Slack channels; later calls are ignored.

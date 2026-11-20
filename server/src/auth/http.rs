@@ -223,6 +223,10 @@ pub fn router(state: Arc<WebAuth>) -> Router {
             post(remote_media),
         )
         .route(
+            "/api/tenants/{id}/devices/{device}/remote-requests/{request}/ice",
+            get(remote_ice),
+        )
+        .route(
             "/api/tenants/{id}/devices/{device}/metrics",
             get(device_metrics),
         )
@@ -633,6 +637,32 @@ async fn remote_media(
         .await?
         .map(|sdp| Json(MediaAnswer { sdp }))
         .ok_or(Failure(StatusCode::NOT_FOUND, "not_found"))
+}
+
+#[derive(Serialize)]
+struct IceServers {
+    ice_servers: Vec<crate::turn::IceServer>,
+}
+
+async fn remote_ice(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((tenant, device, request)): Path<(Uuid, Uuid, Uuid)>,
+) -> Result<Response> {
+    let servers = enrollment(&state)?
+        .remote_ice(&state.sessions, &context.token, tenant, device, request)
+        .await?
+        .ok_or(Failure(StatusCode::NOT_FOUND, "not_found"))?;
+    // Credentials are short-lived but still secrets: never cached.
+    let mut response = Json(IceServers {
+        ice_servers: servers,
+    })
+    .into_response();
+    response.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store"),
+    );
+    Ok(response)
 }
 
 async fn cancel_remote_request(

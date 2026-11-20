@@ -199,7 +199,8 @@ impl Session {
     }
 
     /// Passes the browser's WebRTC offer to the agent and returns its answer.
-    pub async fn media(&self, sdp: String) -> Result<String> {
+    /// Passes the browser's offer on, with the relay credentials the agent may allocate on.
+    pub async fn media(&self, sdp: String, relays: Vec<wire::Relay>) -> Result<String> {
         if !self.is_active() || sdp.is_empty() || sdp.len() > wire::MAX_SDP {
             return Err(AccessError::Offline);
         }
@@ -209,6 +210,7 @@ impl Session {
                 message: wire::MediaOffer {
                     request: self.request.as_bytes().to_vec(),
                     sdp,
+                    relays,
                 },
                 reply,
             })

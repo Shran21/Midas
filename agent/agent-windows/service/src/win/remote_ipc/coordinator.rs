@@ -8,7 +8,8 @@ use std::{
 };
 
 use midas_agent_core::remote::{
-    Consent, ConsentRequest, DesktopKind, Lease, Observation, Presence, transport::Native,
+    Consent, ConsentRequest, DesktopKind, Lease, Observation, Presence,
+    transport::{Native, Relay},
 };
 use midas_protocol::sessions::{OsSession, Presence as WirePresence};
 use midas_remote_auth::{Error, Mode, Rights, Target};
@@ -327,9 +328,11 @@ impl Native for Coordinator {
         Ok(())
     }
 
-    fn media(&self, offer: &str) -> Result<String, Error> {
+    fn media(&self, offer: &str, relays: &[Relay]) -> Result<String, Error> {
         let hosts = crate::win::network::local_addresses().unwrap_or_default();
-        let request = super::media::offer_message(&hosts, offer);
+        // The agent allocates over UDP; the browser may use any relay the server named.
+        let relay = midas_agent_core::media::turn::udp_relay(relays);
+        let request = super::media::offer_message(&hosts, relay.as_ref(), offer);
         let reply = self.runtime.block_on(async {
             let mut media = self.media.lock().await;
             let control = media.as_mut().ok_or(Error::Target)?;

@@ -6,6 +6,7 @@ import { viewerCopy } from "./viewerCopy";
 import {
   bitrate,
   keyCode,
+  readIceServers,
   readStats,
   type Stats,
   videoPoint,
@@ -61,32 +62,40 @@ export function Viewer({
   latest.current = { fail, csrf };
 
   useEffect(() => {
-    const connection = new RTCPeerConnection();
     let closed = false;
-    connection.addTransceiver("video", { direction: "recvonly" });
-    const control = connection.createDataChannel("control");
-    channel.current = control;
-    control.onmessage = (event) => {
-      const value = readStats(String(event.data));
-      if (value) setStats({ value, at: performance.now() });
-    };
-    connection.ontrack = (event) => {
-      if (video.current)
-        video.current.srcObject =
-          event.streams[0] ?? new MediaStream([event.track]);
-    };
-    connection.onconnectionstatechange = () => {
-      if (closed) return;
-      const state = connection.connectionState;
-      if (state === "connected") setPhase("live");
-      if (state === "failed") setPhase("failed");
-      if (state === "closed" || state === "disconnected") setPhase("closed");
-    };
+    let connection: RTCPeerConnection | null = null;
     (async () => {
       try {
-        await connection.setLocalDescription(await connection.createOffer());
-        await gathered(connection);
-        const sdp = connection.localDescription?.sdp;
+        // The relay is for when no direct path works; without one the browser tries direct only.
+        const iceServers = await api
+          .remoteIce(tenant, device.id, request.id)
+          .then(readIceServers, () => []);
+        if (closed) return;
+        const peer = new RTCPeerConnection({ iceServers });
+        connection = peer;
+        peer.addTransceiver("video", { direction: "recvonly" });
+        const control = peer.createDataChannel("control");
+        channel.current = control;
+        control.onmessage = (event) => {
+          const value = readStats(String(event.data));
+          if (value) setStats({ value, at: performance.now() });
+        };
+        peer.ontrack = (event) => {
+          if (video.current)
+            video.current.srcObject =
+              event.streams[0] ?? new MediaStream([event.track]);
+        };
+        peer.onconnectionstatechange = () => {
+          if (closed) return;
+          const state = peer.connectionState;
+          if (state === "connected") setPhase("live");
+          if (state === "failed") setPhase("failed");
+          if (state === "closed" || state === "disconnected")
+            setPhase("closed");
+        };
+        await peer.setLocalDescription(await peer.createOffer());
+        await gathered(peer);
+        const sdp = peer.localDescription?.sdp;
         if (!sdp || closed) return;
         const response = await api.remoteMedia(
           tenant,
@@ -102,7 +111,7 @@ export function Viewer({
           typeof (response as { sdp?: unknown }).sdp !== "string"
         )
           throw new Error("invalid answer");
-        await connection.setRemoteDescription({
+        await peer.setRemoteDescription({
           type: "answer",
           sdp: (response as { sdp: string }).sdp,
         });
@@ -115,7 +124,7 @@ export function Viewer({
       closed = true;
       clearInterval(tick);
       channel.current = null;
-      connection.close();
+      connection?.close();
     };
   }, [tenant, device.id, request.id]);
 

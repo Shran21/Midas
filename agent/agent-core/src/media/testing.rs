@@ -34,9 +34,10 @@ pub(crate) struct Browser {
 }
 
 impl Browser {
-    pub(crate) fn offer() -> (Self, String, SdpPendingOffer) {
+    /// A browser whose only candidate is a host address on `ip`.
+    pub(crate) fn offer_on(ip: IpAddr) -> (Self, String, SdpPendingOffer) {
         crypto();
-        let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let socket = UdpSocket::bind((ip, 0)).unwrap();
         let local = socket.local_addr().unwrap();
         let mut rtc = RtcConfig::new()
             .clear_codecs()
@@ -136,16 +137,22 @@ pub(crate) fn keyframe(seed: u8) -> Vec<u8> {
 }
 
 pub(crate) fn connect(encoders: Vec<Encoder>) -> (Browser, Peer, Vec<PeerEvent>) {
-    let (mut browser, offer, pending) = Browser::offer();
-    let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
-    let Answered { answer, mut peer } = answer(
-        &offer,
-        socket,
-        &[IpAddr::V4(Ipv4Addr::LOCALHOST)],
-        encoders,
-        Instant::now(),
-    )
-    .unwrap();
+    let localhost = IpAddr::V4(Ipv4Addr::LOCALHOST);
+    let socket = UdpSocket::bind((localhost, 0)).unwrap();
+    connect_with(encoders, localhost, socket, &[localhost], None)
+}
+
+/// Connects a browser on `browser` to an agent answering on `socket` with `hosts` and `relay`.
+pub(crate) fn connect_with(
+    encoders: Vec<Encoder>,
+    browser: IpAddr,
+    socket: UdpSocket,
+    hosts: &[IpAddr],
+    relay: Option<super::turn::Allocation>,
+) -> (Browser, Peer, Vec<PeerEvent>) {
+    let (mut browser, offer, pending) = Browser::offer_on(browser);
+    let Answered { answer, mut peer } =
+        answer(&offer, socket, hosts, relay, encoders, Instant::now()).unwrap();
     browser
         .rtc
         .sdp_api()

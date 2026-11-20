@@ -12,7 +12,7 @@ workspace = true
 
 [features]
 # The WebRTC side of remote support; only agents that serve remote support need it.
-webrtc = ["dep:str0m"]
+webrtc = ["dep:str0m", "dep:hmac", "dep:md-5", "dep:sha1"]
 
 [dependencies]
 futures-util.workspace = true
@@ -29,6 +29,9 @@ rustls.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 str0m = { workspace = true, optional = true }
+hmac = { workspace = true, optional = true }
+md-5 = { workspace = true, optional = true }
+sha1 = { workspace = true, optional = true }
 sysinfo.workspace = true
 tokio = { workspace = true, features = ["sync"] }
 tokio-rustls.workspace = true

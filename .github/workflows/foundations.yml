@@ -87,3 +87,6 @@ jobs:
       - name: Agent service hardening (Linux)
         if: runner.os == 'Linux'
         run: python .github/scripts/check-linux-unit.py
+      - name: TURN relay (Linux)
+        if: runner.os == 'Linux'
+        run: python .github/scripts/check-turn.py

@@ -1,0 +1,67 @@
+# eturnal TURN relay for MIDAS remote support (eturnal 1.12, https://eturnal.net/documentation/).
+# Copy to /etc/eturnal.yml, readable only by the eturnal user, and fill in the marked values.
+# The secret must be the contents of the server's MIDAS_TURN_SECRET_FILE; MIDAS issues
+# credentials from it that open an allocation for five minutes. The agent itself ends remote
+# support when the session ends; the relay password alone never decides that.
+eturnal:
+  secret: "FILL IN: the MIDAS TURN secret, at least 16 characters"
+  # The relay's public addresses; peers reach relayed traffic here.
+  relay_ipv4_addr: "FILL IN: public IPv4 address"
+  # relay_ipv6_addr: "FILL IN: public IPv6 address"
+  relay_min_port: 49152
+  relay_max_port: 65535
+
+  listen:
+    - ip: "::"
+      port: 3478
+      transport: udp
+    - ip: "::"
+      port: 3478
+      transport: tcp
+    # TURN over TLS on 443, on its own IP address, for networks that allow only HTTPS ports.
+    # - ip: "FILL IN: second public address"
+    #   port: 443
+    #   transport: tls
+  # tls_crt_file: /etc/eturnal/tls/fullchain.pem
+  # tls_key_file: /etc/eturnal/tls/privkey.pem
+
+  # Credentials are checked when an allocation is created; renewals of a running session do not
+  # need a new one.
+  strict_expiry: false
+  max_permissions: 10
+
+  # The relay never forwards to internal, loopback, link-local, shared, documentation,
+  # multicast or reserved addresses (IPv4 and IPv6, including IPv4-mapped and NAT64 forms).
+  # A whitelist entry would override these; keep it empty unless a reviewed exception exists.
+  blacklist_peers:
+    - "0.0.0.0/8"
+    - "10.0.0.0/8"
+    - "100.64.0.0/10"
+    - "127.0.0.0/8"
+    - "169.254.0.0/16"
+    - "172.16.0.0/12"
+    - "192.0.0.0/24"
+    - "192.0.2.0/24"
+    - "192.88.99.0/24"
+    - "192.168.0.0/16"
+    - "198.18.0.0/15"
+    - "198.51.100.0/24"
+    - "203.0.113.0/24"
+    - "224.0.0.0/4"
+    - "240.0.0.0/4"
+    - "::/128"
+    - "::1/128"
+    - "::ffff:0:0/96"
+    - "64:ff9b::/96"
+    - "64:ff9b:1::/48"
+    - "100::/64"
+    - "2001::/23"
+    - "2001:db8::/32"
+    - "2002::/16"
+    - "fc00::/7"
+    - "fe80::/10"
+    - "ff00::/8"
+  whitelist_peers: []
+
+  log_level: notice
+  log_dir: stdout

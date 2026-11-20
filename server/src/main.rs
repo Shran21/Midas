@@ -41,6 +41,14 @@ async fn main() -> Result<(), TransportError> {
     if args.agent_bind.is_some() && enrollment.is_none() {
         return Err("the agent listener requires a database and --agent-ca-key".into());
     }
+    if let (Some(enrollment), Some(file)) = (&enrollment, &args.turn_secret_file) {
+        let secret = zeroize::Zeroizing::new(std::fs::read_to_string(file)?);
+        enrollment.set_turn(midas_server::turn::Relay::new(
+            args.turn_urls.clone(),
+            &secret,
+            args.turn_credential_seconds,
+        )?);
+    }
     if let Some(enrollment) = enrollment.clone() {
         let mailer = match &args.smtp_host {
             Some(host) => {

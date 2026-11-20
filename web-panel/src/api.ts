@@ -493,6 +493,10 @@ export const api = {
       `${devicePath(tenant, device)}/remote-requests/${encodeURIComponent(id)}`,
       { signal },
     ),
+  remoteIce: (tenant: string, device: string, id: string) =>
+    request<unknown>(
+      `${devicePath(tenant, device)}/remote-requests/${encodeURIComponent(id)}/ice`,
+    ),
   remoteMedia: (
     tenant: string,
     device: string,

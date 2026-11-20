@@ -57,7 +57,14 @@ fn offers_without_video_or_codec_are_refused_or_reported() {
     let socket = || UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
     let hosts = [IpAddr::V4(Ipv4Addr::LOCALHOST)];
     assert!(matches!(
-        answer("not sdp", socket(), &hosts, software(), Instant::now()),
+        answer(
+            "not sdp",
+            socket(),
+            &hosts,
+            None,
+            software(),
+            Instant::now()
+        ),
         Err(PeerError::Offer)
     ));
     let mut rtc = RtcConfig::new().build(Instant::now());
@@ -69,6 +76,7 @@ fn offers_without_video_or_codec_are_refused_or_reported() {
             &offer.to_sdp_string(),
             socket(),
             &hosts,
+            None,
             software(),
             Instant::now()
         ),

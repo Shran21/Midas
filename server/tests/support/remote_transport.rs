@@ -39,6 +39,8 @@ pub struct Broker {
     answer: Mutex<Option<Consent>>,
     asked: Mutex<Vec<ConsentRequest>>,
     consenting: AtomicBool,
+    /// The relays the last media offer carried.
+    pub relays: Mutex<Vec<midas_agent_core::remote::transport::Relay>>,
 }
 
 impl Broker {
@@ -55,6 +57,7 @@ impl Broker {
             answer: Mutex::new(Some(Consent::Allowed)),
             asked: Mutex::new(Vec::new()),
             consenting: AtomicBool::new(false),
+            relays: Mutex::new(Vec::new()),
         }
     }
     /// The local user's End on the agent side.
@@ -166,13 +169,20 @@ impl Native for Broker {
         self.consenting.store(false, Ordering::SeqCst);
         answer
     }
-    fn media(&self, offer: &str) -> Result<String, Error> {
+    fn media(
+        &self,
+        offer: &str,
+        relays: &[midas_agent_core::remote::transport::Relay],
+    ) -> Result<String, Error> {
+        *self.relays.lock().unwrap() = relays.to_vec();
         if !self.allowed() {
             return Err(Error::Revoked);
         }
         Ok(format!("answer to {} bytes", offer.len()))
     }
 }
+
+const RELAY_URL: &str = "turn:127.0.0.1:3478?transport=udp";
 
 /// Waits for an active request to end, without the short limit of `settled`.
 async fn settled_slowly(ctx: &Context<'_>, path: &str) -> Value {
@@ -221,6 +231,10 @@ pub async fn verify_attended(
         .execute(&mut *admin)
         .await
         .unwrap();
+    ctx.enrollment.set_turn(
+        midas_server::turn::Relay::new(vec![RELAY_URL.into()], "relay-secret-of-the-test", 300)
+            .unwrap(),
+    );
     assert_eq!(
         call(
             ctx.app,
@@ -350,6 +364,34 @@ pub async fn verify_attended(
     .await;
     assert_eq!(status, StatusCode::OK, "{answer}");
     assert_eq!(answer["sdp"], "answer to 9 bytes");
+    // The agent gets the relay with a credential that names this request and expires soon.
+    let relays = broker.relays.lock().unwrap().clone();
+    assert_eq!(relays.len(), 1);
+    assert_eq!(relays[0].urls, [RELAY_URL]);
+    let (expiry, named) = relays[0].username.split_once(':').unwrap();
+    assert_eq!(named, path.rsplit('/').next().unwrap());
+    let expiry: i64 = expiry.parse().unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    assert!(expiry > now && expiry <= now + 301, "{expiry} {now}");
+    // The browser gets the same kind of credential, only for its own active request.
+    let ice = format!("{path}/ice");
+    let (status, servers, _) = call(ctx.app, "GET", &ice, Some(ctx.manager), None, &[]).await;
+    assert_eq!(status, StatusCode::OK, "{servers}");
+    assert_eq!(servers["ice_servers"][0]["urls"][0], RELAY_URL);
+    assert!(
+        servers["ice_servers"][0]["credential"]
+            .as_str()
+            .is_some_and(|c| c.len() == 28)
+    );
+    assert_eq!(
+        call(ctx.app, "GET", &ice, Some(ctx.outsider), None, &[])
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
     assert_eq!(
         call(
             ctx.app,

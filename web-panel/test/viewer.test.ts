@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   bitrate,
   keyCode,
+  readIceServers,
   readStats,
   videoPoint,
 } from "../src/remote/viewerModel.ts";
@@ -81,4 +82,27 @@ test("agent statistics are read strictly", () => {
     assert.equal(readStats(invalid), null, invalid);
   assert.equal(bitrate(1_234_567, "en"), "1.2 Mbit/s");
   assert.equal(bitrate(850_000, "en"), "850 kbit/s");
+});
+
+test("relays from the server are taken only when well formed", () => {
+  const relay = {
+    urls: [
+      "turn:relay.example.com:3478?transport=udp",
+      "turns:relay.example.com:443?transport=tcp",
+    ],
+    username: "1700000300:request",
+    credential: "c2VjcmV0",
+  };
+  assert.deepEqual(readIceServers({ ice_servers: [relay] }), [relay]);
+  assert.deepEqual(readIceServers({ ice_servers: [] }), []);
+  for (const invalid of [
+    null,
+    { ice_servers: "turn:relay" },
+    { ice_servers: [{ ...relay, urls: ["stun:relay:3478"] }] },
+    { ice_servers: [{ ...relay, urls: ["turn:relay 3478"] }] },
+    { ice_servers: [{ ...relay, username: "" }] },
+    { ice_servers: [{ ...relay, credential: 7 }] },
+    { ice_servers: [relay, relay, relay, relay, relay] },
+  ])
+    assert.deepEqual(readIceServers(invalid), [], JSON.stringify(invalid));
 });

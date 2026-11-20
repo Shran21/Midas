@@ -46,6 +46,10 @@ A példa helykitöltő domainekkel szerepel. A `--acme-accept-terms` a kibocsát
 
 A riasztási értesítéseket a szerver SMTP-n küldi (`--smtp-host`, `--smtp-port`, `--smtp-security`, `--smtp-from`, választhatóan `--smtp-user` és `--smtp-password-file`). Beállítás nélkül a levelek sorban várnak. Részletek: [riasztások](riasztasok.md).
 
+### TURN-relé
+
+A távsegítés közvetlen út nélkül eturnal TURN-relén halad ([képátvitel](tavsegitesi-kep.md)). A szerver a `--turn-url` (vagy `MIDAS_TURN_URLS`, vesszővel elválasztva, például `turn:relay.example.com:3478?transport=udp,turns:relay.example.com:443?transport=tcp`) és a `--turn-secret-file` (`MIDAS_TURN_SECRET_FILE`) beállításból ad ki rövid életű hitelesítő adatot. A `--turn-credential-seconds` alapértéke 300, 60 és 3600 másodperc között állítható. A titok legalább 16 karakter, és meg kell egyeznie a relé `secret` értékével. A relé mintája a `server/turn/eturnal.yml`, amely a belső és fenntartott címeket tiltja. Relé nélkül a kapcsolat csak közvetlen úton jöhet létre.
+
 ### Naplózás és próbák
 
 A JSON-napló a figyelő indulását/leállását, az ACME állapotváltozását, a statikus útvonal nevét, a válaszkódot és a kiszolgálási időt rögzíti. URL-paraméter, kérésbody, fejléc és privát kulcs nem kerül az alkalmazás kérésnaplójába. Az ACME hibák tartalma helyett általános hibaesemény szerepel. Az OpenTelemetry-export külön későbbi integráció.
@@ -61,6 +65,8 @@ Add `--agent-bind` and `--agent-ca` for a separate mandatory-client-certificate 
 HTTPS serves GET `/health/live` and agent enrollment at POST `/agent/enroll` ([enrollment](beiratkozas.md#english)), returning 503 without the CA key. The mTLS listener serves the agent WebSocket at GET `/agent/connect` with version negotiation and keepalive ([agent protocol](agent-protokoll.md#english)); a request without an upgrade receives 426, and only registered, unrevoked device certificates may connect. Neither listener exposes the other's agent route. Certificate authentication does not authorize operations. Enrollment, per-device state, tenant mapping, active-session revocation and application permissions remain subsequent work.
 
 Alert notifications go out over SMTP (`--smtp-host`, `--smtp-port`, `--smtp-security`, `--smtp-from`, optionally `--smtp-user` and `--smtp-password-file`); without it messages stay queued ([alerts](riasztasok.md#english)).
+
+Without a direct path, remote support travels over an eturnal TURN relay ([video](tavsegitesi-kep.md#english)). The server issues short-lived credentials from `--turn-url` (or `MIDAS_TURN_URLS`, comma separated, for example `turn:relay.example.com:3478?transport=udp,turns:relay.example.com:443?transport=tcp`) and `--turn-secret-file` (`MIDAS_TURN_SECRET_FILE`). `--turn-credential-seconds` defaults to 300 and accepts 60 to 3600 seconds. The secret has at least 16 characters and must match the relay's `secret`. The relay's sample is `server/turn/eturnal.yml`, which forbids internal and reserved addresses. Without a relay, connections can only be direct.
 
 ACME uses TLS-ALPN-01 with Let's Encrypt staging by default. DNS must point to this server and public port 443 must reach the HTTPS listener without a TLS-terminating proxy. Repeat `--acme-domain` for all required names. `--acme-contact`, `--acme-cache` and explicit `--acme-accept-terms` are required; review the issuer's terms before using that flag. `--acme-production` explicitly selects the production issuer. See the command examples above, replacing their placeholder names and paths.
 

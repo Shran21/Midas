@@ -129,13 +129,35 @@ pub struct Ended {
 /// The most SDP bytes either side accepts.
 pub const MAX_SDP: usize = 16 * 1024;
 
-/// The browser's WebRTC offer for the active, acknowledged grant of `request`.
+/// The browser's WebRTC offer for the active, acknowledged grant of `request`, with the TURN
+/// relays and short-lived credentials the agent may allocate on.
 #[derive(Clone, PartialEq, Message)]
 pub struct MediaOffer {
     #[prost(bytes = "vec", tag = "1")]
     pub request: Vec<u8>,
     #[prost(string, tag = "2")]
     pub sdp: String,
+    #[prost(message, repeated, tag = "3")]
+    pub relays: Vec<Relay>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+#[prost(skip_debug)]
+pub struct Relay {
+    #[prost(string, repeated, tag = "1")]
+    pub urls: Vec<String>,
+    #[prost(string, tag = "2")]
+    pub username: String,
+    #[prost(string, tag = "3")]
+    pub credential: String,
+}
+
+impl std::fmt::Debug for Relay {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Relay")
+            .field("urls", &self.urls)
+            .finish_non_exhaustive()
+    }
 }
 
 /// The agent's answer; `sdp` is empty when the agent refused the offer.
@@ -196,6 +218,11 @@ mod tests {
             Body::MediaOffer(MediaOffer {
                 request: vec![1; 16],
                 sdp: "v=0".into(),
+                relays: vec![Relay {
+                    urls: vec!["turn:relay:3478".into()],
+                    username: "1:request".into(),
+                    credential: "secret".into(),
+                }],
             }),
             Body::MediaAnswer(MediaAnswer {
                 request: vec![1; 16],

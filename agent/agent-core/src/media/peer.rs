@@ -23,6 +23,7 @@ use str0m::{
 use super::{
     adapt::Sample,
     codec::{self, Choice, Encoder, Offer},
+    turn::{Allocation, Received},
 };
 
 /// Datagrams larger than this are not WebRTC traffic.
@@ -81,13 +82,17 @@ pub struct Peer {
     events: VecDeque<PeerEvent>,
     buffer: Vec<u8>,
     closed: bool,
+    /// A relayed address on the TURN relay, for when no direct path works.
+    relay: Option<Allocation>,
 }
 
-/// Answers `offer` on `socket`, advertising one host candidate per address in `hosts`.
+/// Answers `offer` on `socket`, advertising one host candidate per address in `hosts`, and with
+/// `relay` (allocated on the same socket) also the relayed and server-reflexive addresses.
 pub fn answer(
     offer: &str,
     socket: UdpSocket,
     hosts: &[IpAddr],
+    relay: Option<Allocation>,
     encoders: Vec<Encoder>,
     now: Instant,
 ) -> Result<Answered, PeerError> {
@@ -114,6 +119,16 @@ pub fn answer(
             Candidate::host(SocketAddr::new(*host, port), "udp").map_err(|_| PeerError::Offer)?;
         rtc.add_local_candidate(candidate).ok_or(PeerError::Offer)?;
     }
+    if let Some(relay) = &relay {
+        let relayed =
+            Candidate::relayed(relay.relayed, local, "udp").map_err(|_| PeerError::Offer)?;
+        rtc.add_local_candidate(relayed).ok_or(PeerError::Offer)?;
+        if let Some(mapped) = relay.mapped.filter(|mapped| *mapped != local)
+            && let Ok(reflexive) = Candidate::server_reflexive(mapped, local, "udp")
+        {
+            rtc.add_local_candidate(reflexive);
+        }
+    }
     let answer = rtc
         .sdp_api()
         .accept_offer(offer)
@@ -132,6 +147,7 @@ pub fn answer(
         events: VecDeque::new(),
         buffer: vec![0; DATAGRAM],
         closed: false,
+        relay,
     };
     peer.pump()?;
     Ok(Answered {
@@ -250,11 +266,21 @@ impl Peer {
             }
             match self.rtc.poll_output() {
                 Ok(Output::Timeout(at)) => return Ok(at),
-                Ok(Output::Transmit(transmit)) => {
-                    let _ = self
-                        .socket
-                        .send_to(&transmit.contents, transmit.destination);
-                }
+                Ok(Output::Transmit(transmit)) => match &mut self.relay {
+                    Some(relay) if transmit.source == relay.relayed => {
+                        let server = relay.server();
+                        for message in
+                            relay.send(transmit.destination, &transmit.contents, Instant::now())
+                        {
+                            let _ = self.socket.send_to(&message, server);
+                        }
+                    }
+                    _ => {
+                        let _ = self
+                            .socket
+                            .send_to(&transmit.contents, transmit.destination);
+                    }
+                },
                 Ok(Output::Event(event)) => self.event(event),
                 Err(_) => {
                     self.close();
@@ -270,13 +296,42 @@ impl Peer {
             return Err(PeerError::Closed);
         }
         loop {
-            let wake = self.pump()?.min(deadline);
+            let mut wake = self.pump()?.min(deadline);
+            if let Some(relay) = &mut self.relay {
+                let server = relay.server();
+                for message in relay.due(Instant::now()) {
+                    let _ = self.socket.send_to(&message, server);
+                }
+                wake = wake.min(relay.next_due());
+            }
             let wait = wake.saturating_duration_since(Instant::now());
+            // Relayed data is unwrapped into its own buffer and keeps the peer as its source.
+            let mut relayed = None;
             let input = if wait.is_zero() {
                 Input::Timeout(Instant::now())
             } else {
                 self.socket.set_read_timeout(Some(wait))?;
                 match self.socket.recv_from(&mut self.buffer) {
+                    Ok((length, source))
+                        if self
+                            .relay
+                            .as_ref()
+                            .is_some_and(|relay| relay.server() == source) =>
+                    {
+                        let Some(relay) = self.relay.as_mut() else {
+                            continue;
+                        };
+                        let (received, replies) =
+                            relay.receive(source, &self.buffer[..length], Instant::now());
+                        for message in replies {
+                            let _ = self.socket.send_to(&message, source);
+                        }
+                        let Received::Data(peer, payload) = received else {
+                            continue;
+                        };
+                        relayed = Some((peer, relay.relayed, payload));
+                        Input::Timeout(Instant::now())
+                    }
                     Ok((length, source)) => match self.buffer[..length].try_into() {
                         Ok(contents) => Input::Receive(
                             Instant::now(),
@@ -301,6 +356,21 @@ impl Peer {
                     Err(error) if error.kind() == io::ErrorKind::ConnectionReset => continue,
                     Err(error) => return Err(error.into()),
                 }
+            };
+            let input = match &relayed {
+                Some((peer, destination, payload)) => match payload.as_slice().try_into() {
+                    Ok(contents) => Input::Receive(
+                        Instant::now(),
+                        Receive {
+                            proto: Protocol::Udp,
+                            source: *peer,
+                            destination: *destination,
+                            contents,
+                        },
+                    ),
+                    Err(_) => continue,
+                },
+                None => input,
             };
             if self.rtc.handle_input(input).is_err() {
                 self.close();
@@ -343,6 +413,11 @@ impl Peer {
             self.closed = true;
             self.rtc.disconnect();
             self.events.push_back(PeerEvent::Closed);
+            // The relayed address goes back at once rather than when the relay times it out.
+            if let Some(relay) = &mut self.relay {
+                let release = relay.release(Instant::now());
+                let _ = self.socket.send_to(&release, relay.server());
+            }
         }
     }
 }
