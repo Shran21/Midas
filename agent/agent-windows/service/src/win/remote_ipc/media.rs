@@ -15,7 +15,7 @@ use std::{
 };
 
 use midas_agent_core::media::{
-    adapt::{Limits, Profile},
+    adapt::{Limits, Profile, Settings},
     codec::{Encoder, Kind, Profile as H264Profile},
     link::{Command, KEEPALIVE_MESSAGE, command_message, read_command},
     peer::{Answered, answer},
@@ -121,25 +121,58 @@ fn reader<S: AsyncRead + AsyncWrite + AsRawHandle + Unpin + Send + 'static>(
     receiver
 }
 
-/// The capture thread: it waits for the first settings, then streams until the stop.
+/// How long capture waits before trying again while the desktop cannot be captured.
+const RETRY: Duration = Duration::from_millis(500);
+
+/// The capture thread: it waits for the first settings, then streams until the stop. Capture can
+/// be unavailable for a while (a secure desktop, a display change); the session then stays and
+/// capture is tried again.
 fn capture(
     commands: blocking::Receiver<Command>,
     frames: mpsc::Sender<Vec<Vec<u8>>>,
     view: Arc<Mutex<Option<Rect>>>,
 ) -> io::Result<()> {
-    let settings = loop {
+    let mut settings = loop {
         match commands.recv() {
             Ok(Command::Settings(settings)) => break settings,
             Ok(Command::Stop) | Err(_) => return Ok(()),
             Ok(_) => {}
         }
     };
-    let mut stream = Stream::open(&Selection::Combined, settings)?;
-    *view.lock().unwrap_or_else(|e| e.into_inner()) = Some(stream.view());
+    loop {
+        match Stream::open(&Selection::Combined, settings) {
+            Ok(mut stream) => {
+                *view.lock().unwrap_or_else(|e| e.into_inner()) = Some(stream.view());
+                match run(&mut stream, &mut settings, &commands, &frames, &view) {
+                    Ok(()) => return Ok(()),
+                    Err(error) => tracing::debug!(%error, "capture interrupted"),
+                }
+            }
+            Err(error) => tracing::debug!(%error, "capture unavailable"),
+        }
+        match commands.recv_timeout(RETRY) {
+            Ok(Command::Settings(changed)) => settings = changed,
+            Ok(Command::Stop) | Err(blocking::RecvTimeoutError::Disconnected) => return Ok(()),
+            Ok(_) | Err(blocking::RecvTimeoutError::Timeout) => {}
+        }
+    }
+}
+
+/// Streams until the stop (`Ok`) or a capture failure (`Err`).
+fn run(
+    stream: &mut Stream,
+    settings: &mut Settings,
+    commands: &blocking::Receiver<Command>,
+    frames: &mpsc::Sender<Vec<Vec<u8>>>,
+    view: &Arc<Mutex<Option<Rect>>>,
+) -> io::Result<()> {
     loop {
         loop {
             match commands.try_recv() {
                 Ok(command) => {
+                    if let Command::Settings(changed) = command {
+                        *settings = changed;
+                    }
                     if !stream.command(command)? {
                         return Ok(());
                     }

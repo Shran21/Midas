@@ -39,6 +39,7 @@ pub struct Broker {
     answer: Mutex<Option<Consent>>,
     asked: Mutex<Vec<ConsentRequest>>,
     asking: tokio::sync::Notify,
+    consenting: AtomicBool,
 }
 
 impl Broker {
@@ -55,6 +56,7 @@ impl Broker {
             answer: Mutex::new(Some(Consent::Allowed)),
             asked: Mutex::new(Vec::new()),
             asking: tokio::sync::Notify::new(),
+            consenting: AtomicBool::new(false),
         }
     }
     pub fn allowed(&self) -> bool {
@@ -63,6 +65,16 @@ impl Broker {
             .unwrap()
             .as_ref()
             .is_some_and(|(observed, lease)| lease.capture(*observed, worker(lease)).is_ok())
+    }
+    /// Waits until the window of a withdrawn request has closed, so a later answer is not its.
+    async fn closed(&self) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while self.consenting.load(Ordering::SeqCst) {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the withdrawn window closes");
     }
     async fn stopped(&self) {
         tokio::time::timeout(Duration::from_secs(3), async {
@@ -122,19 +134,22 @@ impl Native for Broker {
         Ok(())
     }
     fn consent(&self, request: &ConsentRequest, stopped: &dyn Fn() -> bool) -> Consent {
+        self.consenting.store(true, Ordering::SeqCst);
         self.asked.lock().unwrap().push(request.clone());
         self.asking.notify_one();
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
-        loop {
+        let answer = loop {
             if let Some(answer) = *self.answer.lock().unwrap() {
-                return answer;
+                break answer;
             }
             if stopped() {
-                return Consent::Allowed;
+                break Consent::Allowed;
             }
             assert!(std::time::Instant::now() < deadline, "unanswered consent");
             std::thread::sleep(Duration::from_millis(5));
-        }
+        };
+        self.consenting.store(false, Ordering::SeqCst);
+        answer
     }
     fn media(&self, offer: &str) -> Result<String, Error> {
         if !self.allowed() {
@@ -352,6 +367,7 @@ pub async fn verify_attended(
         settled(ctx, &waiting, "waiting").await["state"],
         "cancelled"
     );
+    broker.closed().await;
     for (answer, state) in [
         (Consent::Declined, "declined"),
         (Consent::Expired, "expired"),
@@ -393,6 +409,7 @@ pub async fn verify_attended(
             assert_eq!(failed["reason"], "fresh_passkey_required");
             sqlx::query("UPDATE midas.browser_sessions SET authenticated_at=clock_timestamp() WHERE operator_id=$1").bind(operator).execute(&mut *admin).await.unwrap();
         }
+        broker.closed().await;
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert!(!broker.allowed(), "{late}");
     }
