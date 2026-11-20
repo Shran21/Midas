@@ -10,6 +10,8 @@ const hu = {
     "Ezen a gépen nincs bekapcsolva a távsegítés. A kéréshez az agent távsegítési beállítását be kell kapcsolni.",
   target: (device: string, session: string) =>
     `Célgép: ${device} · ${session}. munkamenet`,
+  people: (requester: string, account: string) =>
+    `Kérelmező: ${requester}${account ? ` · Bejelentkezett felhasználó: ${account}` : ""}`,
   mode: (administrative: boolean, uac: boolean) =>
     `Mód: ${administrative ? "rendszergazdai távvezérlés" : "normál távvezérlés"}${uac ? ", UAC-kezeléssel" : ""}`,
   waiting: (who: string) => `Várakozás ${who} jóváhagyására.`,
@@ -72,6 +74,8 @@ const en: {
   unsupported:
     "Remote support is not turned on for this device. Turn on the agent's remote support setting to send requests.",
   target: (device, session) => `Device: ${device} · session ${session}`,
+  people: (requester, account) =>
+    `Requester: ${requester}${account ? ` · Signed-in user: ${account}` : ""}`,
   mode: (administrative, uac) =>
     `Mode: ${administrative ? "administrative remote control" : "normal remote control"}${uac ? ", with UAC handling" : ""}`,
   waiting: (who) => `Waiting for ${who} to answer.`,

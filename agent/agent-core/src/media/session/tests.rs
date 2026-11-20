@@ -80,6 +80,10 @@ fn worker_frames_reach_the_browser_and_commands_flow_back() {
     );
     assert_eq!(report["auto"], true);
     assert_eq!(report["desktop"], "user");
+    assert!(report["network"] == "good" || report["network"] == "degraded");
+    // Packets went over loopback, never through a relay.
+    assert!(report["path"] == "direct" || report["path"].is_null());
+    assert!(report["rtt_ms"].is_null() || report["rtt_ms"].as_u64().is_some());
     assert!(report["target_bitrate"].as_u64().is_some() && report["sent_fps"].as_f64().is_some());
     assert!(seen.contains(&Command::Keyframe));
     assert!(

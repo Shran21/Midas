@@ -71,6 +71,8 @@ pub struct RequestView {
     pub mode: RemoteMode,
     pub uac: bool,
     pub os_session_id: String,
+    /// The requester's name as the consent window shows it.
+    pub requester: String,
     #[serde(flatten)]
     pub status: Status,
 }
@@ -82,6 +84,7 @@ struct Tracked {
     mode: RemoteMode,
     uac: bool,
     os_session_id: String,
+    requester: String,
     status: watch::Receiver<Status>,
     cancel: watch::Sender<bool>,
     created: Instant,
@@ -97,6 +100,7 @@ impl Tracked {
             mode: self.mode,
             uac: self.uac,
             os_session_id: self.os_session_id.clone(),
+            requester: self.requester.clone(),
             status: *self.status.borrow(),
         }
     }
@@ -203,6 +207,7 @@ impl Enrollment {
             mode: request.mode,
             uac: request.uac,
             os_session_id: request.session.os_session_id.clone(),
+            requester: requester.operator_name.clone(),
             status: watched,
             cancel,
             created: Instant::now(),

@@ -301,6 +301,8 @@ pub async fn verify_attended(
     assert_eq!(renewed["state"], "active", "{renewed}");
     assert!(broker.allowed());
     let asked = broker.asked.lock().unwrap().last().cloned().unwrap();
+    // The panel names the requester exactly as the consent window did.
+    assert_eq!(renewed["requester"], asked.operator_name.as_str());
     assert_eq!(asked.timeout, Duration::from_secs(60));
     assert_eq!(asked.rights.mode, midas_remote_auth::Mode::Normal);
     assert!(!asked.rights.uac);

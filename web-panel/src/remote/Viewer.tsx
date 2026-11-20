@@ -5,10 +5,12 @@ import type { RemoteRequest } from "./model";
 import { viewerCopy } from "./viewerCopy";
 import {
   bitrate,
+  combination,
   keyCode,
   readIceServers,
   readStats,
   type Stats,
+  SYSTEM_KEYS,
   videoPoint,
 } from "./viewerModel";
 
@@ -216,6 +218,14 @@ export function Viewer({
               ? c.elevatedWindow
               : ""}
         </p>
+        <p
+          className="remote-viewer-degraded"
+          role="status"
+          aria-live="polite"
+          hidden={!fresh?.degraded}
+        >
+          {fresh?.degraded ? c.degraded : ""}
+        </p>
         {fresh && (
           <p className="muted">
             {c.quality(
@@ -224,6 +234,12 @@ export function Viewer({
               bitrate(fresh.sentBitrate, language),
               fresh.sentFps,
             )}
+          </p>
+        )}
+        {fresh && (
+          <p className="muted">
+            {c.network(fresh.rttMs, fresh.loss)}
+            {fresh.path && ` · ${c[fresh.path]}`}
           </p>
         )}
         <fieldset className="remote-viewer-profile">
@@ -239,6 +255,26 @@ export function Viewer({
               {c[value]}
             </button>
           ))}
+        </fieldset>
+        <fieldset className="remote-viewer-keys">
+          <legend>{c.keys}</legend>
+          {(Object.keys(SYSTEM_KEYS) as (keyof typeof SYSTEM_KEYS)[]).map(
+            (name) => (
+              <button
+                key={name}
+                type="button"
+                className="button"
+                disabled={phase !== "live"}
+                onClick={() => {
+                  for (const message of combination(SYSTEM_KEYS[name]))
+                    send(message);
+                }}
+              >
+                {c[name]}
+              </button>
+            ),
+          )}
+          <p className="muted">{c.secureAttention}</p>
         </fieldset>
       </div>
     </section>

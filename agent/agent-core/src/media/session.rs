@@ -196,6 +196,7 @@ impl Transport {
         let elapsed = now.saturating_duration_since(self.last_stats).as_secs_f64();
         self.last_stats = now;
         let current = self.controller.current();
+        let network = self.controller.network();
         let (width, height) = self.frame.unwrap_or((0, 0));
         let stats = json!({
             "type": "stats",
@@ -210,6 +211,14 @@ impl Transport {
             "target_fps": current.fps,
             "sent_bitrate": (self.bytes as f64 * 8.0 / elapsed.max(0.001)).round(),
             "sent_fps": (f64::from(self.frames) / elapsed.max(0.001) * 10.0).round() / 10.0,
+            "rtt_ms": network.rtt.map(|rtt| rtt.as_millis().min(60_000) as u64),
+            "loss": network.loss.map(|loss| (loss * 1000.0).round() / 1000.0),
+            "network": if network.degraded { "degraded" } else { "good" },
+            "path": match self.peer.take_path() {
+                Some(super::peer::Path::Relay) => Some("relay"),
+                Some(super::peer::Path::Direct) => Some("direct"),
+                None => None,
+            },
             "desktop": match self.desktop {
                 Desktop::User => "user",
                 Desktop::Elevated => "elevated",

@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   bitrate,
+  combination,
   keyCode,
   readIceServers,
   readStats,
+  SYSTEM_KEYS,
   videoPoint,
 } from "../src/remote/viewerModel.ts";
 
@@ -56,7 +58,31 @@ test("agent statistics are read strictly", () => {
     profile: "text",
     auto: true,
     desktop: "user",
+    rttMs: null,
+    loss: null,
+    degraded: false,
+    path: null,
   });
+  const measured = readStats(
+    JSON.stringify({
+      ...report,
+      rtt_ms: 42,
+      loss: 0.031,
+      network: "degraded",
+      path: "relay",
+    }),
+  );
+  assert.equal(measured?.rttMs, 42);
+  assert.equal(measured?.loss, 0.031);
+  assert.equal(measured?.degraded, true);
+  assert.equal(measured?.path, "relay");
+  for (const field of [
+    { rtt_ms: -1 },
+    { loss: 1.5 },
+    { network: "fine" },
+    { path: "tunnel" },
+  ])
+    assert.equal(readStats(JSON.stringify({ ...report, ...field })), null);
   assert.equal(
     readStats(JSON.stringify({ ...report, desktop: "secure" }))?.desktop,
     "secure",
@@ -105,4 +131,17 @@ test("relays from the server are taken only when well formed", () => {
     { ice_servers: [relay, relay, relay, relay, relay] },
   ])
     assert.deepEqual(readIceServers(invalid), [], JSON.stringify(invalid));
+});
+
+test("system keys go down in order and up in reverse", () => {
+  assert.deepEqual(combination(SYSTEM_KEYS.taskManager), [
+    { type: "key", code: "ControlLeft", down: true },
+    { type: "key", code: "ShiftLeft", down: true },
+    { type: "key", code: "Escape", down: true },
+    { type: "key", code: "Escape", down: false },
+    { type: "key", code: "ShiftLeft", down: false },
+    { type: "key", code: "ControlLeft", down: false },
+  ]);
+  for (const keys of Object.values(SYSTEM_KEYS))
+    for (const code of keys) assert.match(code, /^[A-Za-z0-9]{1,32}$/);
 });

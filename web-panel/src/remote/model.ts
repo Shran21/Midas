@@ -96,6 +96,8 @@ export type RemoteRequest = {
   mode: "normal" | "administrative";
   uac: boolean;
   os_session_id: string;
+  /** The requester's name as the consent window showed it. */
+  requester: string;
   state: RequestState;
   /** Unix seconds: the local window closes (waiting) or the grant ends (active). */
   until: number | null;
@@ -120,6 +122,8 @@ export function readRequest(
     typeof value.uac !== "boolean" ||
     typeof value.os_session_id !== "string" ||
     !/^[1-9]\d{0,9}$/.test(value.os_session_id) ||
+    typeof value.requester !== "string" ||
+    value.requester.length > 200 ||
     (expected !== undefined &&
       (value.id !== expected.id ||
         value.os_session_id !== expected.os_session_id))
@@ -172,6 +176,7 @@ export function readRequest(
     mode: value.mode,
     uac: value.uac,
     os_session_id: value.os_session_id,
+    requester: value.requester,
     state: value.state,
     until,
     reason,

@@ -17,6 +17,20 @@ const hu = {
   motion: "Mozgás",
   secureDesktop:
     "A távoli gépen a biztonságos asztal látszik, például egy UAC-kérdés. A képet és a bevitelt most a rendszerkomponens kezeli.",
+  network: (rtt: number | null, loss: number | null) =>
+    `Késleltetés: ${rtt === null ? "nincs mérés" : `${rtt.toLocaleString("hu-HU")} ms`} · csomagvesztés: ${loss === null ? "nincs mérés" : `${(loss * 100).toLocaleString("hu-HU", { maximumFractionDigits: 1 })}%`}`,
+  degraded:
+    "A hálózat romlott (veszteség, késés vagy ingadozás). A minőség automatikusan csökkent, és javuláskor fokozatosan visszaáll.",
+  direct: "Közvetlen kapcsolat",
+  relay: "Kapcsolat a relén át",
+  keys: "Rendszerbillentyűk",
+  start: "Start menü (Win)",
+  switchWindow: "Ablakváltás (Alt+Tab)",
+  taskManager: "Feladatkezelő (Ctrl+Shift+Esc)",
+  close: "Ablak bezárása (Alt+F4)",
+  run: "Futtatás (Win+R)",
+  desktop: "Asztal megjelenítése (Win+D)",
+  secureAttention: "A Ctrl+Alt+Del-t a Windows védi, távolról nem küldhető.",
   elevatedWindow:
     "Rendszergazdai jogú ablak van elöl vagy a mutató alatt. A bevitelt most a rendszerkomponens kézbesíti.",
 };
@@ -44,6 +58,20 @@ const en: {
   motion: "Motion",
   secureDesktop:
     "The remote computer shows its secure desktop, for example a UAC prompt. The system component now handles the picture and input.",
+  network: (rtt, loss) =>
+    `Latency: ${rtt === null ? "not measured" : `${rtt.toLocaleString("en-GB")} ms`} · packet loss: ${loss === null ? "not measured" : `${(loss * 100).toLocaleString("en-GB", { maximumFractionDigits: 1 })}%`}`,
+  degraded:
+    "The network has degraded (loss, delay or jitter). Quality was lowered automatically and recovers gradually as it improves.",
+  direct: "Direct connection",
+  relay: "Connection through the relay",
+  keys: "System keys",
+  start: "Start menu (Win)",
+  switchWindow: "Switch window (Alt+Tab)",
+  taskManager: "Task Manager (Ctrl+Shift+Esc)",
+  close: "Close window (Alt+F4)",
+  run: "Run (Win+R)",
+  desktop: "Show desktop (Win+D)",
+  secureAttention: "Windows protects Ctrl+Alt+Del; it cannot be sent remotely.",
   elevatedWindow:
     "An administrator window is in front or under the pointer. The system component now delivers the input.",
 };

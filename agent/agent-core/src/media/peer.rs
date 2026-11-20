@@ -84,6 +84,16 @@ pub struct Peer {
     closed: bool,
     /// A relayed address on the TURN relay, for when no direct path works.
     relay: Option<Allocation>,
+    /// Packets sent through the relay and directly since the last path report.
+    sent_relayed: u32,
+    sent_direct: u32,
+}
+
+/// Which path the connection's packets take.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Path {
+    Direct,
+    Relay,
 }
 
 /// Answers `offer` on `socket`, advertising one host candidate per address in `hosts`, and with
@@ -148,6 +158,8 @@ pub fn answer(
         buffer: vec![0; DATAGRAM],
         closed: false,
         relay,
+        sent_relayed: 0,
+        sent_direct: 0,
     };
     peer.pump()?;
     Ok(Answered {
@@ -268,6 +280,7 @@ impl Peer {
                 Ok(Output::Timeout(at)) => return Ok(at),
                 Ok(Output::Transmit(transmit)) => match &mut self.relay {
                     Some(relay) if transmit.source == relay.relayed => {
+                        self.sent_relayed = self.sent_relayed.saturating_add(1);
                         let server = relay.server();
                         for message in
                             relay.send(transmit.destination, &transmit.contents, Instant::now())
@@ -276,6 +289,7 @@ impl Peer {
                         }
                     }
                     _ => {
+                        self.sent_direct = self.sent_direct.saturating_add(1);
                         let _ = self
                             .socket
                             .send_to(&transmit.contents, transmit.destination);
@@ -406,6 +420,18 @@ impl Peer {
         let sent = channel.write(false, message).unwrap_or(false);
         self.pump()?;
         Ok(sent)
+    }
+
+    /// The path most packets took since the last call; `None` before anything was sent.
+    pub fn take_path(&mut self) -> Option<Path> {
+        let (relayed, direct) = (self.sent_relayed, self.sent_direct);
+        self.sent_relayed = 0;
+        self.sent_direct = 0;
+        match (relayed, direct) {
+            (0, 0) => None,
+            (relayed, direct) if relayed > direct => Some(Path::Relay),
+            _ => Some(Path::Direct),
+        }
     }
 
     pub fn close(&mut self) {

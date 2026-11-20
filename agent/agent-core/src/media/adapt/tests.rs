@@ -91,6 +91,49 @@ fn sustained_loss_lowers_quality_at_once_but_a_single_spike_does_not() {
 }
 
 #[test]
+fn the_operator_sees_the_measurements_and_a_degraded_link() {
+    let start = Instant::now();
+    let mut control = Controller::new(Profile::Text, Limits::SOFTWARE, start);
+    assert_eq!(
+        control.network(),
+        Network {
+            rtt: None,
+            loss: None,
+            degraded: false
+        },
+        "nothing measured yet"
+    );
+    run(
+        &mut control,
+        start,
+        std::iter::repeat_n(good(3_000_000), 20),
+    );
+    let calm = control.network();
+    assert!(!calm.degraded && calm.rtt.is_some() && calm.loss.is_some());
+    let lossy = Sample {
+        loss: Some(0.2),
+        ..good(3_000_000)
+    };
+    run(
+        &mut control,
+        start + TICK * 20,
+        std::iter::repeat_n(lossy, 6),
+    );
+    let degraded = control.network();
+    assert!(degraded.degraded);
+    assert!(degraded.loss.unwrap() > 0.05);
+    run(
+        &mut control,
+        start + TICK * 26,
+        std::iter::repeat_n(good(3_000_000), 60),
+    );
+    assert!(
+        !control.network().degraded,
+        "recovers once the loss is gone"
+    );
+}
+
+#[test]
 fn a_fluctuating_link_does_not_make_quality_oscillate() {
     let start = Instant::now();
     let mut control = Controller::new(Profile::Text, Limits::SOFTWARE, start);

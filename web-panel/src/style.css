@@ -3382,6 +3382,33 @@ h1[tabindex="-1"]:focus {
 .remote-viewer-desktop[hidden] {
   display: none;
 }
+.remote-viewer-bar .remote-viewer-degraded {
+  flex-basis: 100%;
+  padding: 6px 10px;
+  border-radius: 6px;
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+.remote-viewer-degraded[hidden] {
+  display: none;
+}
+.remote-viewer-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  align-items: center;
+  flex-basis: 100%;
+}
+.remote-viewer-keys legend {
+  float: left;
+  margin-right: 4px;
+}
+.remote-viewer-keys p {
+  flex-basis: 100%;
+}
 .remote-viewer-profile {
   display: flex;
   gap: 8px;

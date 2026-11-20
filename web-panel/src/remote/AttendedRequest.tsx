@@ -346,6 +346,7 @@ export function RequestStatus({
         {c.target(device.name, request.os_session_id)} ·{" "}
         {c.mode(request.mode === "administrative", request.uac)}
       </p>
+      <p className="muted">{c.people(request.requester, account)}</p>
       <div ref={message} tabIndex={-1} role="status" aria-live="polite">
         <strong>{text}</strong>
       </div>

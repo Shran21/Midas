@@ -63,6 +63,14 @@ pub struct Sample {
     pub queued_frames: usize,
 }
 
+/// Measurements for the operator; missing ones stay missing.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Network {
+    pub rtt: Option<Duration>,
+    pub loss: Option<f64>,
+    pub degraded: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Reason {
     Congestion,
@@ -268,6 +276,28 @@ impl Controller {
         })
     }
 
+    /// Loss, jitter or delay above their limits in the smoothed measurements.
+    fn congested(&self) -> bool {
+        let lossy = self.loss.is_some_and(|loss| loss > LOSSY);
+        let jittery = self
+            .jitter
+            .is_some_and(|jitter| jitter > JITTERY.as_secs_f64());
+        let delayed = match (self.rtt, self.min_rtt) {
+            (Some(rtt), Some(least)) => rtt > (least + DELAYED).as_secs_f64(),
+            _ => false,
+        };
+        lossy || jittery || delayed
+    }
+
+    /// The link as the operator sees it: smoothed measurements, and whether it is degraded now.
+    pub fn network(&self) -> Network {
+        Network {
+            rtt: self.rtt.map(Duration::from_secs_f64),
+            loss: self.loss,
+            degraded: self.congested(),
+        }
+    }
+
     pub fn update(&mut self, now: Instant, sample: Sample) -> Option<Change> {
         if let Some(estimate) = sample.estimate {
             self.estimate = Some(smooth(self.estimate, estimate as f64));
@@ -295,15 +325,7 @@ impl Controller {
             self.rtt = Some(smooth(self.rtt, rtt.as_secs_f64()));
         }
         let backlog = sample.queued_frames >= BACKLOG;
-        let lossy = self.loss.is_some_and(|loss| loss > LOSSY);
-        let jittery = self
-            .jitter
-            .is_some_and(|jitter| jitter > JITTERY.as_secs_f64());
-        let delayed = match (self.rtt, self.min_rtt) {
-            (Some(rtt), Some(least)) => rtt > (least + DELAYED).as_secs_f64(),
-            _ => false,
-        };
-        let congested = lossy || jittery || delayed;
+        let congested = self.congested();
         let stale = self
             .measured
             .is_none_or(|at| now.saturating_duration_since(at) >= STALE);

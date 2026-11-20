@@ -44,7 +44,32 @@ export type Stats = {
   /** What the remote computer shows: the user's own desktop, an elevated window in front, or
    * the secure desktop of a UAC prompt. */
   desktop: "user" | "elevated" | "secure";
+  /** Smoothed round-trip time and lost fraction; `null` while not measured. */
+  rttMs: number | null;
+  loss: number | null;
+  /** Loss, delay or jitter above their limits right now. */
+  degraded: boolean;
+  /** Whether packets went directly or through the relay; `null` before any went. */
+  path: "direct" | "relay" | null;
 };
+
+/** Key combinations the browser cannot capture itself, sent as physical keys in order. */
+export const SYSTEM_KEYS = {
+  start: ["MetaLeft"],
+  switchWindow: ["AltLeft", "Tab"],
+  taskManager: ["ControlLeft", "ShiftLeft", "Escape"],
+  close: ["AltLeft", "F4"],
+  run: ["MetaLeft", "KeyR"],
+  desktop: ["MetaLeft", "KeyD"],
+} as const;
+
+/** The key messages for one combination: every key down in order, then up in reverse. */
+export function combination(keys: readonly string[]) {
+  return [
+    ...keys.map((code) => ({ type: "key", code, down: true })),
+    ...[...keys].reverse().map((code) => ({ type: "key", code, down: false })),
+  ];
+}
 
 function count(value: unknown, limit: number) {
   return typeof value === "number" &&
@@ -76,6 +101,19 @@ export function readStats(text: string): Stats | null {
   const desktop = record.desktop ?? "user";
   if (desktop !== "user" && desktop !== "elevated" && desktop !== "secure")
     return null;
+  const optional = (field: unknown, limit: number) =>
+    field === undefined || field === null ? null : count(field, limit);
+  const rttMs = optional(record.rtt_ms, 60_000);
+  const loss = optional(record.loss, 1);
+  if (
+    (record.rtt_ms != null && rttMs === null) ||
+    (record.loss != null && loss === null)
+  )
+    return null;
+  const network = record.network ?? "good";
+  if (network !== "good" && network !== "degraded") return null;
+  const path = record.path ?? null;
+  if (path !== null && path !== "direct" && path !== "relay") return null;
   if (
     width === null ||
     height === null ||
@@ -97,6 +135,10 @@ export function readStats(text: string): Stats | null {
     profile: record.profile,
     auto: record.auto,
     desktop,
+    rttMs,
+    loss,
+    degraded: network === "degraded",
+    path,
   };
 }
 
