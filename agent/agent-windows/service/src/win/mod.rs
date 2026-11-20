@@ -5,6 +5,7 @@ pub mod capture;
 pub mod consent;
 pub mod encode;
 pub mod health;
+pub mod indicator;
 pub mod inject;
 pub mod inventory;
 pub mod network;

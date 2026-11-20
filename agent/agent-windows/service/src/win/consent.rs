@@ -43,13 +43,13 @@ const ACTCTX_FLAG_RESOURCE_NAME_VALID: u32 = 0x8;
 const ACTCTX_FLAG_HMODULE_VALID: u32 = 0x80;
 
 /// Selects Common Controls 6 for this thread while the window is open.
-struct Controls {
+pub(super) struct Controls {
     context: HANDLE,
     cookie: usize,
 }
 
 impl Controls {
-    fn activate() -> io::Result<Self> {
+    pub(super) fn activate() -> io::Result<Self> {
         let request = ACTCTXW {
             cbSize: size_of::<ACTCTXW>() as u32,
             dwFlags: ACTCTX_FLAG_RESOURCE_NAME_VALID | ACTCTX_FLAG_HMODULE_VALID,

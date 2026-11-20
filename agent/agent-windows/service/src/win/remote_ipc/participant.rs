@@ -13,7 +13,7 @@ use tokio::{
 #[cfg(test)]
 use super::IO_TIMEOUT;
 use super::{Connection, STARTUP_TIMEOUT, bootstrap::delivery, denied};
-use crate::consent::{Answer, Question, encode_answer};
+use crate::consent::{Answer, END, INDICATE, Question, encode_answer};
 
 pub(in crate::win::remote_ipc) const WORKER_HELLO: &[u8] = b"worker-ready/1";
 pub(in crate::win::remote_ipc) const BROKER_HELLO: &[u8] = b"broker-ready/1";
@@ -104,7 +104,14 @@ impl Participant {
                         standby(connection).await
                     }
                 }
-                Self::Consent => consent(deadline, crate::win::consent::ask).await,
+                Self::Consent => {
+                    consent(
+                        deadline,
+                        crate::win::consent::ask,
+                        crate::win::indicator::indicate,
+                    )
+                    .await
+                }
                 Self::Broker => {
                     let (listener, launcher) =
                         delivery::receive_companion(&image, deadline).await?;
@@ -122,9 +129,14 @@ impl Participant {
 }
 
 /// Shows only the question the service delivers, and returns the answer to the service only.
+/// Shows the session indicator until the user presses End (`true`) or `dismiss` closes it.
+pub(in crate::win::remote_ipc) type Indicate =
+    fn(&Question, &std::sync::atomic::AtomicIsize) -> io::Result<bool>;
+
 pub(in crate::win::remote_ipc) async fn consent(
     deadline: Instant,
     ask: fn(&Question) -> io::Result<Answer>,
+    indicate: Indicate,
 ) -> io::Result<()> {
     let mut service = delivery::receive_consent(deadline).await?;
     reached(Stage::Connected);
@@ -134,7 +146,8 @@ pub(in crate::win::remote_ipc) async fn consent(
         .ok_or_else(denied)?;
     reached(Stage::Standby);
     let request = question.request;
-    let answer = tokio::task::spawn_blocking(move || ask(&question))
+    let asked = question.clone();
+    let answer = tokio::task::spawn_blocking(move || ask(&asked))
         .await
         .map_err(|_| denied())??;
     service
@@ -143,10 +156,36 @@ pub(in crate::win::remote_ipc) async fn consent(
             Instant::now() + ANSWER_TIMEOUT,
         )
         .await?;
-    // No further request exists; the window waits for the service to close the channel.
-    match service.next().await? {
+    // After an allow the window stays as the session's indicator once the session runs.
+    let closed = |message: Option<Vec<u8>>| match message {
         None => Ok(()),
         Some(_) => Err(denied()),
+    };
+    if answer != Answer::Allow {
+        return closed(service.next().await?);
+    }
+    match service.next().await? {
+        Some(message) if message == INDICATE => {}
+        other => return closed(other),
+    }
+    let handle = std::sync::Arc::new(std::sync::atomic::AtomicIsize::new(0));
+    let shown = {
+        let handle = handle.clone();
+        tokio::task::spawn_blocking(move || indicate(&question, &handle))
+    };
+    tokio::pin!(shown);
+    tokio::select! {
+        message = service.next() => {
+            crate::win::indicator::dismiss(&handle);
+            let _ = shown.await;
+            closed(message?)
+        }
+        pressed = &mut shown => {
+            if pressed.map_err(|_| denied())?? {
+                service.reply(END, Instant::now() + ANSWER_TIMEOUT).await?;
+            }
+            closed(service.next().await?)
+        }
     }
 }
 

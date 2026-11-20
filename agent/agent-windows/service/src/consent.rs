@@ -8,6 +8,10 @@ const ANSWER: &[u8; 4] = b"MCA1";
 /// The agent already limits names to 200 characters; four bytes each in UTF-8.
 const NAME_BYTES: usize = 800;
 pub const LONGEST_WAIT: u32 = 300;
+/// The service's word that the allowed session runs: the window turns into its indicator.
+pub const INDICATE: &[u8] = b"indicate/1";
+/// The local user pressed End on the indicator.
+pub const END: &[u8] = b"end/1";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Question {
@@ -174,6 +178,41 @@ pub fn texts(question: &Question, hungarian: bool) -> Texts {
         content: lines.join("\n"),
         allow: if hungarian { "Engedélyezés" } else { "Allow" }.into(),
         decline: if hungarian { "Elutasítás" } else { "Decline" }.into(),
+    }
+}
+
+/// What the session indicator shows while the technician is connected.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Indicator {
+    pub title: String,
+    pub line: String,
+    pub end: String,
+}
+
+pub fn indicator(question: &Question, hungarian: bool) -> Indicator {
+    let mode = match (question.administrative, hungarian) {
+        (true, true) => " · rendszergazdai mód",
+        (true, false) => " · administrative mode",
+        (false, _) => "",
+    };
+    if hungarian {
+        Indicator {
+            title: "MIDAS távsegítés".into(),
+            line: format!(
+                "{} ({}) látja és vezérli a gépedet{mode}.",
+                question.operator, question.customer
+            ),
+            end: "Befejezés".into(),
+        }
+    } else {
+        Indicator {
+            title: "MIDAS remote support".into(),
+            line: format!(
+                "{} ({}) can see and control your computer{mode}.",
+                question.operator, question.customer
+            ),
+            end: "End".into(),
+        }
     }
 }
 

@@ -520,14 +520,19 @@ fn consent_participant_child() {
         .enable_all()
         .build()
         .unwrap();
-    // The real participant protocol; only the window is replaced by a fixed answer.
+    // The real participant protocol; only the windows are replaced: the user allows, then
+    // presses End on the session indicator.
     let result = runtime.block_on(super::super::participant::consent(
         tokio::time::Instant::now() + super::super::STARTUP_TIMEOUT,
         |question| {
             assert_eq!(question.operator, "Trial Operator");
             assert_eq!(question.customer, "Trial Customer");
             assert!(question.uac && !question.administrative);
-            Ok(crate::consent::Answer::Decline)
+            Ok(crate::consent::Answer::Allow)
+        },
+        |question, _| {
+            assert_eq!(question.operator, "Trial Operator");
+            Ok(true)
         },
     ));
     if let Err(error) = result {
@@ -590,11 +595,24 @@ async fn consent_participant(parent: &Peer, token: &OwnedHandle, session: u32, i
                 process_state(&process)
             )
         });
-    assert_eq!(decode_answer(&answer), Some((request, Answer::Decline)));
+    assert_eq!(decode_answer(&answer), Some((request, Answer::Allow)));
     println!(
         "consent window answered the service after {:?}",
         started.elapsed()
     );
+    control
+        .send(
+            crate::consent::INDICATE,
+            tokio::time::Instant::now() + Duration::from_secs(5),
+        )
+        .await
+        .unwrap();
+    let ended = tokio::time::timeout(Duration::from_secs(5), control.receive())
+        .await
+        .expect("the indicator's End")
+        .unwrap();
+    assert_eq!(ended.as_deref(), Some(crate::consent::END));
+    println!("session indicator sent the user's End");
     drop(control);
     for _ in 0..50 {
         if running.has_exited().unwrap() {

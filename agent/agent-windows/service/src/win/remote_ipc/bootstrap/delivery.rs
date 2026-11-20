@@ -304,6 +304,36 @@ impl Control {
         Ok(reply)
     }
 
+    /// A message the other side does not answer, such as the start of the session indicator.
+    pub async fn send(&mut self, message: &[u8], deadline: Instant) -> io::Result<()> {
+        self.peer.check(ipc::peer_pid(&self.pipe, true)?)?;
+        ipc::bounded(deadline, write_message(&mut self.pipe, message)).await?;
+        self.peer.check(ipc::peer_pid(&self.pipe, true)?)
+    }
+
+    /// The next message the other side sends by itself; `None` once it closed. Waits as long
+    /// as needed.
+    pub async fn receive(&mut self) -> io::Result<Option<Vec<u8>>> {
+        self.peer.check(ipc::peer_pid(&self.pipe, true)?)?;
+        match read_message(&mut self.pipe).await {
+            Ok(message) => {
+                self.peer.check(ipc::peer_pid(&self.pipe, true)?)?;
+                Ok(Some(message))
+            }
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::UnexpectedEof
+                        | io::ErrorKind::BrokenPipe
+                        | io::ErrorKind::NotConnected
+                ) =>
+            {
+                Ok(None)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     /// A request a person answers: written within the I/O limit, its reply awaited until the
     /// caller's deadline.
     pub async fn ask(&mut self, request: &[u8], deadline: Instant) -> io::Result<Vec<u8>> {

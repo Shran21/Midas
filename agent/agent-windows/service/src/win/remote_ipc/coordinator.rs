@@ -24,12 +24,22 @@ use super::{
     tokens::PreparedToken,
 };
 use crate::{
-    consent::{Answer, Question, decode_answer},
+    consent::{Answer, END, INDICATE, Question, decode_answer},
     win::sessions::Observer,
 };
 
 /// How long after its deadline the window's own answer may still arrive.
 const ANSWER_GRACE: Duration = Duration::from_secs(2);
+/// How long an allowed window waits for its session to start before it is closed.
+const START_WAIT: Duration = Duration::from_secs(30);
+
+/// The window of an allowed request, kept to become the session's indicator with its End button.
+struct Window {
+    allowed: std::time::Instant,
+    session: u32,
+    running: RunningWorker,
+    control: Control,
+}
 
 type Channel = super::Connection<tokio::net::windows::named_pipe::NamedPipeServer>;
 
@@ -41,6 +51,7 @@ pub struct Coordinator {
     active: Mutex<Option<tokio::task::JoinHandle<()>>>,
     /// The running ordinary session's companion, which carries its video.
     media: Arc<tokio::sync::Mutex<Option<Control>>>,
+    window: Mutex<Option<Window>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -64,6 +75,7 @@ impl Coordinator {
             runtime,
             active: Mutex::new(None),
             media: Arc::new(tokio::sync::Mutex::new(None)),
+            window: Mutex::new(None),
         })
     }
 
@@ -142,6 +154,9 @@ impl Coordinator {
         if presence(&session) != Presence::Occupied {
             return Ok(Consent::Unavailable);
         }
+        // A window kept for a session that never started closes now.
+        drop(self.window.lock().unwrap_or_else(|e| e.into_inner()).take());
+        let id = session.id;
         let token = PreparedToken::user(&self.parent, self.observer.clone(), session)?;
         let window = SuspendedWorker::spawn_consent(&self.parent, token, &self.image)?;
         self.runtime.block_on(async {
@@ -173,21 +188,53 @@ impl Coordinator {
                 frame = control.ask(&question, answer_by + ANSWER_GRACE) => frame,
                 () = revoked => return Ok(Consent::Cancelled),
             };
-            drop(running);
-            match frame {
+            let answer = match frame {
                 Ok(frame) => match decode_answer(&frame) {
-                    Some((id, answer)) if id == request.request => Ok(match answer {
+                    Some((asked, answer)) if asked == request.request => match answer {
                         Answer::Allow => Consent::Allowed,
                         Answer::Decline => Consent::Declined,
                         Answer::Expired => Consent::Expired,
-                    }),
-                    _ => Err(denied()),
+                    },
+                    _ => return Err(denied()),
                 },
-                Err(error) if error.kind() == std::io::ErrorKind::TimedOut => Ok(Consent::Expired),
-                Err(error) => Err(error),
+                Err(error) if error.kind() == std::io::ErrorKind::TimedOut => Consent::Expired,
+                Err(error) => return Err(error),
+            };
+            if answer == Consent::Allowed {
+                *self.window.lock().unwrap_or_else(|e| e.into_inner()) = Some(Window {
+                    allowed: std::time::Instant::now(),
+                    session: id,
+                    running,
+                    control,
+                });
             }
+            Ok(answer)
         })
     }
+}
+
+/// Waits for the lease to end. A consented session keeps its indicator: the user's End, or the
+/// indicator going away, ends the session at once, since it must not run without that control.
+async fn watched(lease: &Lease, window: Option<Window>) {
+    let Some(mut window) = window else {
+        return lease.ended().await;
+    };
+    let shown = window
+        .control
+        .send(INDICATE, tokio::time::Instant::now() + IO_TIMEOUT)
+        .await
+        .is_ok();
+    if shown {
+        tokio::select! {
+            () = lease.ended() => return,
+            ended = window.control.receive() => {
+                tracing::info!(pressed = matches!(ended, Ok(Some(ref m)) if m == END), "session indicator ended the session");
+            }
+        }
+    }
+    lease.cancellation().end_locally();
+    lease.ended().await;
+    drop(window.running);
 }
 
 /// The session the target names, only while the observer still reports the same generation.
@@ -256,10 +303,18 @@ impl Native for Coordinator {
             Error::Target
         })?;
         tracing::info!(lease = %id, ?kind, uac, "remote support workers started");
+        let window = self
+            .window
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+            .filter(|window| {
+                window.allowed.elapsed() < START_WAIT && window.session == lease.target().session
+            });
         let media = self.media.clone();
         *media.blocking_lock() = control;
         *active = Some(self.runtime.spawn(async move {
-            match supervise(workers, lease.ended()).await {
+            match supervise(workers, watched(&lease, window)).await {
                 Ok(stopped) => tracing::info!(lease = %id, ?stopped, "remote support workers stopped"),
                 Err(error) => {
                     tracing::warn!(lease = %id, %error, "remote support workers did not stop cleanly");
