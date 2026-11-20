@@ -40,6 +40,7 @@ enum Recipient {
     Worker,
     Broker,
     Privileged,
+    Consent,
 }
 
 impl Recipient {
@@ -48,6 +49,7 @@ impl Recipient {
             Self::Worker => "MIDAS_WORKER_BOOTSTRAP",
             Self::Broker => "MIDAS_BROKER_BOOTSTRAP",
             Self::Privileged => "MIDAS_PRIVILEGED_BOOTSTRAP",
+            Self::Consent => "MIDAS_CONSENT_BOOTSTRAP",
         }
     }
 
@@ -56,6 +58,7 @@ impl Recipient {
             Self::Worker => (MAGIC, ACK),
             Self::Broker => (b"MBL1", b"MBR1"),
             Self::Privileged => (b"MBP1", b"MBQ1"),
+            Self::Consent => (b"MBW1", b"MBX1"),
         }
     }
 
@@ -80,6 +83,10 @@ pub(in crate::win::remote_ipc) fn privileged_environment(id: Uuid) -> io::Result
     Recipient::Privileged.environment(id)
 }
 
+pub(in crate::win::remote_ipc) fn consent_environment(id: Uuid) -> io::Result<Vec<u16>> {
+    Recipient::Consent.environment(id)
+}
+
 fn name(id: Uuid) -> String {
     format!(r"\\.\pipe\midas-bootstrap-{id}")
 }
@@ -96,6 +103,24 @@ impl Sender {
         worker.user_logon_sid()?;
         let acl = format!("O:SY{}", worker.acl()?);
         Self::create(id, worker, Recipient::Worker, &acl)
+    }
+
+    /// The consent window cannot read the service's token, so it keeps this startup pipe, whose
+    /// SYSTEM owner, session and server PID it verifies on every message, as its only channel.
+    pub(in crate::win::remote_ipc) fn for_consent(id: Uuid, worker: Peer) -> io::Result<Self> {
+        no_impersonation()?;
+        if !matches!(
+            worker.role,
+            Role::Worker {
+                kind: super::super::Worker::User { .. },
+                ..
+            }
+        ) {
+            return Err(denied());
+        }
+        worker.user_logon_sid()?;
+        let acl = format!("O:SY{}", worker.acl()?);
+        Self::create(id, worker, Recipient::Consent, &acl)
     }
 
     pub(in crate::win::remote_ipc) fn for_broker(id: Uuid, broker: Peer) -> io::Result<Self> {
@@ -192,6 +217,7 @@ impl Sender {
         Ok(Sent {
             pipe: self.pipe,
             peer: self.peer,
+            recipient: self.recipient,
         })
     }
 }
@@ -199,15 +225,28 @@ impl Sender {
 pub(in crate::win::remote_ipc) struct Sent {
     pipe: NamedPipeServer,
     peer: Peer,
+    recipient: Recipient,
 }
 
 impl Sent {
-    /// After the companion confirms, its startup pipe stays open as the service's control channel.
+    /// After the companion or the consent window confirms, its startup pipe stays open as the
+    /// service's control channel.
     pub(in crate::win::remote_ipc) async fn connected(
         mut self,
         deadline: Instant,
     ) -> io::Result<Control> {
-        if self.peer.role != Role::Broker {
+        let allowed = match self.recipient {
+            Recipient::Broker => self.peer.role == Role::Broker,
+            Recipient::Consent => matches!(
+                self.peer.role,
+                Role::Worker {
+                    kind: super::super::Worker::User { .. },
+                    ..
+                }
+            ),
+            Recipient::Worker | Recipient::Privileged => false,
+        };
+        if !allowed {
             return Err(denied());
         }
         self.peer.check(ipc::peer_pid(&self.pipe, true)?)?;
@@ -261,6 +300,16 @@ impl Control {
             read_message(pipe).await
         })
         .await?;
+        self.peer.check(ipc::peer_pid(&self.pipe, true)?)?;
+        Ok(reply)
+    }
+
+    /// A request a person answers: written within the I/O limit, its reply awaited until the
+    /// caller's deadline.
+    pub async fn ask(&mut self, request: &[u8], deadline: Instant) -> io::Result<Vec<u8>> {
+        self.peer.check(ipc::peer_pid(&self.pipe, true)?)?;
+        ipc::bounded(deadline, write_message(&mut self.pipe, request)).await?;
+        let reply = ipc::until(deadline, read_message(&mut self.pipe)).await?;
         self.peer.check(ipc::peer_pid(&self.pipe, true)?)?;
         Ok(reply)
     }
@@ -341,6 +390,22 @@ pub(in crate::win::remote_ipc) async fn receive_worker<T>(
     })
     .await
     .map(|(worker, _)| worker)
+}
+
+/// The consent window receives no handle and no endpoint: the verified startup pipe to the
+/// service is its channel.
+pub(in crate::win::remote_ipc) async fn receive_consent(deadline: Instant) -> io::Result<Launched> {
+    no_impersonation()?;
+    Token::read(&current_token(TOKEN_QUERY)?)?.user_worker(win::current_session()?)?;
+    reached(Stage::Identity);
+    let ((), launcher) = receive_record(Recipient::Consent, deadline, async |handle, endpoint| {
+        if handle != 0 || !endpoint.is_nil() {
+            return Err(denied());
+        }
+        Ok(())
+    })
+    .await?;
+    launcher.connected(deadline).await
 }
 
 /// Reads the locator from the service-created privileged worker environment; the control
@@ -536,6 +601,10 @@ mod tests {
     }
 
     fn ordinary_listener() -> (Sender, String) {
+        listener(Recipient::Worker)
+    }
+
+    fn listener(recipient: Recipient) -> (Sender, String) {
         let worker = local();
         let name = name(Uuid::new_v4());
         let pipe = win::create_pipe(&ServerOptions::new(), &name, &worker.acl().unwrap()).unwrap();
@@ -543,10 +612,86 @@ mod tests {
             Sender {
                 pipe,
                 peer: worker,
-                recipient: Recipient::Worker,
+                recipient,
             },
             name,
         )
+    }
+
+    fn client(name: &str) -> NamedPipeClient {
+        let file = OpenOptions::new()
+            .access_mode(ipc::CLIENT_ACCESS)
+            .custom_flags(FILE_FLAG_OVERLAPPED)
+            .security_qos_flags(SECURITY_IDENTIFICATION)
+            .open(name)
+            .unwrap();
+        win::into_pipe_client(file).unwrap()
+    }
+
+    async fn acknowledge(client: &mut NamedPipeClient, recipient: Recipient, deadline: Instant) {
+        let mut message = [0; 28];
+        ipc::bounded(deadline, client.read_exact(&mut message))
+            .await
+            .unwrap();
+        assert_eq!(&message[..4], recipient.markers().0);
+        client.write_all(recipient.markers().1).await.unwrap();
+        let mut confirmed = [0; 2];
+        ipc::bounded(deadline, client.read_exact(&mut confirmed))
+            .await
+            .unwrap();
+        assert_eq!(&confirmed, b"OK");
+    }
+
+    #[tokio::test]
+    async fn an_ordinary_worker_never_becomes_a_control_channel() {
+        let (sender, name) = ordinary_listener();
+        let mut client = client(&name);
+        let fixture = Fixture::new();
+        let binding = fixture.binding();
+        let peer = local();
+        let deadline = Instant::now() + ipc::IO_TIMEOUT;
+        let (sent, ()) = tokio::join!(
+            sender.send(4, Uuid::new_v4(), &binding, &peer, deadline),
+            acknowledge(&mut client, Recipient::Worker, deadline)
+        );
+        client.write_all(CONNECTED).await.unwrap();
+        assert!(
+            matches!(sent.unwrap().connected(deadline).await, Err(e) if e.kind() == io::ErrorKind::PermissionDenied)
+        );
+    }
+
+    #[tokio::test]
+    async fn the_consent_window_may_answer_after_the_io_limit() {
+        let (sender, name) = listener(Recipient::Consent);
+        let mut client = client(&name);
+        let fixture = Fixture::new();
+        let binding = fixture.binding();
+        let peer = local();
+        let deadline = Instant::now() + ipc::IO_TIMEOUT;
+        let (sent, ()) = tokio::join!(
+            sender.send(0, Uuid::nil(), &binding, &peer, deadline),
+            async {
+                acknowledge(&mut client, Recipient::Consent, deadline).await;
+                client.write_all(CONNECTED).await.unwrap();
+            }
+        );
+        let mut control = sent.unwrap().connected(deadline).await.unwrap();
+        let mut accepted = [0; 2];
+        ipc::bounded(deadline, client.read_exact(&mut accepted))
+            .await
+            .unwrap();
+        assert_eq!(&accepted, b"OK");
+        let answer_by = Instant::now() + ipc::IO_TIMEOUT * 2;
+        let (reply, ()) = tokio::join!(control.ask(b"question", answer_by), async {
+            assert_eq!(read_message(&mut client).await.unwrap(), b"question");
+            tokio::time::sleep(ipc::IO_TIMEOUT + std::time::Duration::from_millis(500)).await;
+            write_message(&mut client, b"answer").await.unwrap();
+        });
+        assert_eq!(reply.unwrap(), b"answer");
+        let late = Instant::now() + std::time::Duration::from_millis(300);
+        assert!(
+            matches!(control.ask(b"again", late).await, Err(e) if e.kind() == io::ErrorKind::TimedOut)
+        );
     }
 
     #[tokio::test]

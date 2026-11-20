@@ -49,50 +49,22 @@ pub async fn start_privileged(
     worker: SuspendedWorker,
     deadline: tokio::time::Instant,
 ) -> io::Result<(RunningWorker, ServiceChannel)> {
-    start_direct(parent, worker, deadline, false).await
-}
-
-/// Starts the consent window in the user's session; like a privileged worker, it talks only
-/// to the service.
-pub async fn start_consent(
-    parent: &Peer,
-    worker: SuspendedWorker,
-    deadline: tokio::time::Instant,
-) -> io::Result<(RunningWorker, ServiceChannel)> {
-    start_direct(parent, worker, deadline, true).await
-}
-
-async fn start_direct(
-    parent: &Peer,
-    worker: SuspendedWorker,
-    deadline: tokio::time::Instant,
-    consent: bool,
-) -> io::Result<(RunningWorker, ServiceChannel)> {
     let id = worker.bootstrap_id.ok_or_else(denied)?;
     let peer = worker.peer()?;
-    let (allowed, hello) = match &peer.role {
+    if !matches!(
+        peer.role,
         super::identity::Role::Worker {
             kind: super::Worker::Privileged,
             ..
-        } => (!consent, super::participant::WORKER_HELLO),
-        super::identity::Role::Worker {
-            kind: super::Worker::User { .. },
-            ..
-        } => (consent, super::participant::CONSENT_HELLO),
-        super::identity::Role::Broker => (false, super::participant::WORKER_HELLO),
-    };
-    if !allowed {
+        }
+    ) {
         return Err(denied());
     }
     let binding = worker.binding(parent)?;
     let listener = super::Listener::bind(parent, peer.duplicate()?)?;
     let endpoint = super::endpoint_id(listener.name())?;
     let (worker, handle_value) = worker.transfer_broker(parent, parent)?;
-    let sender = if consent {
-        delivery::Sender::bind(id, peer)?
-    } else {
-        delivery::Sender::for_privileged(id, peer)?
-    };
+    let sender = delivery::Sender::for_privileged(id, peer)?;
     if tokio::time::Instant::now() >= deadline {
         return Err(io::ErrorKind::TimedOut.into());
     }
@@ -101,7 +73,8 @@ async fn start_direct(
         sender.send(handle_value, endpoint, &binding, parent, deadline),
         async {
             let mut connection = listener.accept(deadline).await?;
-            super::participant::expect(&mut connection, hello, deadline).await?;
+            super::participant::expect(&mut connection, super::participant::WORKER_HELLO, deadline)
+                .await?;
             connection
                 .send(super::participant::BROKER_HELLO, deadline)
                 .await?;
@@ -109,6 +82,26 @@ async fn start_direct(
         },
     )?;
     Ok((running, connection))
+}
+
+/// Starts the consent window in the user's session. It gets no handle to the service: a standard
+/// user cannot read the service's token, so the window verifies the kept startup pipe instead.
+pub async fn start_consent(
+    parent: &Peer,
+    worker: SuspendedWorker,
+    deadline: tokio::time::Instant,
+) -> io::Result<(RunningWorker, delivery::Control)> {
+    let id = worker.bootstrap_id.ok_or_else(denied)?;
+    let binding = worker.binding(parent)?;
+    let sender = delivery::Sender::for_consent(id, worker.peer()?)?;
+    if tokio::time::Instant::now() >= deadline {
+        return Err(io::ErrorKind::TimedOut.into());
+    }
+    let running = worker.resume(parent)?;
+    let sent = sender
+        .send(0, uuid::Uuid::nil(), &binding, parent, deadline)
+        .await?;
+    Ok((running, sent.connected(deadline).await?))
 }
 
 /// Owns the suspended worker and its single query-only companion handle transfer.

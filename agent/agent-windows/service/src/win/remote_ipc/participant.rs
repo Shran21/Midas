@@ -1,7 +1,6 @@
 use std::{
     io,
     os::windows::io::AsRawHandle,
-    path::Path,
     sync::atomic::{AtomicU8, Ordering},
     time::Duration,
 };
@@ -18,7 +17,6 @@ use crate::consent::{Answer, Question, encode_answer};
 
 pub(in crate::win::remote_ipc) const WORKER_HELLO: &[u8] = b"worker-ready/1";
 pub(in crate::win::remote_ipc) const BROKER_HELLO: &[u8] = b"broker-ready/1";
-pub(in crate::win::remote_ipc) const CONSENT_HELLO: &[u8] = b"consent-ready/1";
 const ANSWER_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub enum Participant {
@@ -93,7 +91,7 @@ impl Participant {
                     reached(Stage::Standby);
                     standby(connection).await
                 }
-                Self::Consent => consent(&image, deadline, crate::win::consent::ask).await,
+                Self::Consent => consent(deadline, crate::win::consent::ask).await,
                 Self::Broker => {
                     let (listener, launcher) =
                         delivery::receive_companion(&image, deadline).await?;
@@ -112,31 +110,31 @@ impl Participant {
 
 /// Shows only the question the service delivers, and returns the answer to the service only.
 pub(in crate::win::remote_ipc) async fn consent(
-    image: &Path,
     deadline: Instant,
     ask: fn(&Question) -> io::Result<Answer>,
 ) -> io::Result<()> {
-    let mut connection = delivery::receive_worker(image, deadline, async |destination| {
-        let mut connection = destination.connect()?;
-        connection.send(CONSENT_HELLO, deadline).await?;
-        expect(&mut connection, BROKER_HELLO, deadline).await?;
-        Ok(connection)
-    })
-    .await?;
+    let mut service = delivery::receive_consent(deadline).await?;
     reached(Stage::Connected);
-    let question = Question::decode(&connection.receive(deadline).await?).ok_or_else(denied)?;
+    let question = super::bounded(deadline, service.next())
+        .await?
+        .and_then(|message| Question::decode(&message))
+        .ok_or_else(denied)?;
     reached(Stage::Standby);
     let request = question.request;
     let answer = tokio::task::spawn_blocking(move || ask(&question))
         .await
         .map_err(|_| denied())??;
-    connection
-        .send(
+    service
+        .reply(
             &encode_answer(request, answer),
             Instant::now() + ANSWER_TIMEOUT,
         )
         .await?;
-    standby(connection).await
+    // No further request exists; the window waits for the service to close the channel.
+    match service.next().await? {
+        None => Ok(()),
+        Some(_) => Err(denied()),
+    }
 }
 
 pub(in crate::win::remote_ipc) async fn expect<S: AsyncRead + AsyncWrite + AsRawHandle + Unpin>(

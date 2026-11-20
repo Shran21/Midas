@@ -124,7 +124,7 @@ impl Coordinator {
         let window = SuspendedWorker::spawn_consent(&self.parent, token, &self.image)?;
         self.runtime.block_on(async {
             let startup = (tokio::time::Instant::now() + STARTUP_TIMEOUT).min(answer_by);
-            let (running, mut connection) = start_consent(&self.parent, window, startup).await?;
+            let (running, mut control) = start_consent(&self.parent, window, startup).await?;
             let seconds = answer_by
                 .saturating_duration_since(tokio::time::Instant::now())
                 .as_secs();
@@ -141,14 +141,14 @@ impl Coordinator {
             }
             .encode()
             .ok_or_else(denied)?;
-            connection.send(&question, answer_by).await?;
             let revoked = async {
                 while !stopped() {
                     tokio::time::sleep(Duration::from_millis(50)).await;
                 }
             };
+            // The person has until the deadline; the I/O limit applies only to the message itself.
             let frame = tokio::select! {
-                frame = connection.receive(answer_by + ANSWER_GRACE) => frame,
+                frame = control.ask(&question, answer_by + ANSWER_GRACE) => frame,
                 () = revoked => return Ok(Consent::Cancelled),
             };
             drop(running);

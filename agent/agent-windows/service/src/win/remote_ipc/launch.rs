@@ -98,6 +98,9 @@ fn wait_result(result: Option<Result<io::Result<()>, tokio::task::JoinError>>) -
         .map_err(|_| io::Error::other("worker exit wait failed"))?
 }
 
+/// The startup locator a participant reads; it names which startup record the process accepts.
+type Environment = fn(uuid::Uuid) -> io::Result<Vec<u16>>;
+
 pub struct SuspendedWorker {
     process: Process,
     token: PreparedToken,
@@ -109,11 +112,17 @@ impl SuspendedWorker {
     /// The service supplies a prepared native token and an administrator-protected installed image.
     /// No PID, token handle, image path or command line may come from a remote request.
     pub fn spawn(broker: &Peer, token: PreparedToken, installed_image: &Path) -> io::Result<Self> {
-        let argument = match token.kind() {
-            super::Worker::User { .. } => "remote-worker",
-            super::Worker::Privileged => "remote-privileged-worker",
+        let (argument, environment): (_, Environment) = match token.kind() {
+            super::Worker::User { .. } => (
+                "remote-worker",
+                super::bootstrap::delivery::worker_environment,
+            ),
+            super::Worker::Privileged => (
+                "remote-privileged-worker",
+                super::bootstrap::delivery::privileged_environment,
+            ),
         };
-        Self::spawn_with(broker, token, installed_image, argument)
+        Self::spawn_with(broker, token, installed_image, argument, environment)
     }
 
     /// The consent window runs as the signed-in user of the target session, never as SYSTEM.
@@ -125,7 +134,13 @@ impl SuspendedWorker {
         if !matches!(token.kind(), super::Worker::User { .. }) {
             return Err(denied());
         }
-        Self::spawn_with(broker, token, installed_image, "remote-consent")
+        Self::spawn_with(
+            broker,
+            token,
+            installed_image,
+            "remote-consent",
+            super::bootstrap::delivery::consent_environment,
+        )
     }
 
     /// Test fixtures run a child test of the same image in place of the release command.
@@ -136,7 +151,11 @@ impl SuspendedWorker {
         installed_image: &Path,
         arguments: &str,
     ) -> io::Result<Self> {
-        Self::spawn_with(broker, token, installed_image, arguments)
+        let environment: Environment = match token.kind() {
+            super::Worker::User { .. } => super::bootstrap::delivery::worker_environment,
+            super::Worker::Privileged => super::bootstrap::delivery::privileged_environment,
+        };
+        Self::spawn_with(broker, token, installed_image, arguments, environment)
     }
 
     fn spawn_with(
@@ -144,6 +163,7 @@ impl SuspendedWorker {
         token: PreparedToken,
         installed_image: &Path,
         argument: &str,
+        environment: Environment,
     ) -> io::Result<Self> {
         token.check(broker)?;
         let application = image_path(installed_image)?;
@@ -156,14 +176,7 @@ impl SuspendedWorker {
         if command.len() > 32_767 {
             return Err(denied());
         }
-        let environment = match token.kind() {
-            super::Worker::User { .. } => {
-                super::bootstrap::delivery::worker_environment(bootstrap_id)?
-            }
-            super::Worker::Privileged => {
-                super::bootstrap::delivery::privileged_environment(bootstrap_id)?
-            }
-        };
+        let environment = environment(bootstrap_id)?;
         let bootstrap_id = Some(bootstrap_id);
         let mut desktop = super::super::wide("winsta0\\default");
         let process = Process::create(Some(&mut desktop), |startup, flags, information| {

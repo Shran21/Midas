@@ -202,9 +202,18 @@ fn user_process(
     launch_id: uuid::Uuid,
     arguments: &str,
 ) -> Process {
+    let environment = super::super::bootstrap::delivery::worker_environment(launch_id).unwrap();
+    user_process_in(token, image, &environment, arguments)
+}
+
+fn user_process_in(
+    token: &OwnedHandle,
+    image: &Path,
+    environment: &[u16],
+    arguments: &str,
+) -> Process {
     let application = image_path(image).unwrap();
     let mut command = super::super::super::wide(&format!("\"{}\" {arguments}", image.display()));
-    let environment = super::super::bootstrap::delivery::worker_environment(launch_id).unwrap();
     let mut desktop = [0u16];
     Process::create(Some(&mut desktop), |startup, flags, information| {
         // SAFETY: this CI-only standard-user fixture starts suspended; all buffers outlive creation.
@@ -452,35 +461,36 @@ async fn privileged_participant(parent: &Peer, session: u32, image: &Path) {
 #[test]
 #[ignore = "consent child fixture, launched only by the isolated SYSTEM trial"]
 fn consent_participant_child() {
-    let image = std::env::current_exe().unwrap();
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .unwrap();
     // The real participant protocol; only the window is replaced by a fixed answer.
-    runtime
-        .block_on(super::super::participant::consent(
-            &image,
-            tokio::time::Instant::now() + super::super::STARTUP_TIMEOUT,
-            |question| {
-                assert_eq!(question.operator, "Trial Operator");
-                assert_eq!(question.customer, "Trial Customer");
-                assert!(question.uac && !question.administrative);
-                Ok(crate::consent::Answer::Decline)
-            },
-        ))
-        .unwrap();
+    let result = runtime.block_on(super::super::participant::consent(
+        tokio::time::Instant::now() + super::super::STARTUP_TIMEOUT,
+        |question| {
+            assert_eq!(question.operator, "Trial Operator");
+            assert_eq!(question.customer, "Trial Customer");
+            assert!(question.uac && !question.administrative);
+            Ok(crate::consent::Answer::Decline)
+        },
+    ));
+    if let Err(error) = result {
+        eprintln!("consent child: {error}");
+        std::process::exit(super::super::participant::failure_code().into());
+    }
 }
 
-/// The consent participant runs as the selected user in the console session, reaches only the
-/// service, and answers the request it was asked.
+/// The consent window runs as the selected user in the console session, receives no handle to
+/// the service, and answers over its verified startup pipe, also after the I/O limit.
 async fn consent_participant(parent: &Peer, token: &OwnedHandle, session: u32, image: &Path) {
     use crate::consent::{Answer, Question, decode_answer};
     let id = uuid::Uuid::new_v4();
-    let window = user_process(
+    let environment = super::super::bootstrap::delivery::consent_environment(id).unwrap();
+    let window = user_process_in(
         token,
         image,
-        id,
+        &environment,
         &format!("--exact {CONSENT_CHILD} --ignored"),
     );
     let process = window.query_handle().unwrap();
@@ -488,36 +498,25 @@ async fn consent_participant(parent: &Peer, token: &OwnedHandle, session: u32, i
     let peer = Peer::worker(window.query_handle().unwrap(), image, role, session).unwrap();
     let fixture = Fixture::new();
     let binding = fixture.binding();
-    let listener = super::super::Listener::bind(parent, peer.duplicate().unwrap()).unwrap();
-    let endpoint = super::super::endpoint_id(listener.name()).unwrap();
-    let (window, handle) = window.transfer_peer(parent).unwrap();
-    let sender = delivery::Sender::bind(id, peer).unwrap();
+    let sender = delivery::Sender::for_consent(id, peer).unwrap();
     let deadline = tokio::time::Instant::now() + super::super::STARTUP_TIMEOUT;
     let started = std::time::Instant::now();
     let running = RunningWorker::bound(window.resume().unwrap(), binding.clone()).unwrap();
-    let (sent, connection) = tokio::join!(
-        sender.send(handle, endpoint, &binding, parent, deadline),
-        async {
-            let mut connection = listener.accept(deadline).await?;
-            super::super::participant::expect(
-                &mut connection,
-                super::super::participant::CONSENT_HELLO,
-                deadline,
+    let sent = sender
+        .send(0, uuid::Uuid::nil(), &binding, parent, deadline)
+        .await
+        .unwrap_or_else(|error| {
+            panic!(
+                "consent window must receive its startup record: {error} ({})",
+                process_state(&process)
             )
-            .await?;
-            connection
-                .send(super::super::participant::BROKER_HELLO, deadline)
-                .await?;
-            Ok::<_, io::Error>(connection)
-        }
-    );
-    sent.unwrap_or_else(|error| {
+        });
+    let mut control = sent.connected(deadline).await.unwrap_or_else(|error| {
         panic!(
-            "consent participant must receive its startup record: {error} ({})",
+            "consent window must confirm its channel: {error} ({})",
             process_state(&process)
         )
     });
-    let mut connection = connection.unwrap();
     let request = uuid::Uuid::new_v4();
     let question = Question {
         request,
@@ -527,26 +526,31 @@ async fn consent_participant(parent: &Peer, token: &OwnedHandle, session: u32, i
         uac: true,
         seconds: 30,
     };
-    connection
-        .send(&question.encode().unwrap(), deadline)
+    let answer = control
+        .ask(&question.encode().unwrap(), deadline)
         .await
-        .unwrap();
-    let answer = connection.receive(deadline).await.unwrap();
+        .unwrap_or_else(|error| {
+            panic!(
+                "consent window must answer: {error} ({})",
+                process_state(&process)
+            )
+        });
     assert_eq!(decode_answer(&answer), Some((request, Answer::Decline)));
     println!(
-        "consent participant answered the service after {:?}",
+        "consent window answered the service after {:?}",
         started.elapsed()
     );
-    drop(connection);
+    drop(control);
     for _ in 0..50 {
         if running.has_exited().unwrap() {
             break;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    assert!(
-        running.has_exited().unwrap(),
-        "consent participant should stop after the service closes its channel"
+    assert_eq!(
+        process_state(&process),
+        "exited with 0x0",
+        "consent window should stop cleanly after the service closes its channel"
     );
 }
 
@@ -1005,7 +1009,7 @@ fn isolated_system_query_access() {
         session,
         &image,
     ));
-    println!("consent participant ran as the selected user and answered only the service");
+    println!("consent window ran as the selected user and answered only the service");
     owner.finish().unwrap();
     println!(
         "SYSTEM companion: selected logon can query; mutation, other logon and stale binding refused"
