@@ -348,8 +348,10 @@ async fn release_participants(parent: &Peer, token: &OwnedHandle, session: u32, 
             .into_iter()
             .find(|candidate| candidate.id == session)
             .expect("console session");
-        let token = super::super::tokens::PreparedToken::privileged(parent, observer, target)
-            .expect("privileged token for the console session");
+        // The observer outlives the worker, as in the service: its bindings end with it.
+        let token =
+            super::super::tokens::PreparedToken::privileged(parent, observer.clone(), target)
+                .expect("privileged token for the console session");
         let joining = super::super::launch::SuspendedWorker::spawn(parent, token, image).unwrap();
         let joined = std::time::Instant::now();
         let privileged = super::super::bootstrap::attach_privileged(
