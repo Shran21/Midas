@@ -8,8 +8,14 @@ use std::{
 };
 
 use windows_sys::Win32::{
-    Foundation::{HWND, LPARAM, S_FALSE, S_OK, WPARAM},
+    Foundation::{HANDLE, HWND, INVALID_HANDLE_VALUE, LPARAM, S_FALSE, S_OK, WPARAM},
     Globalization::GetUserDefaultUILanguage,
+    System::{
+        ApplicationInstallationAndServicing::{
+            ACTCTXW, ActivateActCtx, CreateActCtxW, DeactivateActCtx, ReleaseActCtx,
+        },
+        LibraryLoader::GetModuleHandleW,
+    },
     UI::{
         Controls::{
             TASKDIALOG_BUTTON, TASKDIALOGCONFIG, TD_INFORMATION_ICON, TD_SHIELD_ICON, TDE_FOOTER,
@@ -17,6 +23,7 @@ use windows_sys::Win32::{
             TDM_UPDATE_ELEMENT_TEXT, TDN_BUTTON_CLICKED, TDN_CREATED, TDN_TIMER,
             TaskDialogIndirect,
         },
+        HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetThreadDpiAwarenessContext},
         WindowsAndMessaging::{
             HWND_TOPMOST, SWP_NOMOVE, SWP_NOSIZE, SendMessageW, SetForegroundWindow, SetWindowPos,
         },
@@ -30,6 +37,53 @@ pub(crate) const ALLOW: i32 = 100;
 pub(crate) const DECLINE: i32 = 101;
 const ARMING: Duration = Duration::from_secs(1);
 const LANG_HUNGARIAN: u16 = 0x0e;
+/// The program's own Common Controls 6 manifest, embedded as resource 2 (see build.rs).
+const MANIFEST: usize = 2;
+const ACTCTX_FLAG_RESOURCE_NAME_VALID: u32 = 0x8;
+const ACTCTX_FLAG_HMODULE_VALID: u32 = 0x80;
+
+/// Selects Common Controls 6 for this thread while the window is open.
+struct Controls {
+    context: HANDLE,
+    cookie: usize,
+}
+
+impl Controls {
+    fn activate() -> io::Result<Self> {
+        let request = ACTCTXW {
+            cbSize: size_of::<ACTCTXW>() as u32,
+            dwFlags: ACTCTX_FLAG_RESOURCE_NAME_VALID | ACTCTX_FLAG_HMODULE_VALID,
+            lpResourceName: MANIFEST as *const u16,
+            // SAFETY: the handle of this program's own module, which stays loaded.
+            hModule: unsafe { GetModuleHandleW(std::ptr::null()) },
+            ..Default::default()
+        };
+        // SAFETY: `request` is fully initialized and names a resource of this module.
+        let context = unsafe { CreateActCtxW(&request) };
+        if context == INVALID_HANDLE_VALUE {
+            return Err(io::Error::last_os_error());
+        }
+        let mut cookie = 0;
+        // SAFETY: activates the context just created on this thread.
+        if unsafe { ActivateActCtx(context, &mut cookie) } == 0 {
+            let error = io::Error::last_os_error();
+            // SAFETY: releases the context this function created.
+            unsafe { ReleaseActCtx(context) };
+            return Err(error);
+        }
+        Ok(Self { context, cookie })
+    }
+}
+
+impl Drop for Controls {
+    fn drop(&mut self) {
+        // SAFETY: deactivates and releases the context this guard activated on this thread.
+        unsafe {
+            DeactivateActCtx(0, self.cookie);
+            ReleaseActCtx(self.context);
+        }
+    }
+}
 
 struct State {
     shown: Instant,
@@ -106,6 +160,11 @@ unsafe extern "system" fn callback(
 
 /// Shows the question and waits for the user's answer or the end of its time.
 pub fn ask(question: &Question) -> io::Result<Answer> {
+    // Only this thread is DPI aware: a process-wide setting would make every participant
+    // initialize its desktop connection at start, which fails for tokens without desktop access.
+    // SAFETY: changes the DPI awareness of the calling thread only.
+    unsafe { SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
+    let _controls = Controls::activate()?;
     // SAFETY: a plain query of the user's interface language.
     let hungarian = unsafe { GetUserDefaultUILanguage() } & 0x3ff == LANG_HUNGARIAN;
     let text = texts(question, hungarian);

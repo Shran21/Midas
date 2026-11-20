@@ -4,7 +4,7 @@
 
 ## Magyar
 
-A MIDAS-041 jelenlegi megvalósítása a szerveres szabályzat tárolását, webes szerkesztőjét, adminisztrációs API-ját, belső döntési szolgáltatását, a Windows-munkamenetek hiteles agentcsatornán történő lekérdezését és webes kijelölését, valamint a friss agentmegfigyelésen alapuló hozzáférés-ellenőrzést tartalmazza. Távoli kép- vagy beviteli kapcsolatot még nem indít. Az aláírt felhatalmazás kiadója, agentoldali ellenőrzése és mTLS-csatornás kézbesítése elkészült. Az utóbbi külön natív végrehajtót igényel, ezért a telepíthető agent még nem hirdeti. A védett Windows-folyamatok, a teljes munkamenet-koordinátor és a tényleges helyi jóváhagyás még szükséges. A feladat ezért nem lezárt. [Felhatalmazási szerződés és integrációs határok](tavsegitesi-felhatalmazas.md).
+A MIDAS-041 jelenlegi megvalósítása a szerveres szabályzat tárolását, webes szerkesztőjét, adminisztrációs API-ját, belső döntési szolgáltatását, a Windows-munkamenetek hiteles agentcsatornán történő lekérdezését és webes kijelölését, valamint a friss agentmegfigyelésen alapuló hozzáférés-ellenőrzést tartalmazza. Távoli kép- vagy beviteli kapcsolatot még nem indít. Az aláírt felhatalmazás kiadója, agentoldali ellenőrzése és mTLS-csatornás kézbesítése elkészült. Az utóbbi külön natív végrehajtót igényel; a Windows-szolgáltatás koordinátora ezt a `remote_support` beállítás bekapcsolásakor kínálja. A foglalt asztalhoz szükséges [helyi jóváhagyás](tavsegitesi-felhatalmazas.md#helyi-jóváhagyás-midas-048) elkészült. A telepített szerveren végzett próba a végső kézi ellenőrzés része. [Felhatalmazási szerződés és integrációs határok](tavsegitesi-felhatalmazas.md).
 
 ### Beállítás
 
@@ -100,7 +100,7 @@ Ez szabályzatdöntés, nem végrehajtható felhatalmazás. A későbbi aláírt
 
 ## English
 
-The current MIDAS-041 implementation provides server-policy storage, a web editor, an administration API, an internal decision service, Windows session queries over the authenticated agent channel and web target selection, plus access checks based on fresh agent observations. It does not start remote media or input. Signed-grant issuance, agent enforcement and mTLS-channel delivery are implemented. Delivery requires a separate native backend, so the installable agent does not advertise it yet. Protected Windows processes, the full session coordinator and actual local consent remain. The task stays open. [Grant contract and integration boundaries](tavsegitesi-felhatalmazas.md#english).
+The current MIDAS-041 implementation provides server-policy storage, a web editor, an administration API, an internal decision service, Windows session queries over the authenticated agent channel and web target selection, plus access checks based on fresh agent observations. It does not start remote media or input. Signed-grant issuance, agent enforcement and mTLS-channel delivery are implemented. Delivery requires a separate native backend; the Windows service coordinator offers it when the `remote_support` setting is on. The [local consent](tavsegitesi-felhatalmazas.md#local-consent-midas-048) an occupied desktop needs is implemented. A trial on an installed server is part of the final manual verification. [Grant contract and integration boundaries](tavsegitesi-felhatalmazas.md#english).
 
 ### Configuration
 

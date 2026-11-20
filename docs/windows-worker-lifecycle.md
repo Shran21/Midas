@@ -52,7 +52,7 @@ A koordinátor `consent` művelete a cél munkamenet friss WTS-adatából indul:
 
 A szolgáltatás egyetlen kérdést küld a kérés azonosítójával, a nevekkel, a móddal és a hátralévő másodpercekkel. Csak ugyanerre a kérésre szóló választ fogad el a saját határidején belül; a határidő után a választ lejártnak tekinti. Visszavonáskor nem vár tovább, és az ablak folyamatát a feladatobjektum lezárásával leállítja. Bármilyen indítási vagy kapcsolati hibánál az agent „nem elérhető” választ ad, ami nem aktivál engedélyt.
 
-Az ablak a Windows feladat-párbeszédablaka (Common Controls 6), ezért a program manifestje ezt a változatot kéri, a `comctl32.dll` pedig csak az ablak megnyitásakor töltődik be. A szöveg a felhasználó felületi nyelvét követi (magyar vagy angol), a visszaszámláló sor nem élő régió. Az automatizált teszt valódi ablakot nyit, és ellenőrzi, hogy a kezdő fókusz az Elutasításon van, az Engedélyezés az első másodpercben nem aktív, majd az engedélyezést, az elutasítást és a lejáratot.
+Az ablak a Windows feladat-párbeszédablaka (Common Controls 6). Az ezt kiválasztó manifest a program 2-es erőforrása, amelyet csak az ablak szála aktivál a megnyitás idejére, és a `comctl32.dll` is ekkor töltődik be. Folyamatszintű manifest vagy DPI-beállítás nem használható, mert minden résztvevőt az asztalához kapcsolna indításkor; a DPI-tudatosságot ezért az ablak szála állítja be. A szöveg a felhasználó felületi nyelvét követi (magyar vagy angol), a visszaszámláló sor nem élő régió. Az automatizált teszt valódi ablakot nyit, és ellenőrzi, hogy a kezdő fókusz az Elutasításon van, az Engedélyezés az első másodpercben nem aktív, majd az engedélyezést, az elutasítást és a lejáratot.
 
 ### Ellenőrzés és hátralévő integráció
 
@@ -114,7 +114,7 @@ The coordinator's `consent` operation starts from fresh WTS data for the target 
 
 The service sends one question with the request ID, the names, the mode and the remaining seconds. It accepts only an answer for the same request within its own deadline; after the deadline it treats the request as expired. On revocation it stops waiting and ends the window's process by closing its job object. Any startup or connection failure makes the agent answer unavailable, which never activates a grant.
 
-The window is a Windows task dialog (Common Controls 6), so the program manifest requests that version and `comctl32.dll` loads only when the window opens. The text follows the user's interface language (Hungarian or English), and the countdown line is not a live region. An automated test opens a real window and checks that Decline has the initial focus and Allow is inactive for the first second, then allowing, declining and expiry.
+The window is a Windows task dialog (Common Controls 6). The manifest that selects it is resource 2 of the program, which only the window's thread activates while it is open, and `comctl32.dll` loads only then. A process manifest or DPI setting cannot be used, because it would connect every participant to its desktop at start; the window's thread therefore sets its own DPI awareness. The text follows the user's interface language (Hungarian or English), and the countdown line is not a live region. An automated test opens a real window and checks that Decline has the initial focus and Allow is inactive for the first second, then allowing, declining and expiry.
 
 ### Verification and remaining integration
 

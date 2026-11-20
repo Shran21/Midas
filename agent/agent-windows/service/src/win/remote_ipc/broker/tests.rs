@@ -877,7 +877,12 @@ fn isolated_system_query_access() {
             user_peer.recheck().unwrap();
         })
         .await
-        .unwrap();
+        .unwrap_or_else(|_| {
+            panic!(
+                "ordinary worker did not confirm startup: {}",
+                process_state(&user_handle)
+            )
+        });
     });
     println!(
         "ordinary worker imported the query-only companion handle without elevation or inheritance"
