@@ -102,6 +102,10 @@ test("only an unexpired passkey within five minutes can skip the confirmation pr
   assert.equal(freshPasskey(session, 1300), false);
   assert.equal(freshPasskey(session, 999), false);
   assert.equal(freshPasskey({ ...session, expires_at: 1200 }, 1200), false);
+  // An attended request asks with the answer time as margin: a 4-minute-old confirmation
+  // would go stale while the user decides, so it is renewed first.
+  assert.equal(freshPasskey(session, 1100 + 90), true);
+  assert.equal(freshPasskey(session, 1240 + 90), false);
   for (const authentication_method of [
     "password_totp",
     "recovery_code",

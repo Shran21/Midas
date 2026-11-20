@@ -24,20 +24,26 @@ pub struct AttendedRequest {
     pub session: SessionSelection,
 }
 
+/// Every permission an attended session of this mode needs; administrative mode and UAC each
+/// add their own, separately granted permission.
+fn mode_permissions(mode: RemoteMode, uac: bool) -> Vec<Permission> {
+    let mut permissions = vec![
+        Permission::DeviceRead,
+        Permission::RemoteView,
+        Permission::RemoteControl,
+    ];
+    if matches!(mode, RemoteMode::Administrative) {
+        permissions.push(Permission::RemoteAdmin);
+    }
+    if uac {
+        permissions.push(Permission::RemoteUacInteract);
+    }
+    permissions
+}
+
 impl AttendedRequest {
     fn permissions(&self) -> Vec<Permission> {
-        let mut permissions = vec![
-            Permission::DeviceRead,
-            Permission::RemoteView,
-            Permission::RemoteControl,
-        ];
-        if matches!(self.mode, RemoteMode::Administrative) {
-            permissions.push(Permission::RemoteAdmin);
-        }
-        if self.uac {
-            permissions.push(Permission::RemoteUacInteract);
-        }
-        permissions
+        mode_permissions(self.mode, self.uac)
     }
 
     fn fresh_passkey(&self) -> bool {
@@ -75,6 +81,22 @@ pub(crate) fn refusal(error: &AccessError) -> &'static str {
 }
 
 impl Authorizer {
+    /// A later operation of an active attended session, such as starting its picture. The
+    /// operator must hold every permission of the session's mode now; passkey freshness belongs
+    /// to the session start and is not asked again.
+    pub(crate) async fn authorize_attended_operation(
+        &self,
+        sessions: &Sessions,
+        token: &SessionToken,
+        target: Target,
+        mode: RemoteMode,
+        uac: bool,
+    ) -> Result<AccessDecision> {
+        let identity = sessions.validate(token, false).await?;
+        self.evaluate(&identity, target, &mode_permissions(mode, uac), false)
+            .await
+    }
+
     /// Checks the request and records a refusal; on success it names who asks, for the window.
     pub(crate) async fn prepare_attended_request(
         &self,

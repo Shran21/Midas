@@ -52,9 +52,12 @@ type ButtonsProps = {
   language: Language;
   blocked: boolean;
   fail: (error: unknown) => boolean;
-  confirmIdentity: (force?: boolean) => Promise<string>;
+  confirmIdentity: (force?: boolean, margin?: number) => Promise<string>;
   onStarted: (started: Started) => void;
 };
+
+/** Seconds a passkey confirmation must stay fresh: the user's answer time and its delivery. */
+const CONSENT_MARGIN = 90;
 
 /** The two request buttons of UI-04, for a fresh selection of a signed-in session. */
 export function RequestButtons({
@@ -95,13 +98,28 @@ export function RequestButtons({
     request.current = controller;
     setBusy(true);
     setError(null);
+    let token = csrf;
+    // Administrative mode and UAC start only after a passkey confirmation that stays fresh
+    // until the user has answered.
+    if (mode === "administrative" || uac) {
+      try {
+        token = await confirmIdentity(false, CONSENT_MARGIN);
+      } catch (caught) {
+        request.current = null;
+        if (mounted.current) {
+          if (!fail(caught)) setError("fresh");
+          setBusy(false);
+        }
+        return;
+      }
+    }
     const timeout = setTimeout(() => controller.abort(), 12_000);
     try {
       const response = await api.requestRemote(
         tenant,
         device.id,
         { mode, uac, session },
-        csrf,
+        token,
         controller.signal,
       );
       const received = performance.now();

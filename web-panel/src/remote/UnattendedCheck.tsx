@@ -16,7 +16,7 @@ type Props = {
   csrf: string;
   language: Language;
   fail: (error: unknown) => boolean;
-  confirmIdentity: (force?: boolean) => Promise<string>;
+  confirmIdentity: (force?: boolean, margin?: number) => Promise<string>;
 };
 type Feedback = {
   kind:

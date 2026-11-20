@@ -27,7 +27,7 @@ const hu = {
   cancelled: "Visszavontad a kérést. Nem jött létre kapcsolat.",
   ended: "A kapcsolat véget ért.",
   failedFresh:
-    "A felhasználó engedélyezte a kérést, de ehhez a módhoz friss passkey-hitelesítés kell. Hitelesíts újra, majd küldj új kérést.",
+    "A felhasználó engedélyezte a kérést, de a passkey-megerősítés közben elavult. Küldj új kérést; a panel előtte újra megerősítteti.",
   failed:
     "A kérés nem teljesült, mert a jogosultság vagy a gép kapcsolata időközben megváltozott. Nem jött létre kapcsolat.",
   someone: "a felhasználó",
@@ -35,8 +35,8 @@ const hu = {
   end: "Kapcsolat bontása",
   again: "Új kérés",
   fresh:
-    "Ehhez a módhoz friss passkey-hitelesítés kell. Hitelesíts újra, majd küldd el ismét a kérést.",
-  authenticate: "Újrahitelesítés",
+    "Ehhez a módhoz friss passkey-megerősítés kell. Erősítsd meg a passkeyddel, majd küldd el ismét a kérést.",
+  authenticate: "Megerősítés passkeyjel",
   busy: "A gépen már folyamatban van egy távsegítés vagy kérés. Próbáld újra később.",
   offline:
     "A gép most nem érhető el, vagy a kijelölt munkamenet elavult. Kérd le ismét a munkameneteket.",
@@ -76,7 +76,7 @@ const en: {
   cancelled: "You withdrew the request. No connection was made.",
   ended: "The connection has ended.",
   failedFresh:
-    "The user allowed the request, but this mode needs a fresh passkey sign-in. Sign in again, then send a new request.",
+    "The user allowed the request, but the passkey confirmation went stale meanwhile. Send a new request; the panel asks for a confirmation first.",
   failed:
     "The request did not complete because a permission or the device connection changed meanwhile. No connection was made.",
   someone: "the user",
@@ -84,8 +84,8 @@ const en: {
   end: "End connection",
   again: "New request",
   fresh:
-    "This mode needs a fresh passkey sign-in. Sign in again, then send the request again.",
-  authenticate: "Sign in again",
+    "This mode needs a fresh passkey confirmation. Confirm with your passkey, then send the request again.",
+  authenticate: "Confirm with passkey",
   busy: "Remote support or a request is already in progress on this device. Try again later.",
   offline:
     "The device is not reachable now, or the selected session is out of date. Fetch the sessions again.",

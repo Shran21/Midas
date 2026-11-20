@@ -65,7 +65,7 @@ type Props = {
   onTab: (tab: Tab) => void;
   onOpen: (device: string, tab: Tab) => void;
   onIdentity?: (name: string) => void;
-  confirmIdentity: (force?: boolean) => Promise<string>;
+  confirmIdentity: (force?: boolean, margin?: number) => Promise<string>;
 };
 
 const tabs: Tab[] = [

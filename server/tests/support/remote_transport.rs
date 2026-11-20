@@ -429,6 +429,57 @@ pub async fn verify_attended(
     }
     *broker.answer.lock().unwrap() = Some(Consent::Allowed);
 
+    // An administrative session keeps checking its own permissions: without remote.admin its
+    // picture does not start, and the refused attempt does not use up the single setup.
+    let path = start(request("administrative", false)).await;
+    let active = settled(ctx, &path, "waiting").await;
+    assert_eq!(active["state"], "active", "{active}");
+    assert_eq!(
+        broker.asked.lock().unwrap().last().unwrap().rights.mode,
+        midas_remote_auth::Mode::Administrative
+    );
+    sqlx::query("INSERT INTO midas.permission_overrides (tenant_id,id,operator_id,permission,effect) VALUES ($1,gen_random_uuid(),$2,'remote.admin','deny')")
+        .bind(ctx.tenant).bind(operator).execute(&mut *admin).await.unwrap();
+    let media = format!("{path}/media");
+    assert_eq!(
+        call(
+            ctx.app,
+            "POST",
+            &media,
+            Some(ctx.manager),
+            Some(offer.clone()),
+            &[]
+        )
+        .await
+        .0,
+        // A denial looks like a missing resource, as everywhere in the API.
+        StatusCode::NOT_FOUND,
+        "administrative picture without remote.admin"
+    );
+    sqlx::query("DELETE FROM midas.permission_overrides WHERE tenant_id=$1 AND operator_id=$2 AND permission='remote.admin'")
+        .bind(ctx.tenant).bind(operator).execute(&mut *admin).await.unwrap();
+    assert_eq!(
+        call(
+            ctx.app,
+            "POST",
+            &media,
+            Some(ctx.manager),
+            Some(offer.clone()),
+            &[]
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(ctx.app, "DELETE", &path, Some(ctx.manager), None, &[])
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(settled(ctx, &path, "active").await["state"], "ended");
+    broker.stopped().await;
+
     let consents: Vec<(String, String)> = sqlx::query_as("SELECT outcome, details->>'result' FROM midas.tenant_audit WHERE tenant_id=$1 AND device_id=$2 AND action='remote.consent' ORDER BY sequence")
         .bind(ctx.tenant).bind(ctx.device).fetch_all(&mut *admin).await.unwrap();
     let results: Vec<_> = consents.iter().map(|(_, result)| result.as_str()).collect();
@@ -442,15 +493,17 @@ pub async fn verify_attended(
             "unavailable",
             "unavailable",
             "cancelled",
+            "allowed",
             "allowed"
         ]
     );
     let media: Vec<(String, String)> = sqlx::query_as("SELECT outcome, details->>'result' FROM midas.tenant_audit WHERE tenant_id=$1 AND device_id=$2 AND action='remote.media' ORDER BY sequence")
         .bind(ctx.tenant).bind(ctx.device).fetch_all(&mut *admin).await.unwrap();
-    assert_eq!(media, [("success".to_owned(), "answered".to_owned())]);
+    let answered = ("success".to_owned(), "answered".to_owned());
+    assert_eq!(media, [answered.clone(), answered]);
     let issued: i64 = sqlx::query_scalar("SELECT count(*) FROM midas.tenant_audit WHERE tenant_id=$1 AND device_id=$2 AND action='remote.grant_issued' AND details->>'unattended'='false'")
         .bind(ctx.tenant).bind(ctx.device).fetch_one(&mut *admin).await.unwrap();
-    assert_eq!(issued, 1);
+    assert_eq!(issued, 2);
     broker.presence.store(0, Ordering::SeqCst);
     sqlx::query("UPDATE midas.devices SET platform='linux' WHERE tenant_id=$1 AND id=$2")
         .bind(ctx.tenant)

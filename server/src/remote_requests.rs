@@ -317,11 +317,25 @@ impl Enrollment {
             .authorizer
             .authorize(sessions, token, target, Permission::RemoteControl)
             .await?;
+        let own = |e: &Tracked| {
+            e.tenant == tenant && e.device == device && e.operator == decision.operator_id
+        };
+        let Some((mode, uac)) = self
+            .remote_requests
+            .entries()
+            .get(&id)
+            .filter(|e| own(e))
+            .map(|e| (e.mode, e.uac))
+        else {
+            return Ok(None);
+        };
+        // The picture starts control: the session's whole mode must still be granted.
+        self.authorizer
+            .authorize_attended_operation(sessions, token, target, mode, uac)
+            .await?;
         let session = {
             let mut entries = self.remote_requests.entries();
-            let Some(entry) = entries.get_mut(&id).filter(|e| {
-                e.tenant == tenant && e.device == device && e.operator == decision.operator_id
-            }) else {
+            let Some(entry) = entries.get_mut(&id).filter(|e| own(e)) else {
                 return Ok(None);
             };
             if entry.offered {

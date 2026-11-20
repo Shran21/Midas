@@ -29,7 +29,7 @@ type Props = {
   manage: boolean;
   language: Language;
   changes: number;
-  confirmIdentity: (force?: boolean) => Promise<string>;
+  confirmIdentity: (force?: boolean, margin?: number) => Promise<string>;
   fail: (error: unknown) => boolean;
 };
 

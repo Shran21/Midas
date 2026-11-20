@@ -21,7 +21,7 @@ type Props = {
   language: Language;
   unavailable: boolean;
   fail: (error: unknown) => boolean;
-  confirmIdentity: (force?: boolean) => Promise<string>;
+  confirmIdentity: (force?: boolean, margin?: number) => Promise<string>;
 };
 
 type State =

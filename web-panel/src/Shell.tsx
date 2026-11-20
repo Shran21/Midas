@@ -144,8 +144,9 @@ export function Shell({
     [onSignedOut],
   );
 
-  const confirmIdentity = async (force = false) => {
-    if (!force && freshPasskey(signedIn.session, Date.now() / 1000))
+  /** A passkey sign-in that stays fresh for at least `margin` more seconds. */
+  const confirmIdentity = async (force = false, margin = 0) => {
+    if (!force && freshPasskey(signedIn.session, Date.now() / 1000 + margin))
       return signedIn.csrf_token;
     confirmingIdentity.current = true;
     let confirmed: SignedIn;

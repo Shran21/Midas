@@ -374,4 +374,30 @@ mod tests {
         assert_eq!(worker_for(Presence::Occupied, normal), Ok(Kind::Ordinary));
         assert_eq!(worker_for(Presence::Unknown, uac), Err(Error::Target));
     }
+
+    #[test]
+    fn administrative_mode_keeps_the_users_own_worker_on_an_occupied_desktop() {
+        // Running applications keep their rights: no mode puts the user's desktop under SYSTEM
+        // input; only UAC rights add the privileged worker, and only beside the user's own.
+        for rights in [
+            Rights {
+                mode: Mode::Administrative,
+                uac: false,
+            },
+            Rights {
+                mode: Mode::Administrative,
+                uac: true,
+            },
+            Rights {
+                mode: Mode::Normal,
+                uac: true,
+            },
+        ] {
+            assert_eq!(
+                worker_for(Presence::Occupied, rights),
+                Ok(Kind::Ordinary),
+                "{rights:?}"
+            );
+        }
+    }
 }
