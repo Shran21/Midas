@@ -13,6 +13,7 @@ import {
   readRequest,
 } from "./model";
 import { requestCopy } from "./requestCopy";
+import { Viewer } from "./Viewer";
 
 /** A request the panel follows; the server keeps its state, the panel only reads it. */
 export type Started = {
@@ -336,6 +337,16 @@ export function RequestStatus({
             ? c.remaining(seconds)
             : c.activeRemaining(seconds)}
         </p>
+      )}
+      {request.state === "active" && (
+        <Viewer
+          tenant={tenant}
+          device={device}
+          request={request}
+          csrf={csrf}
+          language={language}
+          fail={fail}
+        />
       )}
       <div className="remote-request-actions">
         {!done && (

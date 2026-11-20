@@ -3,10 +3,14 @@
 
 pub mod capture;
 pub mod consent;
+pub mod encode;
 pub mod health;
+pub mod inject;
 pub mod inventory;
+pub mod network;
 pub mod remote_ipc;
 pub mod service;
+pub mod stream;
 pub mod tray;
 
 use std::{ffi::c_void, io, os::windows::io::RawHandle, path::PathBuf, ptr};

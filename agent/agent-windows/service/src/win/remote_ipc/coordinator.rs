@@ -14,8 +14,8 @@ use midas_protocol::sessions::{OsSession, Presence as WirePresence};
 use midas_remote_auth::{Error, Mode, Rights, Target};
 
 use super::{
-    Peer, STARTUP_TIMEOUT,
-    bootstrap::{start_consent, start_pair, start_privileged},
+    IO_TIMEOUT, Peer, STARTUP_TIMEOUT,
+    bootstrap::{delivery::Control, start_consent, start_pair, start_privileged},
     broker::SuspendedBroker,
     denied,
     launch::{RunningWorker, SuspendedWorker, supervise},
@@ -37,6 +37,8 @@ pub struct Coordinator {
     observer: Arc<Observer>,
     runtime: tokio::runtime::Handle,
     active: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    /// The running ordinary session's companion, which carries its video.
+    media: Arc<tokio::sync::Mutex<Option<Control>>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -59,16 +61,17 @@ impl Coordinator {
             observer,
             runtime,
             active: Mutex::new(None),
+            media: Arc::new(tokio::sync::Mutex::new(None)),
         })
     }
 
-    /// Started workers, plus the service's control channel to a privileged worker; closing that
-    /// channel stops the worker, so it lives as long as the supervision.
+    /// Started workers, plus the service's control channel to a privileged worker or to the
+    /// ordinary pair's companion; closing it stops them, so it lives as long as the supervision.
     fn start(
         &self,
         session: OsSession,
         kind: Kind,
-    ) -> std::io::Result<(Vec<RunningWorker>, Option<Channel>)> {
+    ) -> std::io::Result<(Vec<RunningWorker>, Option<Channel>, Option<Control>)> {
         let deadline = tokio::time::Instant::now() + STARTUP_TIMEOUT;
         match kind {
             Kind::Privileged => {
@@ -78,16 +81,16 @@ impl Coordinator {
                 let (running, connection) =
                     self.runtime
                         .block_on(start_privileged(&self.parent, worker, deadline))?;
-                Ok((vec![running], Some(connection)))
+                Ok((vec![running], Some(connection), None))
             }
             Kind::Ordinary => {
                 let token = PreparedToken::user(&self.parent, self.observer.clone(), session)?;
                 let worker = SuspendedWorker::spawn(&self.parent, token, &self.image)?;
                 let companion = SuspendedBroker::spawn(&self.parent, &worker, &self.image)?;
-                let pair =
+                let (pair, control) =
                     self.runtime
                         .block_on(start_pair(&self.parent, companion, worker, deadline))?;
-                Ok((pair.into(), None))
+                Ok((pair.into(), None, Some(control)))
             }
         }
     }
@@ -225,11 +228,13 @@ impl Native for Coordinator {
         let session = select(lease.target(), self.observer.collect())?;
         let kind = worker_for(presence(&session), lease.rights())?;
         let id = lease.id();
-        let (workers, channel) = self.start(session, kind).map_err(|error| {
+        let (workers, channel, control) = self.start(session, kind).map_err(|error| {
             tracing::warn!(lease = %id, ?kind, %error, "remote support workers could not start");
             Error::Target
         })?;
         tracing::info!(lease = %id, ?kind, "remote support workers started");
+        let media = self.media.clone();
+        *media.blocking_lock() = control;
         *active = Some(self.runtime.spawn(async move {
             match supervise(workers, lease.ended()).await {
                 Ok(stopped) => tracing::info!(lease = %id, ?stopped, "remote support workers stopped"),
@@ -237,10 +242,28 @@ impl Native for Coordinator {
                     tracing::warn!(lease = %id, %error, "remote support workers did not stop cleanly");
                 }
             }
+            media.lock().await.take();
             drop(channel);
             drop(lease);
         }));
         Ok(())
+    }
+
+    fn media(&self, offer: &str) -> Result<String, Error> {
+        let hosts = crate::win::network::local_addresses().unwrap_or_default();
+        let request = super::media::offer_message(&hosts, offer);
+        let reply = self.runtime.block_on(async {
+            let mut media = self.media.lock().await;
+            let control = media.as_mut().ok_or(Error::Target)?;
+            control
+                .exchange(&request, tokio::time::Instant::now() + IO_TIMEOUT)
+                .await
+                .map_err(|error| {
+                    tracing::warn!(%error, "media offer not delivered");
+                    Error::Target
+                })
+        })?;
+        super::media::read_answer(&reply).ok_or(Error::Target)
     }
 }
 

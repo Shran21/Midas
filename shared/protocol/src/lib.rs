@@ -48,7 +48,7 @@ impl VersionRange {
 pub struct Envelope {
     #[prost(
         oneof = "Body",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25"
     )]
     pub body: Option<Body>,
 }
@@ -101,6 +101,10 @@ pub enum Body {
     RemoteRevoke(remote::Revoke),
     #[prost(message, tag = "23")]
     RemoteAck(remote::Ack),
+    #[prost(message, tag = "24")]
+    MediaOffer(remote::MediaOffer),
+    #[prost(message, tag = "25")]
+    MediaAnswer(remote::MediaAnswer),
 }
 
 /// First message from the agent.

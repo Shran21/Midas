@@ -293,6 +293,7 @@ pub struct Duplicator {
     available: bool,
     generation: u64,
     frame: Frame,
+    fresh: bool,
 }
 
 impl Duplicator {
@@ -314,6 +315,7 @@ impl Duplicator {
             available: true,
             generation: 0,
             frame: Frame::blank(view.width, view.height),
+            fresh: false,
         })
     }
 
@@ -324,6 +326,11 @@ impl Duplicator {
     /// Changes whenever the duplicated desktop was lost or came back.
     pub fn generation(&self) -> u64 {
         self.generation
+    }
+
+    /// Whether the last capture brought a new image, rather than the previous one again.
+    pub fn fresh(&self) -> bool {
+        self.fresh
     }
 
     /// The newest image of the view, or `None` while the desktop cannot be duplicated.
@@ -342,6 +349,7 @@ impl Duplicator {
             self.available = available;
             self.generation += 1;
         }
+        self.fresh = fresh && available;
         if !available {
             return Ok(None);
         }

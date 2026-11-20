@@ -3,7 +3,7 @@
 
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Weak},
     time::{Duration, Instant},
 };
 
@@ -13,14 +13,14 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::{
-    audit::{Action, Outcome},
+    audit::{Action, Actor, Event, Outcome},
     auth::sessions::{SessionToken, Sessions},
     authorization::{
         AccessError, Permission, RemoteMode, Target,
         attended::{Asked, AttendedRequest, CONSENT_TIMEOUT, refusal},
     },
     enrollment::Enrollment,
-    remote_grants::Attended,
+    remote_grants::{Attended, Session},
 };
 
 type Result<T> = std::result::Result<T, AccessError>;
@@ -77,6 +77,9 @@ struct Tracked {
     status: watch::Receiver<Status>,
     cancel: watch::Sender<bool>,
     created: Instant,
+    /// The granted session while it is active, for its single media setup.
+    session: Option<Weak<Session>>,
+    offered: bool,
 }
 
 impl Tracked {
@@ -195,10 +198,13 @@ impl Enrollment {
             status: watched,
             cancel,
             created: Instant::now(),
+            session: None,
+            offered: false,
         };
         let view = tracked.view(id);
         self.remote_requests.entries().insert(id, tracked);
         let enrollment = self.clone();
+        let requests = self.remote_requests.clone();
         let token = token.clone();
         tokio::spawn(async move {
             let sessions = (*sessions).as_ref();
@@ -252,6 +258,10 @@ impl Enrollment {
                     return;
                 }
             };
+            let session = Arc::new(session);
+            if let Some(entry) = requests.entries().get_mut(&id) {
+                entry.session = Some(Arc::downgrade(&session));
+            }
             status.send_replace(Status::Active {
                 until: unix_now() + session.remaining().as_secs() as i64,
             });
@@ -287,6 +297,69 @@ impl Enrollment {
         Ok(self
             .remote_requests
             .find(id, tenant, device, decision.operator_id))
+    }
+
+    /// Passes the browser's WebRTC offer to the agent for the caller's own active request, once.
+    pub async fn remote_media(
+        &self,
+        sessions: &Sessions,
+        token: &SessionToken,
+        tenant: Uuid,
+        device: Uuid,
+        id: Uuid,
+        sdp: String,
+    ) -> Result<Option<String>> {
+        let target = Target {
+            tenant,
+            device: Some(device),
+        };
+        let decision = self
+            .authorizer
+            .authorize(sessions, token, target, Permission::RemoteControl)
+            .await?;
+        let session = {
+            let mut entries = self.remote_requests.entries();
+            let Some(entry) = entries.get_mut(&id).filter(|e| {
+                e.tenant == tenant && e.device == device && e.operator == decision.operator_id
+            }) else {
+                return Ok(None);
+            };
+            if entry.offered {
+                return Err(AccessError::Conflict);
+            }
+            let session = entry
+                .session
+                .as_ref()
+                .and_then(Weak::upgrade)
+                .ok_or(AccessError::Offline)?;
+            entry.offered = true;
+            session
+        };
+        let answer = session.media(sdp).await;
+        drop(session);
+        let identity = sessions.validate(token, false).await?;
+        let mut event = Event::new(
+            Action::RemoteMedia,
+            if answer.is_ok() {
+                Outcome::Success
+            } else {
+                Outcome::Failure
+            },
+            Actor::session(&identity),
+        )
+        .detail("request_id", id.to_string())
+        .detail(
+            "result",
+            if answer.is_ok() {
+                "answered"
+            } else {
+                "refused"
+            },
+        );
+        event.tenant = Some(tenant);
+        event.device = Some(device);
+        self.authorizer.record_decision(&event).await?;
+        answer.map(Some)
     }
 
     /// Cancels a waiting request or ends an active one; the request task records the outcome.

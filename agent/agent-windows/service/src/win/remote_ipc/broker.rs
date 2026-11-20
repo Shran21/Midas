@@ -46,17 +46,17 @@ pub(super) struct ListeningBroker {
 }
 
 impl ListeningBroker {
-    pub(super) async fn connected(self) -> io::Result<RunningWorker> {
+    pub(super) async fn connected(self) -> io::Result<(RunningWorker, delivery::Control)> {
         self.binding.check()?;
         self.worker.recheck()?;
-        tokio::select! {
+        let control = tokio::select! {
             biased;
             _ = self.binding.ended() => return Err(denied()),
             result = self.receipt.connected(self.deadline) => result?,
-        }
+        };
         self.worker.recheck()?;
         self.binding.check()?;
-        Ok(self.running)
+        Ok((self.running, control))
     }
 }
 

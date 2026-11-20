@@ -7,6 +7,7 @@ pub mod enrollment;
 pub mod health;
 pub mod host;
 pub mod inventory;
+pub mod media;
 pub mod metrics;
 pub mod profile;
 pub mod remote;

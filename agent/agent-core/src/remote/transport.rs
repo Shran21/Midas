@@ -30,6 +30,11 @@ pub trait Native: Send + Sync {
         let _ = (request, stopped);
         Consent::Unavailable
     }
+    /// Answers the browser's WebRTC offer for the session the last activated lease started.
+    fn media(&self, offer: &str) -> Result<String, Error> {
+        let _ = offer;
+        Err(Error::Target)
+    }
 }
 
 #[derive(Clone)]
@@ -109,6 +114,11 @@ enum Work {
         grant: SignedGrant,
         stop: Arc<Revocation>,
     },
+    Media {
+        request: Uuid,
+        offer: String,
+        stop: Arc<Revocation>,
+    },
 }
 
 struct Prepared {
@@ -121,6 +131,8 @@ struct Prepared {
 struct Engine {
     native: Arc<dyn Native>,
     pending: Option<Prepared>,
+    /// The request whose grant the native backend accepted last.
+    active: Option<Uuid>,
 }
 
 impl Engine {
@@ -241,12 +253,29 @@ impl Engine {
                     stop.check()
                 })()
                 .is_ok();
-                if !accepted {
+                if accepted {
+                    self.active = Some(request);
+                } else {
                     stop.revoke();
                 }
                 Body::RemoteAck(wire::Ack {
                     request: request.as_bytes().to_vec(),
                     accepted,
+                })
+            }
+            Work::Media {
+                request,
+                offer,
+                stop,
+            } => {
+                let answer = (self.active == Some(request) && stop.check().is_ok())
+                    .then(|| self.native.media(&offer).ok())
+                    .flatten()
+                    .filter(|answer| answer.len() <= wire::MAX_SDP && stop.check().is_ok())
+                    .unwrap_or_default();
+                Body::MediaAnswer(wire::MediaAnswer {
+                    request: request.as_bytes().to_vec(),
+                    sdp: answer,
                 })
             }
         }
@@ -297,6 +326,7 @@ impl Transport {
             let mut engine = Engine {
                 native: backend.native,
                 pending: None,
+                active: None,
             };
             while let Some(work) = inbox.recv().await {
                 let output = if let Ok(permit) = backend.slot.clone().try_acquire_owned() {
@@ -391,6 +421,27 @@ impl Transport {
             .try_send(Work::Deliver {
                 request,
                 grant,
+                stop: stop.clone(),
+            })
+            .map_err(|_| Error::Revoked)
+    }
+
+    /// Passes the browser's offer on, only for the current request; a busy engine refuses it.
+    pub fn media(&mut self, offer: wire::MediaOffer) -> Result<(), Error> {
+        let request = id(&offer.request)?;
+        if offer.sdp.is_empty() || offer.sdp.len() > wire::MAX_SDP {
+            return Err(Error::Invalid);
+        }
+        let Some((current, stop)) = &self.operation else {
+            return Err(Error::Revoked);
+        };
+        if *current != request {
+            return Err(Error::Target);
+        }
+        self.commands
+            .try_send(Work::Media {
+                request,
+                offer: offer.sdp,
                 stop: stop.clone(),
             })
             .map_err(|_| Error::Revoked)

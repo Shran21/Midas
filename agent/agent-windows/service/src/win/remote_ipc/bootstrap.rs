@@ -24,19 +24,20 @@ pub(super) const QUERY_ACCESS: u32 = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS
 
 pub mod delivery;
 
-/// Starts the matching pair under one deadline. A failed startup drops both job owners.
+/// Starts the matching pair under one deadline. A failed startup drops both job owners. The
+/// returned control channel reaches the companion, which carries the session's media.
 pub async fn start_pair(
     parent: &Peer,
     broker: SuspendedBroker,
     worker: SuspendedWorker,
     deadline: tokio::time::Instant,
-) -> io::Result<[RunningWorker; 2]> {
+) -> io::Result<([RunningWorker; 2], delivery::Control)> {
     let worker = Prepared::new(parent, &broker, worker)?;
     let endpoint = uuid::Uuid::new_v4();
     let listening = broker.listen(endpoint, deadline).await?;
     let running_worker = worker.deliver_to(parent, endpoint, deadline).await?;
-    let running_broker = listening.connected().await?;
-    Ok([running_broker, running_worker])
+    let (running_broker, control) = listening.connected().await?;
+    Ok(([running_broker, running_worker], control))
 }
 
 type ServiceChannel = super::Connection<tokio::net::windows::named_pipe::NamedPipeServer>;

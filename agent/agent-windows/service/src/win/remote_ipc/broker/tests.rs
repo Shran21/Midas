@@ -289,13 +289,46 @@ async fn release_participants(parent: &Peer, token: &OwnedHandle, session: u32, 
         assert!(
             matches!(worker_receipt.connected(deadline).await, Err(e) if e.kind() == io::ErrorKind::PermissionDenied)
         );
-        let broker = listening
+        // The control channel stays open, as in the service, until the test ends the pair.
+        let (broker, mut control) = listening
             .connected()
             .await
             .expect("independent companion confirmation");
         println!(
             "release pair: companion ready after {companion_ready:?}, worker confirmed after {worker_confirmed:?}, companion confirmed after {:?}",
             started.elapsed()
+        );
+        assert!(!broker.has_exited().unwrap() && !worker.has_exited().unwrap());
+        // The SYSTEM companion is the session's WebRTC transport: it answers a browser offer.
+        let host = std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST);
+        let offered = std::time::Instant::now();
+        let reply = control
+            .exchange(
+                &super::super::media::offer_message(&[host], &browser_offer()),
+                tokio::time::Instant::now() + Duration::from_secs(5),
+            )
+            .await
+            .expect("companion reply to the offer");
+        let answer = super::super::media::read_answer(&reply).expect("an SDP answer");
+        assert!(
+            answer.contains("m=video") && answer.contains("a=candidate"),
+            "{answer}"
+        );
+        println!(
+            "release companion answered the offer after {:?}",
+            offered.elapsed()
+        );
+        let again = control
+            .exchange(
+                &super::super::media::offer_message(&[host], &browser_offer()),
+                tokio::time::Instant::now() + Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            super::super::media::read_answer(&again),
+            None,
+            "one transport per session"
         );
         assert!(!broker.has_exited().unwrap() && !worker.has_exited().unwrap());
         drop(worker);
@@ -315,6 +348,26 @@ async fn release_participants(parent: &Peer, token: &OwnedHandle, session: u32, 
             "companion should exit cleanly after worker disconnect"
         );
     }
+}
+
+/// What a browser offers: receive-only video and a control data channel.
+fn browser_offer() -> String {
+    str0m::crypto::from_feature_flags().install_process_default();
+    let mut browser = str0m::RtcConfig::new()
+        .clear_codecs()
+        .enable_h264(true)
+        .build(std::time::Instant::now());
+    let mut change = browser.sdp_api();
+    change.add_media(
+        str0m::media::MediaKind::Video,
+        str0m::media::Direction::RecvOnly,
+        None,
+        None,
+        None,
+    );
+    change.add_channel("control".into());
+    let (offer, _) = change.apply().unwrap();
+    offer.to_sdp_string()
 }
 
 fn process_state(process: &OwnedHandle) -> String {
@@ -888,7 +941,7 @@ fn isolated_system_query_access() {
         "ordinary worker imported the query-only companion handle without elevation or inheritance"
     );
     println!("paired worker and companion exchanged authenticated control frames");
-    let running = runtime.block_on(listening.connected()).unwrap();
+    let (running, _control) = runtime.block_on(listening.connected()).unwrap();
     assert!(!running.has_exited().unwrap());
     let stale_fixture = Fixture::new();
     let role = Token::read(&user_token)

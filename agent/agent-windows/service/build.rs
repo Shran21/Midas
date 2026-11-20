@@ -23,6 +23,8 @@ fn main() {
         println!("cargo:rustc-link-arg=/MANIFEST:EMBED,ID=2");
         println!("cargo:rustc-link-arg=/MANIFESTINPUT:{}", manifest.display());
         println!("cargo:rustc-link-arg=/DELAYLOAD:comctl32.dll");
+        // Media Foundation is an optional Windows component; it loads only for software encoding.
+        println!("cargo:rustc-link-arg=/DELAYLOAD:mfplat.dll");
         println!("cargo:rustc-link-arg=delayimp.lib");
     }
 }

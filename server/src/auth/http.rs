@@ -219,6 +219,10 @@ pub fn router(state: Arc<WebAuth>) -> Router {
             get(remote_request).delete(cancel_remote_request),
         )
         .route(
+            "/api/tenants/{id}/devices/{device}/remote-requests/{request}/media",
+            post(remote_media),
+        )
+        .route(
             "/api/tenants/{id}/devices/{device}/metrics",
             get(device_metrics),
         )
@@ -591,6 +595,43 @@ async fn remote_request(
         .remote_request(&state.sessions, &context.token, tenant, device, request)
         .await?
         .map(Json)
+        .ok_or(Failure(StatusCode::NOT_FOUND, "not_found"))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MediaOffer {
+    sdp: String,
+}
+
+#[derive(Serialize)]
+struct MediaAnswer {
+    sdp: String,
+}
+
+async fn remote_media(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((tenant, device, request)): Path<(Uuid, Uuid, Uuid)>,
+    Json(offer): Json<MediaOffer>,
+) -> Result<Json<MediaAnswer>> {
+    if offer.sdp.is_empty()
+        || offer.sdp.len() > midas_protocol::remote::MAX_SDP
+        || offer.sdp.contains('\0')
+    {
+        return Err(Failure(StatusCode::BAD_REQUEST, "invalid_request"));
+    }
+    enrollment(&state)?
+        .remote_media(
+            &state.sessions,
+            &context.token,
+            tenant,
+            device,
+            request,
+            offer.sdp,
+        )
+        .await?
+        .map(|sdp| Json(MediaAnswer { sdp }))
         .ok_or(Failure(StatusCode::NOT_FOUND, "not_found"))
 }
 

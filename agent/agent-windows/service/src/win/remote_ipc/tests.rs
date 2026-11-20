@@ -221,3 +221,46 @@ async fn wrong_server_identity_and_process_exit_are_refused() {
     child.0.wait().unwrap();
     assert!(pinned.check(pid).is_err());
 }
+
+#[tokio::test]
+async fn split_connections_carry_both_directions_at_once() {
+    let (broker, worker) = pair().await;
+    let (mut broker_in, mut broker_out) = broker.split().unwrap();
+    let (mut worker_in, mut worker_out) = worker.split().unwrap();
+    let deadline = Instant::now() + IO_TIMEOUT;
+    let (sent, received) = tokio::join!(
+        async {
+            for index in 0..20u8 {
+                worker_out.send(&[index; 1000], deadline).await?;
+                broker_out.send(&[index], deadline).await?;
+            }
+            Ok::<_, io::Error>(())
+        },
+        async {
+            let mut frames = Vec::new();
+            for _ in 0..20 {
+                frames.push(broker_in.receive(deadline).await?.to_vec());
+                worker_in.receive(deadline).await?;
+            }
+            Ok::<_, io::Error>(frames)
+        },
+    );
+    sent.unwrap();
+    let frames = received.unwrap();
+    assert!(
+        frames
+            .iter()
+            .enumerate()
+            .all(|(i, f)| f.len() == 1000 && f[0] == i as u8)
+    );
+    assert!(broker_out.send(&[], deadline).await.is_err());
+    assert!(
+        broker_out
+            .send(&vec![0; MAX_FRAME + 1], deadline)
+            .await
+            .is_err()
+    );
+    drop(worker_out);
+    drop(worker_in);
+    assert!(broker_in.receive(deadline).await.is_err());
+}

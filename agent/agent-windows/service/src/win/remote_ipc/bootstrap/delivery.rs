@@ -202,10 +202,11 @@ pub(in crate::win::remote_ipc) struct Sent {
 }
 
 impl Sent {
+    /// After the companion confirms, its startup pipe stays open as the service's control channel.
     pub(in crate::win::remote_ipc) async fn connected(
         mut self,
         deadline: Instant,
-    ) -> io::Result<()> {
+    ) -> io::Result<Control> {
         if self.peer.role != Role::Broker {
             return Err(denied());
         }
@@ -216,7 +217,91 @@ impl Sent {
             return Err(denied());
         }
         self.peer.check(ipc::peer_pid(&self.pipe, true)?)?;
-        ipc::bounded(deadline, self.pipe.write_all(b"OK")).await
+        ipc::bounded(deadline, self.pipe.write_all(b"OK")).await?;
+        Ok(Control {
+            pipe: self.pipe,
+            peer: self.peer,
+        })
+    }
+}
+
+const CONTROL_LIMIT: usize = 65_536;
+
+async fn write_message(pipe: &mut (impl AsyncWriteExt + Unpin), payload: &[u8]) -> io::Result<()> {
+    if payload.is_empty() || payload.len() > CONTROL_LIMIT {
+        return Err(denied());
+    }
+    pipe.write_u32_le(payload.len() as u32).await?;
+    pipe.write_all(payload).await
+}
+
+async fn read_message(pipe: &mut (impl AsyncReadExt + Unpin)) -> io::Result<Vec<u8>> {
+    let length = pipe.read_u32_le().await? as usize;
+    if length == 0 || length > CONTROL_LIMIT {
+        return Err(denied());
+    }
+    let mut payload = vec![0; length];
+    pipe.read_exact(&mut payload).await?;
+    Ok(payload)
+}
+
+/// The service's channel to the session companion: a request out, its reply back. Closing it
+/// ends the companion's media session.
+pub struct Control {
+    pipe: NamedPipeServer,
+    peer: Peer,
+}
+
+impl Control {
+    pub async fn exchange(&mut self, request: &[u8], deadline: Instant) -> io::Result<Vec<u8>> {
+        self.peer.check(ipc::peer_pid(&self.pipe, true)?)?;
+        let pipe = &mut self.pipe;
+        let reply = ipc::bounded(deadline, async {
+            write_message(pipe, request).await?;
+            read_message(pipe).await
+        })
+        .await?;
+        self.peer.check(ipc::peer_pid(&self.pipe, true)?)?;
+        Ok(reply)
+    }
+}
+
+/// The companion's end of the control channel, from the verified launching service.
+pub(in crate::win::remote_ipc) struct Launched {
+    pipe: NamedPipeClient,
+    pid: u32,
+}
+
+impl Launched {
+    /// The next request; `None` once the service closed the channel. Waits as long as needed.
+    pub(in crate::win::remote_ipc) async fn next(&mut self) -> io::Result<Option<Vec<u8>>> {
+        verify_sender(&self.pipe, self.pid)?;
+        match read_message(&mut self.pipe).await {
+            Ok(message) => {
+                verify_sender(&self.pipe, self.pid)?;
+                Ok(Some(message))
+            }
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::UnexpectedEof
+                        | io::ErrorKind::BrokenPipe
+                        | io::ErrorKind::NotConnected
+                ) =>
+            {
+                Ok(None)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    pub(in crate::win::remote_ipc) async fn reply(
+        &mut self,
+        payload: &[u8],
+        deadline: Instant,
+    ) -> io::Result<()> {
+        verify_sender(&self.pipe, self.pid)?;
+        ipc::bounded(deadline, write_message(&mut self.pipe, payload)).await
     }
 }
 
@@ -312,7 +397,7 @@ impl Launcher {
     pub(in crate::win::remote_ipc) async fn connected(
         mut self,
         deadline: Instant,
-    ) -> io::Result<()> {
+    ) -> io::Result<Launched> {
         verify_sender(&self.pipe, self.pid)?;
         ipc::bounded(deadline, async {
             self.pipe.write_all(CONNECTED).await?;
@@ -323,7 +408,11 @@ impl Launcher {
             }
             Ok(())
         })
-        .await
+        .await?;
+        Ok(Launched {
+            pipe: self.pipe,
+            pid: self.pid,
+        })
     }
 }
 

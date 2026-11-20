@@ -493,6 +493,17 @@ export const api = {
       `${devicePath(tenant, device)}/remote-requests/${encodeURIComponent(id)}`,
       { signal },
     ),
+  remoteMedia: (
+    tenant: string,
+    device: string,
+    id: string,
+    sdp: string,
+    csrf: string,
+  ) =>
+    request<unknown>(
+      `${devicePath(tenant, device)}/remote-requests/${encodeURIComponent(id)}/media`,
+      { method: "POST", body: { sdp }, csrf },
+    ),
   cancelRemoteRequest: (
     tenant: string,
     device: string,

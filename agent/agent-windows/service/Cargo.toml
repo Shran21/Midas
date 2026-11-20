@@ -25,7 +25,7 @@ undocumented_unsafe_blocks = "warn"
 
 [dependencies]
 clap.workspace = true
-midas-agent-core = { path = "../../agent-core", version = "0.1.0" }
+midas-agent-core = { path = "../../agent-core", version = "0.1.0", features = ["webrtc"] }
 midas-protocol = { path = "../../../shared/protocol", version = "0.1.0" }
 midas-remote-auth = { path = "../../../shared/remote-auth", version = "0.1.0" }
 rustls.workspace = true
@@ -43,4 +43,5 @@ windows-service.workspace = true
 windows-sys.workspace = true
 
 [dev-dependencies]
+str0m.workspace = true
 tokio = { workspace = true, features = ["process"] }

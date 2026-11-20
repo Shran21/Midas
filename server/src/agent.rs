@@ -257,6 +257,11 @@ async fn serve(
                     registration.acknowledged(message);
                 }
             }
+            Ok(Ok(Body::MediaAnswer(message))) => {
+                if let Some(registration) = &mut remote_grants {
+                    registration.media_answer(message);
+                }
+            }
             Ok(Ok(Body::SessionReport(report))) => {
                 if let Some(admission) = &admission
                     && session_pending

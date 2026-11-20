@@ -103,6 +103,27 @@ pub struct Ack {
     pub accepted: bool,
 }
 
+/// The most SDP bytes either side accepts.
+pub const MAX_SDP: usize = 16 * 1024;
+
+/// The browser's WebRTC offer for the active, acknowledged grant of `request`.
+#[derive(Clone, PartialEq, Message)]
+pub struct MediaOffer {
+    #[prost(bytes = "vec", tag = "1")]
+    pub request: Vec<u8>,
+    #[prost(string, tag = "2")]
+    pub sdp: String,
+}
+
+/// The agent's answer; `sdp` is empty when the agent refused the offer.
+#[derive(Clone, PartialEq, Message)]
+pub struct MediaAnswer {
+    #[prost(bytes = "vec", tag = "1")]
+    pub request: Vec<u8>,
+    #[prost(string, tag = "2")]
+    pub sdp: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -148,6 +169,14 @@ mod tests {
             Body::RemoteAck(Ack {
                 request: vec![1; 16],
                 accepted: true,
+            }),
+            Body::MediaOffer(MediaOffer {
+                request: vec![1; 16],
+                sdp: "v=0".into(),
+            }),
+            Body::MediaAnswer(MediaAnswer {
+                request: vec![1; 16],
+                sdp: String::new(),
             }),
         ];
         for message in messages {

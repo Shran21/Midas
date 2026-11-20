@@ -5,6 +5,7 @@ pub mod broker;
 pub mod coordinator;
 mod identity;
 pub mod launch;
+pub mod media;
 pub mod participant;
 pub mod startup;
 pub mod tokens;
@@ -187,6 +188,97 @@ impl<S: AsyncRead + AsyncWrite + AsRawHandle + Unpin> Connection<S> {
         self.peer.check(peer_pid(&pipe, self.server)?)?;
         self.pipe = Some(pipe);
         Ok(Frame(payload))
+    }
+}
+
+/// The pipe handle a split connection still uses for peer checks; the halves keep it open.
+struct Raw(isize);
+
+impl AsRawHandle for Raw {
+    fn as_raw_handle(&self) -> std::os::windows::io::RawHandle {
+        self.0 as std::os::windows::io::RawHandle
+    }
+}
+
+/// The receiving half of a split connection. It must hear from the other side within the I/O
+/// limit, so a side with nothing to say sends a keepalive.
+pub struct Reader<S> {
+    half: tokio::io::ReadHalf<S>,
+    raw: Raw,
+    peer: Peer,
+    server: bool,
+}
+
+pub struct Writer<S> {
+    half: tokio::io::WriteHalf<S>,
+    raw: Raw,
+    peer: Peer,
+    server: bool,
+}
+
+impl<S: AsyncRead + AsyncWrite + AsRawHandle + Unpin> Connection<S> {
+    /// Splits the connection so frames and commands can travel at the same time; every message
+    /// stays bounded and checks the peer as before.
+    pub fn split(mut self) -> io::Result<(Reader<S>, Writer<S>)> {
+        let pipe = self.pipe.take().ok_or_else(denied)?;
+        let raw = pipe.as_raw_handle() as isize;
+        let writer_peer = self.peer.duplicate()?;
+        let (read, write) = tokio::io::split(pipe);
+        Ok((
+            Reader {
+                half: read,
+                raw: Raw(raw),
+                peer: self.peer,
+                server: self.server,
+            },
+            Writer {
+                half: write,
+                raw: Raw(raw),
+                peer: writer_peer,
+                server: self.server,
+            },
+        ))
+    }
+}
+
+impl<S: AsyncRead + AsyncWrite + Unpin> Reader<S> {
+    pub async fn receive(&mut self, deadline: Instant) -> io::Result<Frame> {
+        self.peer.check(peer_pid(&self.raw, self.server)?)?;
+        let half = &mut self.half;
+        let payload = bounded(deadline, async {
+            let mut magic = [0u8; 4];
+            half.read_exact(&mut magic).await?;
+            if &magic != MAGIC {
+                return Err(denied());
+            }
+            let length = half.read_u32_le().await? as usize;
+            if length == 0 || length > MAX_FRAME {
+                return Err(denied());
+            }
+            let mut payload = Zeroizing::new(vec![0; length]);
+            half.read_exact(&mut payload).await?;
+            Ok(payload)
+        })
+        .await?;
+        self.peer.check(peer_pid(&self.raw, self.server)?)?;
+        Ok(Frame(payload))
+    }
+}
+
+impl<S: AsyncRead + AsyncWrite + Unpin> Writer<S> {
+    pub async fn send(&mut self, payload: &[u8], deadline: Instant) -> io::Result<()> {
+        if payload.is_empty() || payload.len() > MAX_FRAME {
+            return Err(denied());
+        }
+        self.peer.check(peer_pid(&self.raw, self.server)?)?;
+        let half = &mut self.half;
+        bounded(deadline, async {
+            half.write_all(MAGIC).await?;
+            half.write_u32_le(payload.len() as u32).await?;
+            half.write_all(payload).await
+        })
+        .await?;
+        self.peer.check(peer_pid(&self.raw, self.server)?)
     }
 }
 

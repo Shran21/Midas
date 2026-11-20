@@ -53,6 +53,10 @@ pub(crate) enum Command {
         lifetime: Duration,
         reply: oneshot::Sender<Result<()>>,
     },
+    Media {
+        message: wire::MediaOffer,
+        reply: oneshot::Sender<Result<String>>,
+    },
 }
 
 pub(crate) enum Event {
@@ -85,6 +89,7 @@ struct Flow {
     active: Arc<AtomicBool>,
     challenge: Option<oneshot::Sender<Result<Challenge>>>,
     delivery: Option<oneshot::Sender<Result<()>>>,
+    media: Option<oneshot::Sender<Result<String>>>,
     prepared: bool,
     attended: bool,
 }
@@ -101,6 +106,7 @@ pub struct Session {
     deadline: Instant,
     active: Arc<AtomicBool>,
     stop: watch::Sender<bool>,
+    sender: mpsc::Sender<Command>,
     _slot: OwnedSemaphorePermit,
 }
 
@@ -120,6 +126,28 @@ impl Session {
     }
     pub fn remaining(&self) -> Duration {
         self.deadline.saturating_duration_since(Instant::now())
+    }
+
+    /// Passes the browser's WebRTC offer to the agent and returns its answer.
+    pub async fn media(&self, sdp: String) -> Result<String> {
+        if !self.is_active() || sdp.is_empty() || sdp.len() > wire::MAX_SDP {
+            return Err(AccessError::Offline);
+        }
+        let (reply, result) = oneshot::channel();
+        self.sender
+            .try_send(Command::Media {
+                message: wire::MediaOffer {
+                    request: self.request.as_bytes().to_vec(),
+                    sdp,
+                },
+                reply,
+            })
+            .map_err(|_| AccessError::Offline)?;
+        let answer = wait(result, REPLY_LIMIT).await?;
+        if !self.is_active() {
+            return Err(AccessError::Offline);
+        }
+        Ok(answer)
     }
 }
 
@@ -248,6 +276,7 @@ impl Registration {
                     active,
                     challenge: Some(reply),
                     delivery: None,
+                    media: None,
                     prepared: false,
                 });
                 Some(Body::RemotePrepare(message))
@@ -279,7 +308,44 @@ impl Registration {
                 flow.delivery = Some(reply);
                 Some(Body::RemoteDeliver(message))
             }
+            Command::Media { message, reply } => {
+                // Only for the acknowledged, unexpired grant of this request, one offer at a time.
+                let Some(flow) = self.flow.as_mut().filter(|flow| {
+                    flow.request == message.request
+                        && flow.active.load(Ordering::Acquire)
+                        && flow.media.is_none()
+                        && !*flow.stop.borrow()
+                        && flow.stop.has_changed().is_ok()
+                        && Instant::now() < flow.deadline
+                        && !reply.is_closed()
+                }) else {
+                    let _ = reply.send(Err(AccessError::Offline));
+                    return None;
+                };
+                flow.media = Some(reply);
+                Some(Body::MediaOffer(message))
+            }
         }
+    }
+
+    pub fn media_answer(&mut self, message: wire::MediaAnswer) {
+        let Some(flow) = self
+            .flow
+            .as_mut()
+            .filter(|flow| flow.request == message.request)
+        else {
+            return;
+        };
+        let Some(reply) = flow.media.take() else {
+            return;
+        };
+        let _ = reply.send(
+            if message.sdp.is_empty() || message.sdp.len() > wire::MAX_SDP {
+                Err(AccessError::Unavailable)
+            } else {
+                Ok(message.sdp)
+            },
+        );
     }
 
     pub fn challenge(&mut self, message: wire::Challenge, admission: &Admission) {
@@ -512,6 +578,7 @@ impl Enrollment {
             deadline: Instant::now() + LIFETIME,
             active: Arc::new(AtomicBool::new(false)),
             stop,
+            sender: sender.clone(),
             _slot: slot,
         };
         let (reply, result) = oneshot::channel();
@@ -609,6 +676,7 @@ impl Enrollment {
             deadline: Instant::now() + CONSENT_TIMEOUT + REPLY_LIMIT + LIFETIME,
             active: Arc::new(AtomicBool::new(false)),
             stop,
+            sender: sender.clone(),
             _slot: slot,
         };
         let (reply, result) = oneshot::channel();

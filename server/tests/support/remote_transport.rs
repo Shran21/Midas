@@ -136,6 +136,12 @@ impl Native for Broker {
             std::thread::sleep(Duration::from_millis(5));
         }
     }
+    fn media(&self, offer: &str) -> Result<String, Error> {
+        if !self.allowed() {
+            return Err(Error::Revoked);
+        }
+        Ok(format!("answer to {} bytes", offer.len()))
+    }
 }
 
 async fn settled(ctx: &Context<'_>, path: &str, from: &str) -> Value {
@@ -249,6 +255,59 @@ pub async fn verify_attended(
             .0,
         StatusCode::NOT_FOUND
     );
+    let media = format!("{path}/media");
+    let offer = serde_json::json!({ "sdp": "v=0 offer" });
+    assert_eq!(
+        call(
+            ctx.app,
+            "POST",
+            &media,
+            Some(ctx.outsider),
+            Some(offer.clone()),
+            &[]
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        call(
+            ctx.app,
+            "POST",
+            &media,
+            Some(ctx.manager),
+            Some(serde_json::json!({ "sdp": "" })),
+            &[]
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    let (status, answer, _) = call(
+        ctx.app,
+        "POST",
+        &media,
+        Some(ctx.manager),
+        Some(offer.clone()),
+        &[],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    assert_eq!(answer["sdp"], "answer to 9 bytes");
+    assert_eq!(
+        call(
+            ctx.app,
+            "POST",
+            &media,
+            Some(ctx.manager),
+            Some(offer.clone()),
+            &[]
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT,
+        "one media setup per request"
+    );
     assert_eq!(
         call(ctx.app, "DELETE", &path, Some(ctx.manager), None, &[])
             .await
@@ -264,6 +323,35 @@ pub async fn verify_attended(
         StatusCode::NOT_FOUND
     );
 
+    *broker.answer.lock().unwrap() = None;
+    let waiting = start(request("normal", false)).await;
+    tokio::time::timeout(Duration::from_secs(5), broker.asking.notified())
+        .await
+        .unwrap();
+    assert_eq!(
+        call(
+            ctx.app,
+            "POST",
+            &format!("{waiting}/media"),
+            Some(ctx.manager),
+            Some(serde_json::json!({ "sdp": "v=0 early" })),
+            &[]
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT,
+        "no media before the user allowed"
+    );
+    assert_eq!(
+        call(ctx.app, "DELETE", &waiting, Some(ctx.manager), None, &[])
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        settled(ctx, &waiting, "waiting").await["state"],
+        "cancelled"
+    );
     for (answer, state) in [
         (Consent::Declined, "declined"),
         (Consent::Expired, "expired"),
@@ -317,6 +405,7 @@ pub async fn verify_attended(
         results,
         [
             "allowed",
+            "cancelled",
             "declined",
             "expired",
             "unavailable",
@@ -325,6 +414,9 @@ pub async fn verify_attended(
             "allowed"
         ]
     );
+    let media: Vec<(String, String)> = sqlx::query_as("SELECT outcome, details->>'result' FROM midas.tenant_audit WHERE tenant_id=$1 AND device_id=$2 AND action='remote.media' ORDER BY sequence")
+        .bind(ctx.tenant).bind(ctx.device).fetch_all(&mut *admin).await.unwrap();
+    assert_eq!(media, [("success".to_owned(), "answered".to_owned())]);
     let issued: i64 = sqlx::query_scalar("SELECT count(*) FROM midas.tenant_audit WHERE tenant_id=$1 AND device_id=$2 AND action='remote.grant_issued' AND details->>'unattended'='false'")
         .bind(ctx.tenant).bind(ctx.device).fetch_one(&mut *admin).await.unwrap();
     assert_eq!(issued, 1);

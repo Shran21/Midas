@@ -78,7 +78,7 @@ impl Participant {
                         .await?;
                     reached(Stage::Connected);
                     reached(Stage::Standby);
-                    standby(connection).await
+                    super::media::worker(connection).await
                 }
                 Self::Privileged => {
                     let connection =
@@ -100,10 +100,10 @@ impl Participant {
                     let mut connection = listener.accept(deadline).await?;
                     expect(&mut connection, WORKER_HELLO, deadline).await?;
                     connection.send(BROKER_HELLO, deadline).await?;
-                    launcher.connected(deadline).await?;
+                    let control = launcher.connected(deadline).await?;
                     reached(Stage::Connected);
                     reached(Stage::Standby);
-                    standby(connection).await
+                    super::media::companion(connection, control).await
                 }
             }
         })

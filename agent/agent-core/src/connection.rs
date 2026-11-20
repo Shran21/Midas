@@ -306,6 +306,14 @@ async fn session(
                         return Outcome::Ended { connected };
                     }
                 }
+                // A refused offer only ends that media setup; the server times it out.
+                Ok(Body::MediaOffer(offer)) => {
+                    if let Some(remote) = remote.as_mut()
+                        && let Err(error) = remote.media(offer)
+                    {
+                        tracing::warn!(?error, "media offer refused");
+                    }
+                }
                 Ok(Body::SessionRequest(request)) => {
                     if let Some(probe) = &settings.sessions
                         && midas_protocol::sessions::identifier(&request.request_id)

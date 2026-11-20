@@ -80,6 +80,9 @@ impl Native for Broker {
         }
         Consent::Allowed
     }
+    fn media(&self, offer: &str) -> Result<String, Error> {
+        Ok(format!("answer:{offer}"))
+    }
 }
 
 struct Fixture {
@@ -524,4 +527,59 @@ async fn consent_requests_need_a_bounded_answer_time_and_readable_names() {
     }
     assert_eq!(display_name("a\tb\n c").unwrap(), "a b c");
     assert_eq!(display_name(&"é".repeat(200)).unwrap().chars().count(), 200);
+}
+
+fn media_answer(body: Body) -> String {
+    let Body::MediaAnswer(answer) = body else {
+        panic!("media answer");
+    };
+    answer.sdp
+}
+
+#[tokio::test]
+async fn media_offers_reach_the_backend_only_for_the_accepted_request() {
+    let f = Fixture::new(0);
+    let mut transport = f.connect();
+    let offer = |request: &[u8]| wire::MediaOffer {
+        request: request.to_vec(),
+        sdp: "v=0".into(),
+    };
+    assert_eq!(
+        transport.media(offer(&f.prepare.request)),
+        Err(Error::Revoked)
+    );
+    let delivery = challenge(&f, &mut transport).await;
+    transport.media(offer(&f.prepare.request)).unwrap();
+    assert_eq!(
+        media_answer(response(&mut transport).await),
+        "",
+        "not delivered yet"
+    );
+    transport.deliver(delivery).unwrap();
+    assert!(matches!(
+        response(&mut transport).await,
+        Body::RemoteAck(wire::Ack { accepted: true, .. })
+    ));
+    transport.media(offer(&f.prepare.request)).unwrap();
+    assert_eq!(media_answer(response(&mut transport).await), "answer:v=0");
+    assert_eq!(
+        transport.media(offer(Uuid::new_v4().as_bytes())),
+        Err(Error::Target)
+    );
+    assert_eq!(
+        transport.media(wire::MediaOffer {
+            request: f.prepare.request.clone(),
+            sdp: "x".repeat(wire::MAX_SDP + 1),
+        }),
+        Err(Error::Invalid)
+    );
+    transport
+        .revoke(wire::Revoke {
+            request: f.prepare.request.clone(),
+        })
+        .unwrap();
+    assert_eq!(
+        transport.media(offer(&f.prepare.request)),
+        Err(Error::Revoked)
+    );
 }
