@@ -38,7 +38,6 @@ pub struct Broker {
     /// The local answer; with `None` the window stays open until revoked, then allows late.
     answer: Mutex<Option<Consent>>,
     asked: Mutex<Vec<ConsentRequest>>,
-    asking: tokio::sync::Notify,
     consenting: AtomicBool,
 }
 
@@ -55,7 +54,6 @@ impl Broker {
             entered: tokio::sync::Notify::new(),
             answer: Mutex::new(Some(Consent::Allowed)),
             asked: Mutex::new(Vec::new()),
-            asking: tokio::sync::Notify::new(),
             consenting: AtomicBool::new(false),
         }
     }
@@ -65,6 +63,18 @@ impl Broker {
             .unwrap()
             .as_ref()
             .is_some_and(|(observed, lease)| lease.capture(*observed, worker(lease)).is_ok())
+    }
+    /// Waits until the window of a request started after `before` questions is open.
+    async fn opened(&self, before: usize) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while self.asked.lock().unwrap().len() <= before
+                || !self.consenting.load(Ordering::SeqCst)
+            {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("the window opens");
     }
     /// Waits until the window of a withdrawn request has closed, so a later answer is not its.
     async fn closed(&self) {
@@ -136,7 +146,6 @@ impl Native for Broker {
     fn consent(&self, request: &ConsentRequest, stopped: &dyn Fn() -> bool) -> Consent {
         self.consenting.store(true, Ordering::SeqCst);
         self.asked.lock().unwrap().push(request.clone());
-        self.asking.notify_one();
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
         let answer = loop {
             if let Some(answer) = *self.answer.lock().unwrap() {
@@ -339,10 +348,9 @@ pub async fn verify_attended(
     );
 
     *broker.answer.lock().unwrap() = None;
+    let before = broker.asked.lock().unwrap().len();
     let waiting = start(request("normal", false)).await;
-    tokio::time::timeout(Duration::from_secs(5), broker.asking.notified())
-        .await
-        .unwrap();
+    broker.opened(before).await;
     assert_eq!(
         call(
             ctx.app,
@@ -375,7 +383,14 @@ pub async fn verify_attended(
     ] {
         *broker.answer.lock().unwrap() = Some(answer);
         let path = start(request("normal", false)).await;
-        assert_eq!(settled(ctx, &path, "waiting").await["state"], state);
+        let body = settled(ctx, &path, "waiting").await;
+        assert_eq!(
+            body["state"],
+            state,
+            "{body}; questions {}, observations {}",
+            broker.asked.lock().unwrap().len(),
+            broker.calls.load(Ordering::SeqCst)
+        );
         assert!(!broker.allowed(), "{state}");
     }
     *broker.answer.lock().unwrap() = Some(Consent::Allowed);
@@ -389,10 +404,9 @@ pub async fn verify_attended(
     // A late "allow" after the operator cancelled, and one after the passkey sign-in went stale.
     for late in ["cancel", "passkey"] {
         *broker.answer.lock().unwrap() = None;
+        let before = broker.asked.lock().unwrap().len();
         let path = start(request("administrative", true)).await;
-        tokio::time::timeout(Duration::from_secs(5), broker.asking.notified())
-            .await
-            .unwrap();
+        broker.opened(before).await;
         if late == "cancel" {
             assert_eq!(
                 call(ctx.app, "DELETE", &path, Some(ctx.manager), None, &[])
