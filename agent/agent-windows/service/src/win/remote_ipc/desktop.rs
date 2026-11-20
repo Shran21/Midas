@@ -11,9 +11,14 @@ use std::{
 use midas_agent_core::media::link::Desktop;
 use windows_sys::Win32::{
     Foundation::{GENERIC_ALL, HWND, POINT},
+    Security::Authentication::Identity::SendSAS,
     Security::{
         GetSidSubAuthority, GetSidSubAuthorityCount, GetTokenInformation, TOKEN_MANDATORY_LABEL,
         TOKEN_QUERY, TokenIntegrityLevel,
+    },
+    System::{
+        Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_DWORD, RegGetValueW},
+        RemoteDesktop::WTSGetActiveConsoleSessionId,
     },
     System::{
         StationsAndDesktops::{
@@ -27,6 +32,44 @@ use windows_sys::Win32::{
         WindowFromPoint,
     },
 };
+
+/// Ctrl+Alt+Del for `session`: only the console session, and only where the Windows policy
+/// (`SoftwareSASGeneration`) lets services generate it. Nothing is sent otherwise.
+pub(super) fn secure_attention(session: u32) -> bool {
+    // SAFETY: a plain query of the console session.
+    let console = unsafe { WTSGetActiveConsoleSessionId() };
+    if console != session || !allowed(policy()) {
+        return false;
+    }
+    // SAFETY: SendSAS takes no pointers; as a SYSTEM process it signals the console session.
+    unsafe { SendSAS(0) };
+    true
+}
+
+/// Services may generate it with policy 1 (services) or 3 (services and Ease of Access).
+fn allowed(policy: Option<u32>) -> bool {
+    matches!(policy, Some(1 | 3))
+}
+
+fn policy() -> Option<u32> {
+    let key = super::super::wide(r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System");
+    let name = super::super::wide("SoftwareSASGeneration");
+    let mut value = 0u32;
+    let mut size = size_of::<u32>() as u32;
+    // SAFETY: both names are NUL-terminated; `value` is a writable DWORD of `size` bytes.
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_LOCAL_MACHINE,
+            key.as_ptr(),
+            name.as_ptr(),
+            RRF_RT_REG_DWORD,
+            ptr::null_mut(),
+            (&raw mut value).cast(),
+            &mut size,
+        )
+    };
+    (status == 0).then_some(value)
+}
 
 /// `SECURITY_MANDATORY_MEDIUM_RID`, the integrity of the user worker.
 const MEDIUM: u32 = 0x2000;
@@ -183,6 +226,20 @@ mod tests {
         assert_eq!(state("Winlogon", || false), Desktop::Secure);
         assert_eq!(state("Screen-saver", || false), Desktop::Secure);
         assert_eq!(state("Winlogon", || panic!("not asked")), Desktop::Secure);
+    }
+
+    #[test]
+    fn only_a_policy_for_services_allows_ctrl_alt_del() {
+        assert!(
+            !allowed(None),
+            "not configured: Windows default, not allowed"
+        );
+        assert!(!allowed(Some(0)));
+        assert!(allowed(Some(1)));
+        assert!(!allowed(Some(2)), "Ease of Access applications only");
+        assert!(allowed(Some(3)));
+        // This test process is not the console's service; nothing is sent for another session.
+        assert!(!secure_attention(u32::MAX));
     }
 
     #[test]

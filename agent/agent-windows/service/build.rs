@@ -11,6 +11,7 @@ fn main() {
             "ole32.dll",
             "d3d11.dll",
             "dxgi.dll",
+            "sas.dll",
         ] {
             println!("cargo:rustc-link-arg=/DELAYLOAD:{library}");
         }

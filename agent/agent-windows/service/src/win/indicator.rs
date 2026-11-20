@@ -133,14 +133,6 @@ pub fn indicate(question: &Question, handle: &AtomicIsize) -> io::Result<bool> {
     if window.is_null() {
         return Err(io::Error::last_os_error());
     }
-    if handle
-        .compare_exchange(0, window as isize, Ordering::AcqRel, Ordering::Acquire)
-        .is_err()
-    {
-        // SAFETY: the window was never shown; the controller already asked it to go.
-        unsafe { DestroyWindow(window) };
-        return Ok(false);
-    }
     let line = wide(&text.line);
     let end = wide(&text.end);
     let (button_width, margin) = (scale(110), scale(12));
@@ -188,6 +180,15 @@ pub fn indicate(question: &Question, handle: &AtomicIsize) -> io::Result<bool> {
         ),
         END,
     );
+    // Published only once the window is complete, so whoever holds it finds the End button.
+    if handle
+        .compare_exchange(0, window as isize, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        // SAFETY: the window was never shown; the controller already asked it to go.
+        unsafe { DestroyWindow(window) };
+        return Ok(false);
+    }
     let mut metrics = NONCLIENTMETRICSW {
         cbSize: size_of::<NONCLIENTMETRICSW>() as u32,
         ..Default::default()

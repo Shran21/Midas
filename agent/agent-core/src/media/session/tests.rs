@@ -1,6 +1,6 @@
 use super::*;
 use crate::media::{
-    link::{desktop_message, frame_messages},
+    link::{desktop_message, frame_messages, sas_result_message},
     testing::{connect, keyframe, software},
 };
 
@@ -32,13 +32,18 @@ fn worker_frames_reach_the_browser_and_commands_flow_back() {
     let mut sequence = 0;
     let mut inputs = Vec::new();
     let mut seen = Vec::new();
-    let stats = |messages: &[Vec<u8>]| {
+    let find = |messages: &[Vec<u8>], kind: &str| {
         messages
             .iter()
             .filter_map(|m| serde_json::from_slice::<serde_json::Value>(m).ok())
-            .find(|m| m["type"] == "stats")
+            .find(|m| m["type"] == kind)
     };
-    while browser.frames.is_empty() || inputs.is_empty() || stats(&browser.messages).is_none() {
+    let stats = |messages: &[Vec<u8>]| find(messages, "stats");
+    while browser.frames.is_empty()
+        || inputs.len() < 2
+        || stats(&browser.messages).is_none()
+        || find(&browser.messages, "sas").is_none()
+    {
         assert!(
             Instant::now() < deadline,
             "frames {} inputs {inputs:?}",
@@ -54,6 +59,8 @@ fn worker_frames_reach_the_browser_and_commands_flow_back() {
             browser.send(pointer);
             browser.send(br#"{"type":"profile","profile":"motion"}"#);
             browser.send(br#"{"type":"keyframe"}"#);
+            browser.send(br#"{"type":"sas"}"#);
+            browser.send(r#"{"type":"text","text":"őz"}"#.as_bytes());
             browser.send(br#"{"type":"pointer","x":2.0,"y":0.5,"buttons":1}"#);
             browser.send(br#"{"type":"run","command":"calc"}"#);
         }
@@ -62,6 +69,12 @@ fn worker_frames_reach_the_browser_and_commands_flow_back() {
             .drive(Instant::now() + Duration::from_millis(5))
             .unwrap();
         inputs.extend(std::iter::from_fn(|| transport.next_input()));
+        // The browser's channel is open once its input arrives.
+        if !inputs.is_empty() && find(&browser.messages, "sas").is_none() {
+            transport
+                .worker_message(&sas_result_message(false))
+                .unwrap();
+        }
         seen.extend(commands(&mut transport));
     }
     assert_eq!(
@@ -69,10 +82,17 @@ fn worker_frames_reach_the_browser_and_commands_flow_back() {
         Input::Pointer {
             x: 0.25,
             y: 0.5,
-            buttons: 1
+            buttons: 1,
+            modifiers: 0
         }
     );
+    assert!(
+        inputs.contains(&Input::Text { text: "őz".into() }),
+        "{inputs:?}"
+    );
     assert!(inputs.iter().all(|input| input.valid()), "{inputs:?}");
+    let answer = find(&browser.messages, "sas").unwrap();
+    assert_eq!(answer["result"], "unavailable");
     let report = stats(&browser.messages).unwrap();
     assert_eq!(
         (report["width"].as_u64(), report["height"].as_u64()),
@@ -86,6 +106,7 @@ fn worker_frames_reach_the_browser_and_commands_flow_back() {
     assert!(report["rtt_ms"].is_null() || report["rtt_ms"].as_u64().is_some());
     assert!(report["target_bitrate"].as_u64().is_some() && report["sent_fps"].as_f64().is_some());
     assert!(seen.contains(&Command::Keyframe));
+    assert!(seen.contains(&Command::Sas));
     assert!(
         seen.iter()
             .any(|c| matches!(c, Command::Settings(s) if s.scale < 1.0 || s.fps == 30)),
@@ -151,6 +172,17 @@ fn only_well_formed_input_passes() {
         (r#"{"type":"key","code":"Key A","down":true}"#, false),
         (r#"{"type":"pointer","x":-0.1,"y":0.5,"buttons":0}"#, false),
         (r#"{"type":"pointer","x":0.5,"y":0.5,"buttons":64}"#, false),
+        (
+            r#"{"type":"pointer","x":0.5,"y":0.5,"buttons":1,"modifiers":15}"#,
+            true,
+        ),
+        (
+            r#"{"type":"pointer","x":0.5,"y":0.5,"buttons":1,"modifiers":16}"#,
+            false,
+        ),
+        (r#"{"type":"text","text":"\u0151\t\n"}"#, true),
+        (r#"{"type":"text","text":""}"#, false),
+        (r#"{"type":"text","text":"\u0007"}"#, false),
     ] {
         let input: Input = serde_json::from_str(message).unwrap();
         assert_eq!(input.valid(), valid, "{message}");

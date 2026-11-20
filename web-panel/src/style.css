@@ -3409,6 +3409,21 @@ h1[tabindex="-1"]:focus {
 .remote-viewer-keys p {
   flex-basis: 100%;
 }
+.remote-viewer-text {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  flex-basis: 100%;
+}
+.remote-viewer-text textarea {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+.remote-viewer-text p {
+  flex-basis: 100%;
+  margin: 0;
+}
 .remote-viewer-profile {
   display: flex;
   gap: 8px;

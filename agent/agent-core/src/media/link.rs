@@ -21,6 +21,11 @@ const KEEPALIVE: u8 = 5;
 const INPUT: u8 = 6;
 const DESKTOP: u8 = 7;
 const RELEASE: u8 = 8;
+const SAS: u8 = 9;
+const SAS_RESULT: u8 = 10;
+const TEXT: u8 = 4;
+/// Characters of one text message; longer text arrives in several.
+const TEXT_LIMIT: usize = 64;
 const POINTER: u8 = 1;
 const WHEEL: u8 = 2;
 const KEY: u8 = 3;
@@ -30,20 +35,52 @@ const CODE_LIMIT: usize = 32;
 /// The worker sends this when there was nothing to send for a while, so the link stays open.
 pub const KEEPALIVE_MESSAGE: [u8; 1] = [KEEPALIVE];
 
-/// Pointer and keyboard input in video coordinates (0..=1), as the browser sends it.
+/// Pointer and keyboard input in video coordinates (0..=1), as the browser sends it. A pointer
+/// event carries the modifier keys held with it (Ctrl 1, Shift 2, Alt 4, Windows 8); text is
+/// typed as characters, whatever the remote keyboard layout.
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Input {
-    Pointer { x: f64, y: f64, buttons: u8 },
-    Wheel { dx: i16, dy: i16 },
-    Key { code: String, down: bool },
+    Pointer {
+        x: f64,
+        y: f64,
+        buttons: u8,
+        #[serde(default)]
+        modifiers: u8,
+    },
+    Wheel {
+        dx: i16,
+        dy: i16,
+    },
+    Key {
+        code: String,
+        down: bool,
+    },
+    Text {
+        text: String,
+    },
 }
 
 impl Input {
     pub fn valid(&self) -> bool {
         match self {
-            Self::Pointer { x, y, buttons } => {
-                (0.0..=1.0).contains(x) && (0.0..=1.0).contains(y) && *buttons < 32
+            Self::Pointer {
+                x,
+                y,
+                buttons,
+                modifiers,
+            } => {
+                (0.0..=1.0).contains(x)
+                    && (0.0..=1.0).contains(y)
+                    && *buttons < 32
+                    && *modifiers < 16
+            }
+            Self::Text { text } => {
+                !text.is_empty()
+                    && text.chars().count() <= TEXT_LIMIT
+                    && text
+                        .chars()
+                        .all(|c| !c.is_control() || c == '\n' || c == '\t')
             }
             Self::Wheel { .. } => true,
             Self::Key { code, .. } => {
@@ -108,6 +145,21 @@ pub enum Command {
     Input(Input),
     Release,
     Stop,
+    /// Ctrl+Alt+Del for the session; only the transport side may act on it.
+    Sas,
+}
+
+/// The transport side's answer to a Ctrl+Alt+Del request.
+pub fn sas_result_message(sent: bool) -> [u8; 2] {
+    [SAS_RESULT, u8::from(!sent)]
+}
+
+pub fn read_sas_result(message: &[u8]) -> Option<bool> {
+    match message {
+        [SAS_RESULT, 0] => Some(true),
+        [SAS_RESULT, 1] => Some(false),
+        _ => None,
+    }
 }
 
 /// The desktop the session's privileged component sees: the user's ordinary work, an elevated
@@ -150,14 +202,26 @@ pub fn command_message(command: &Command) -> Vec<u8> {
         }
         Command::Keyframe => vec![KEYFRAME],
         Command::Release => vec![RELEASE],
+        Command::Sas => vec![SAS],
         Command::Stop => vec![STOP],
-        Command::Input(Input::Pointer { x, y, buttons }) => {
+        Command::Input(Input::Pointer {
+            x,
+            y,
+            buttons,
+            modifiers,
+        }) => {
             let scale =
                 |value: f64| ((value.clamp(0.0, 1.0) * 65_535.0).round() as u16).to_le_bytes();
             let mut message = vec![INPUT, POINTER];
             message.extend_from_slice(&scale(*x));
             message.extend_from_slice(&scale(*y));
             message.push(*buttons);
+            message.push(*modifiers);
+            message
+        }
+        Command::Input(Input::Text { text }) => {
+            let mut message = vec![INPUT, TEXT];
+            message.extend_from_slice(text.as_bytes());
             message
         }
         Command::Input(Input::Wheel { dx, dy }) => {
@@ -178,13 +242,21 @@ pub fn read_command(message: &[u8]) -> Option<Command> {
     match message {
         [KEYFRAME] => Some(Command::Keyframe),
         [RELEASE] => Some(Command::Release),
+        [SAS] => Some(Command::Sas),
         [STOP] => Some(Command::Stop),
-        [INPUT, POINTER, x0, x1, y0, y1, buttons] => {
+        [INPUT, POINTER, x0, x1, y0, y1, buttons, modifiers] => {
             let unit = |low: u8, high: u8| f64::from(u16::from_le_bytes([low, high])) / 65_535.0;
             let input = Input::Pointer {
                 x: unit(*x0, *x1),
                 y: unit(*y0, *y1),
                 buttons: *buttons,
+                modifiers: *modifiers,
+            };
+            input.valid().then_some(Command::Input(input))
+        }
+        [INPUT, TEXT, text @ ..] => {
+            let input = Input::Text {
+                text: String::from_utf8(text.to_vec()).ok()?,
             };
             input.valid().then_some(Command::Input(input))
         }
@@ -412,7 +484,12 @@ mod tests {
                 x: 0.0,
                 y: 1.0,
                 buttons: 3,
+                modifiers: 5,
             }),
+            Command::Input(Input::Text {
+                text: "árvíztűrő\tfúrógép\n".into(),
+            }),
+            Command::Sas,
             Command::Input(Input::Wheel { dx: -120, dy: 5 }),
             Command::Input(Input::Key {
                 code: "KeyA".into(),
@@ -425,6 +502,7 @@ mod tests {
             x: 0.5,
             y: 0.25,
             buttons: 0,
+            modifiers: 0,
         })));
         let Some(Command::Input(Input::Pointer { x, y, .. })) = half else {
             panic!("pointer");
@@ -439,7 +517,13 @@ mod tests {
             assert_eq!(read_command(&message), None);
         }
         for bad in [
-            vec![INPUT, POINTER, 0, 0, 0, 0, 64],
+            vec![INPUT, POINTER, 0, 0, 0, 0, 64, 0],
+            vec![INPUT, POINTER, 0, 0, 0, 0, 0, 16],
+            vec![INPUT, POINTER, 0, 0, 0, 0, 0],
+            vec![INPUT, TEXT],
+            vec![INPUT, TEXT, 0x1b],
+            [vec![INPUT, TEXT], "x".repeat(65).into_bytes()].concat(),
+            vec![INPUT, TEXT, 0xff],
             vec![INPUT, KEY, 2, b'A'],
             vec![INPUT, KEY, 1],
             vec![INPUT, KEY, 1, b' '],
@@ -450,6 +534,9 @@ mod tests {
         assert_eq!(Assembler::default().push(&KEEPALIVE_MESSAGE), Ok(None));
         assert_eq!(read_command(&[SETTINGS, 1, 2]), None);
         assert_eq!(read_command(&[FRAME]), None);
+        assert_eq!(read_sas_result(&sas_result_message(true)), Some(true));
+        assert_eq!(read_sas_result(&sas_result_message(false)), Some(false));
+        assert_eq!(read_sas_result(&[SAS_RESULT, 2]), None);
     }
 
     #[test]

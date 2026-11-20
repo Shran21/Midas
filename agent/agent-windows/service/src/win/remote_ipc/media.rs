@@ -22,7 +22,7 @@ use midas_agent_core::media::{
     codec::{Encoder, Kind, Profile as H264Profile},
     link::{
         Command, Desktop, KEEPALIVE_MESSAGE, command_message, desktop_message, read_command,
-        read_desktop,
+        read_desktop, sas_result_message,
     },
     peer::{Answered, answer},
     session::{Input, Transport},
@@ -38,7 +38,7 @@ use super::{
     Connection, IO_TIMEOUT, Peer, STARTUP_TIMEOUT, Writer,
     bootstrap::{delivery::Launched, import_privileged},
     denied,
-    desktop::InputDesktop,
+    desktop::{InputDesktop, secure_attention},
     identity::Role,
     participant::{MEDIA_HELLO, WORKER_HELLO, expect},
     startup::current_process,
@@ -283,11 +283,21 @@ fn inject(held: &mut Held, input: Input, view: &Arc<Mutex<Option<Rect>>>) {
         return;
     };
     let events = match input {
-        Input::Pointer { x, y, buttons } => {
-            held.pointer(x, y, buttons, (view.x, view.y, view.width, view.height))
-        }
+        Input::Pointer {
+            x,
+            y,
+            buttons,
+            modifiers,
+        } => held.pointer(
+            x,
+            y,
+            buttons,
+            modifiers,
+            (view.x, view.y, view.width, view.height),
+        ),
         Input::Wheel { dx, dy } => vec![held.wheel(dx, dy)],
         Input::Key { code, down } => held.key(&code, down).into_iter().collect(),
+        Input::Text { text } => held.text(&text),
     };
     if let Err(error) = inject::send(&events) {
         tracing::debug!(%error, "input not injected");
@@ -435,6 +445,8 @@ fn follow(
                 }
                 Command::Input(input) => inject(&mut held, input, &view),
                 Command::Release => release(&mut held),
+                // The transport side answers Ctrl+Alt+Del; a worker never acts on it.
+                Command::Sas => {}
                 Command::Settings(changed) => {
                     settings = Some(changed);
                     if let Some(active) = &mut stream
@@ -839,6 +851,14 @@ where
                         (true, true)
                     }
                     Command::Keyframe | Command::Stop => (true, true),
+                    // Only with UAC rights, whose privileged worker handles the secure desktop
+                    // that Ctrl+Alt+Del opens; the console session and Windows policy decide too.
+                    Command::Sas => {
+                        let sent = privileged.is_some() && secure_attention(session);
+                        tracing::info!(sent, "Ctrl+Alt+Del requested");
+                        forward(&frames, sas_result_message(sent).to_vec());
+                        (false, false)
+                    }
                 };
                 if to_privileged {
                     send_privileged(&mut privileged, &message).await;

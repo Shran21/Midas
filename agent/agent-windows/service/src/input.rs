@@ -150,7 +150,23 @@ pub enum Event {
         scan: Scan,
         down: bool,
     },
+    /// One UTF-16 unit typed as a character, independent of the keyboard layout.
+    Unicode {
+        unit: u16,
+        down: bool,
+    },
 }
+
+/// The modifier bits a pointer event carries, with the keys that stand for each.
+const MODIFIERS: [(u8, &str, &str); 4] = [
+    (1, "ControlLeft", "ControlRight"),
+    (2, "ShiftLeft", "ShiftRight"),
+    (4, "AltLeft", "AltRight"),
+    (8, "MetaLeft", "MetaRight"),
+];
+
+/// Characters of one text input that are typed; the rest is ignored.
+const TEXT_LIMIT: usize = 64;
 
 /// The pressed state, so every press is released once and only known keys are injected.
 #[derive(Default)]
@@ -167,16 +183,18 @@ impl Held {
         x: f64,
         y: f64,
         buttons: u8,
+        modifiers: u8,
         view: (i32, i32, u32, u32),
     ) -> Vec<Event> {
+        let mut events = self.modifiers(modifiers);
         let (left, top, width, height) = view;
         let at = |unit: f64, start: i32, size: u32| {
             start + (unit.clamp(0.0, 1.0) * f64::from(size.saturating_sub(1))).round() as i32
         };
-        let mut events = vec![Event::Move {
+        events.push(Event::Move {
             x: at(x, left, width),
             y: at(y, top, height),
-        }];
+        });
         let changed = self.buttons ^ buttons;
         for (bit, button) in BUTTONS {
             if changed & bit != 0 {
@@ -187,6 +205,58 @@ impl Held {
             }
         }
         self.buttons = buttons & 0x1f;
+        events
+    }
+
+    /// Brings the held modifier keys in line with what the pointer event says is held, so a
+    /// Ctrl+click works without keyboard focus and a modifier missed on release does not stick.
+    fn modifiers(&mut self, modifiers: u8) -> Vec<Event> {
+        let mut events = Vec::new();
+        for (bit, left, right) in MODIFIERS {
+            let (Some(left), Some(right)) = (scan(left), scan(right)) else {
+                continue;
+            };
+            let held = self.keys.contains(&left) || self.keys.contains(&right);
+            if modifiers & bit != 0 && !held {
+                self.keys.insert(left);
+                events.push(Event::Key {
+                    scan: left,
+                    down: true,
+                });
+            } else if modifiers & bit == 0 && held {
+                for scan in [left, right] {
+                    if self.keys.remove(&scan) {
+                        events.push(Event::Key { scan, down: false });
+                    }
+                }
+            }
+        }
+        events
+    }
+
+    /// Text typed as characters: each UTF-16 unit pressed and released. Line breaks become Enter
+    /// and tabs Tab, as character input; nothing else outside printable text is typed.
+    pub fn text(&self, text: &str) -> Vec<Event> {
+        let mut events = Vec::new();
+        for character in text.chars().take(TEXT_LIMIT) {
+            let character = match character {
+                '\n' => '\r',
+                '\t' => '\t',
+                c if c.is_control() => continue,
+                c => c,
+            };
+            let mut units = [0u16; 2];
+            for unit in character.encode_utf16(&mut units) {
+                events.push(Event::Unicode {
+                    unit: *unit,
+                    down: true,
+                });
+                events.push(Event::Unicode {
+                    unit: *unit,
+                    down: false,
+                });
+            }
+        }
         events
     }
 
@@ -248,10 +318,73 @@ mod tests {
     }
 
     #[test]
+    fn pointer_modifiers_are_pressed_and_released_with_the_pointer() {
+        let mut held = Held::default();
+        let view = (0, 0, 1920, 1080);
+        // Ctrl+click without keyboard focus: Ctrl goes down before the button.
+        let events = held.pointer(0.5, 0.5, 1, 1, view);
+        assert_eq!(
+            events[0],
+            Event::Key {
+                scan: key(0x1d),
+                down: true
+            }
+        );
+        assert!(matches!(events[1], Event::Move { .. }));
+        // Still held: nothing new; then released with the next pointer event.
+        assert!(matches!(
+            held.pointer(0.5, 0.5, 0, 1, view)[0],
+            Event::Move { .. }
+        ));
+        assert_eq!(
+            held.pointer(0.5, 0.5, 0, 0, view)[0],
+            Event::Key {
+                scan: key(0x1d),
+                down: false
+            }
+        );
+        // A right Shift pressed by key counts as Shift; a missed release does not stick.
+        assert!(held.key("ShiftRight", true).is_some());
+        assert!(matches!(
+            held.pointer(0.5, 0.5, 0, 2, view)[0],
+            Event::Move { .. }
+        ));
+        let released = held.pointer(0.5, 0.5, 0, 0, view);
+        assert_eq!(
+            released[0],
+            Event::Key {
+                scan: Scan {
+                    code: 0x36,
+                    extended: false
+                },
+                down: false
+            }
+        );
+        assert!(held.release().is_empty());
+    }
+
+    #[test]
+    fn text_is_typed_as_characters_whatever_the_layout() {
+        let held = Held::default();
+        let events = held.text("\u{151}\u{170}\n\u{1f600}\u{7}");
+        let units: Vec<_> = events
+            .iter()
+            .filter_map(|event| match event {
+                Event::Unicode { unit, down: true } => Some(*unit),
+                _ => None,
+            })
+            .collect();
+        // Emoji outside the basic plane travel as a surrogate pair; control characters are not typed.
+        assert_eq!(units, [0x0151, 0x0170, 0x000d, 0xd83d, 0xde00]);
+        assert_eq!(events.len(), 10, "each unit pressed and released");
+        assert_eq!(held.text(&"x".repeat(100)).len(), 2 * TEXT_LIMIT);
+    }
+
+    #[test]
     fn pointer_input_lands_on_the_view_and_presses_are_released_once() {
         let mut held = Held::default();
         let view = (-1920, 0, 1920, 1080);
-        let events = held.pointer(0.0, 1.0, 1, view);
+        let events = held.pointer(0.0, 1.0, 1, 0, view);
         assert_eq!(events[0], Event::Move { x: -1920, y: 1079 });
         assert_eq!(
             events[1],
@@ -261,13 +394,13 @@ mod tests {
             }
         );
         assert_eq!(
-            held.pointer(1.0, 0.0, 1 | 2, view)[1..],
+            held.pointer(1.0, 0.0, 1 | 2, 0, view)[1..],
             [Event::Button {
                 button: Button::Right,
                 down: true
             }]
         );
-        assert_eq!(held.pointer(0.5, 0.5, 2, view).len(), 2);
+        assert_eq!(held.pointer(0.5, 0.5, 2, 0, view).len(), 2);
         assert_eq!(
             held.key("KeyA", true),
             Some(Event::Key {

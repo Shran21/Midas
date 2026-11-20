@@ -8,10 +8,11 @@ use windows_sys::Win32::UI::{
     HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetThreadDpiAwarenessContext},
     Input::KeyboardAndMouse::{
         INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT, KEYEVENTF_EXTENDEDKEY,
-        KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_HWHEEL,
-        MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP,
-        MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_VIRTUALDESK,
-        MOUSEEVENTF_WHEEL, MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP, MOUSEINPUT, SendInput,
+        KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, KEYEVENTF_UNICODE, MOUSEEVENTF_ABSOLUTE,
+        MOUSEEVENTF_HWHEEL, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN,
+        MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP,
+        MOUSEEVENTF_VIRTUALDESK, MOUSEEVENTF_WHEEL, MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP, MOUSEINPUT,
+        SendInput,
     },
     WindowsAndMessaging::{
         GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
@@ -85,6 +86,22 @@ fn inputs(events: &[Event], desktop: (i32, i32, i32, i32)) -> Vec<INPUT> {
                     mouse(0, 0, vertical as u32, MOUSEEVENTF_WHEEL)
                 }
             }
+            Event::Unicode { unit, down } => INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wVk: 0,
+                        wScan: unit,
+                        dwFlags: if down {
+                            KEYEVENTF_UNICODE
+                        } else {
+                            KEYEVENTF_UNICODE | KEYEVENTF_KEYUP
+                        },
+                        time: 0,
+                        dwExtraInfo: 0,
+                    },
+                },
+            },
             Event::Key { scan, down } => {
                 let mut flags = KEYEVENTF_SCANCODE;
                 if scan.extended {
@@ -187,6 +204,29 @@ mod tests {
             assert_eq!(inputs[1].Anonymous.mi.dwFlags, MOUSEEVENTF_XDOWN);
             assert_eq!(inputs[1].Anonymous.mi.mouseData, u32::from(XBUTTON1));
             assert_eq!(inputs[2].Anonymous.mi.dwFlags, MOUSEEVENTF_HWHEEL);
+        }
+        let typed = super::inputs(
+            &[
+                Event::Unicode {
+                    unit: 0x0151,
+                    down: true,
+                },
+                Event::Unicode {
+                    unit: 0x0151,
+                    down: false,
+                },
+            ],
+            (0, 0, 1920, 1080),
+        );
+        // SAFETY: both are keyboard inputs written above.
+        unsafe {
+            assert_eq!(typed[0].Anonymous.ki.wScan, 0x0151);
+            assert_eq!(typed[0].Anonymous.ki.wVk, 0);
+            assert_eq!(typed[0].Anonymous.ki.dwFlags, KEYEVENTF_UNICODE);
+            assert_eq!(
+                typed[1].Anonymous.ki.dwFlags,
+                KEYEVENTF_UNICODE | KEYEVENTF_KEYUP
+            );
         }
         assert!(send(&[]).is_ok());
     }

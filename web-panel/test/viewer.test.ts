@@ -4,9 +4,12 @@ import {
   bitrate,
   combination,
   keyCode,
+  modifiers,
   readIceServers,
+  readSasResult,
   readStats,
   SYSTEM_KEYS,
+  textMessages,
   videoPoint,
 } from "../src/remote/viewerModel.ts";
 
@@ -144,4 +147,33 @@ test("system keys go down in order and up in reverse", () => {
   ]);
   for (const keys of Object.values(SYSTEM_KEYS))
     for (const code of keys) assert.match(code, /^[A-Za-z0-9]{1,32}$/);
+});
+
+test("pointer modifiers, text pieces and the Ctrl+Alt+Del answer", () => {
+  assert.equal(
+    modifiers({ ctrlKey: true, shiftKey: false, altKey: true, metaKey: false }),
+    5,
+  );
+  assert.equal(
+    modifiers({
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: false,
+      metaKey: false,
+    }),
+    0,
+  );
+  const long = "á".repeat(70);
+  const pieces = textMessages(`${long}\r\nő\u0007\tű`);
+  assert.equal(pieces.length, 2);
+  assert.equal([...pieces[0].text].length, 64);
+  assert.equal(pieces[1].text, `${"á".repeat(6)}\nő\tű`);
+  assert.deepEqual(textMessages(""), []);
+  // A character outside the basic plane stays whole across a piece boundary.
+  const emoji = textMessages(`${"x".repeat(63)}😀y`);
+  assert.equal(emoji[0].text.endsWith("😀"), true);
+  assert.equal(readSasResult('{"type":"sas","result":"sent"}'), "sent");
+  assert.equal(readSasResult('{"type":"sas","result":"maybe"}'), null);
+  assert.equal(readSasResult('{"type":"stats"}'), null);
+  assert.equal(readSasResult("not json"), null);
 });

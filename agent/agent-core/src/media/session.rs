@@ -13,7 +13,7 @@ use serde_json::json;
 pub use super::link::Input;
 use super::{
     adapt::{Controller, Limits, Profile, Settings, frame_size},
-    link::{Assembler, Command, Desktop, Encoded, LinkError, read_desktop},
+    link::{Assembler, Command, Desktop, Encoded, LinkError, read_desktop, read_sas_result},
     peer::{Peer, PeerError, PeerEvent},
 };
 
@@ -26,7 +26,11 @@ const INPUT_QUEUE: usize = 256;
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 enum Control {
     Keyframe,
-    Profile { profile: String },
+    Profile {
+        profile: String,
+    },
+    /// Ctrl+Alt+Del: the transport side decides whether it may be sent.
+    Sas,
 }
 
 /// Browser messages above this size are dropped unread.
@@ -140,6 +144,14 @@ impl Transport {
         if self.stopped {
             return Ok(());
         }
+        if let Some(sent) = read_sas_result(message) {
+            let answer = json!({
+                "type": "sas",
+                "result": if sent { "sent" } else { "unavailable" },
+            });
+            let _ = self.peer.send_data(answer.to_string().as_bytes());
+            return Ok(());
+        }
         if let Some(desktop) = read_desktop(message) {
             self.set_desktop(desktop);
             return Ok(());
@@ -178,6 +190,7 @@ impl Transport {
         }
         match serde_json::from_slice::<Control>(data) {
             Ok(Control::Keyframe) => self.commands.push_back(Command::Keyframe),
+            Ok(Control::Sas) => self.commands.push_back(Command::Sas),
             Ok(Control::Profile { profile }) => {
                 let profile = match profile.as_str() {
                     "text" => Profile::Text,

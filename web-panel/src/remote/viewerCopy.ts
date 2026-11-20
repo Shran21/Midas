@@ -30,7 +30,16 @@ const hu = {
   close: "Ablak bezárása (Alt+F4)",
   run: "Futtatás (Win+R)",
   desktop: "Asztal megjelenítése (Win+D)",
-  secureAttention: "A Ctrl+Alt+Del-t a Windows védi, távolról nem küldhető.",
+  secureAttention:
+    "A Ctrl+Alt+Del csak UAC-jogú kéréssel, a gép konzol-munkamenetében küldhető, ha a Windows-szabályzat engedi.",
+  sas: "Ctrl+Alt+Del",
+  sasSent: "A Ctrl+Alt+Del elküldve; a biztonsági képernyő a képen látszik.",
+  sasUnavailable:
+    "A Ctrl+Alt+Del nem küldhető: konzol-munkamenet, UAC-jog és a Windows „szoftveres SAS” szabályzata kell hozzá.",
+  typeText: "Szöveg küldése",
+  textHint:
+    "Ékezetes betűk, más billentyűzetkiosztás és IME esetén: a szöveg karakterenként érkezik, a távoli kiosztástól függetlenül.",
+  send: "Küldés",
   elevatedWindow:
     "Rendszergazdai jogú ablak van elöl vagy a mutató alatt. A bevitelt most a rendszerkomponens kézbesíti.",
 };
@@ -71,7 +80,16 @@ const en: {
   close: "Close window (Alt+F4)",
   run: "Run (Win+R)",
   desktop: "Show desktop (Win+D)",
-  secureAttention: "Windows protects Ctrl+Alt+Del; it cannot be sent remotely.",
+  secureAttention:
+    "Ctrl+Alt+Del can be sent only with UAC rights, to the computer's console session, when Windows policy allows it.",
+  sas: "Ctrl+Alt+Del",
+  sasSent: "Ctrl+Alt+Del was sent; the security screen shows in the picture.",
+  sasUnavailable:
+    "Ctrl+Alt+Del cannot be sent: it needs the console session, UAC rights and the Windows software SAS policy.",
+  typeText: "Send text",
+  textHint:
+    "For accented letters, other keyboard layouts and IME: the text arrives as characters, whatever the remote layout.",
+  send: "Send",
   elevatedWindow:
     "An administrator window is in front or under the pointer. The system component now delivers the input.",
 };

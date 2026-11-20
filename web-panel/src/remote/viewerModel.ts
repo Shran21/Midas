@@ -63,6 +63,54 @@ export const SYSTEM_KEYS = {
   desktop: ["MetaLeft", "KeyD"],
 } as const;
 
+/** The modifier keys held with a pointer event: Ctrl 1, Shift 2, Alt 4, Windows 8. */
+export function modifiers(event: {
+  ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+  metaKey: boolean;
+}) {
+  return (
+    (event.ctrlKey ? 1 : 0) |
+    (event.shiftKey ? 2 : 0) |
+    (event.altKey ? 4 : 0) |
+    (event.metaKey ? 8 : 0)
+  );
+}
+
+/** Characters per text message, as the agent accepts them. */
+const TEXT_PIECE = 64;
+/** The most text one send types. */
+export const TEXT_LIMIT = 2000;
+
+/** Text messages for `text`: whole characters, at most TEXT_PIECE each; other control
+ * characters than line breaks and tabs are dropped. */
+export function textMessages(text: string) {
+  const characters = [...text.replace(/\r\n?/g, "\n")]
+    .filter((c) => c === "\n" || c === "\t" || !/\p{Cc}/u.test(c))
+    .slice(0, TEXT_LIMIT);
+  const messages: { type: "text"; text: string }[] = [];
+  for (let start = 0; start < characters.length; start += TEXT_PIECE)
+    messages.push({
+      type: "text",
+      text: characters.slice(start, start + TEXT_PIECE).join(""),
+    });
+  return messages;
+}
+
+/** The agent's answer to Ctrl+Alt+Del, or `null` for any other message. */
+export function readSasResult(text: string): "sent" | "unavailable" | null {
+  try {
+    const value = JSON.parse(text) as { type?: unknown; result?: unknown };
+    if (value?.type !== "sas") return null;
+    return value.result === "sent" || value.result === "unavailable"
+      ? value.result
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The key messages for one combination: every key down in order, then up in reverse. */
 export function combination(keys: readonly string[]) {
   return [

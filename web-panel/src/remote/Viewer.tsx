@@ -7,10 +7,14 @@ import {
   bitrate,
   combination,
   keyCode,
+  modifiers,
   readIceServers,
+  readSasResult,
   readStats,
   type Stats,
   SYSTEM_KEYS,
+  TEXT_LIMIT,
+  textMessages,
   videoPoint,
 } from "./viewerModel";
 
@@ -60,6 +64,8 @@ export function Viewer({
   const [stats, setStats] = useState<{ value: Stats; at: number } | null>(null);
   const [now, setNow] = useState(() => performance.now());
   const [profile, setProfile] = useState<"text" | "motion">("text");
+  const [sas, setSas] = useState<"sent" | "unavailable" | null>(null);
+  const [typed, setTyped] = useState("");
   const latest = useRef({ fail, csrf });
   latest.current = { fail, csrf };
 
@@ -79,8 +85,11 @@ export function Viewer({
         const control = peer.createDataChannel("control");
         channel.current = control;
         control.onmessage = (event) => {
-          const value = readStats(String(event.data));
+          const text = String(event.data);
+          const value = readStats(text);
           if (value) setStats({ value, at: performance.now() });
+          const sas = readSasResult(text);
+          if (sas) setSas(sas);
         };
         peer.ontrack = (event) => {
           if (video.current)
@@ -144,7 +153,13 @@ export function Viewer({
       element.getBoundingClientRect(),
       { width: element.videoWidth, height: element.videoHeight },
     );
-    if (point) send({ type: "pointer", ...point, buttons: event.buttons & 31 });
+    if (point)
+      send({
+        type: "pointer",
+        ...point,
+        buttons: event.buttons & 31,
+        modifiers: modifiers(event),
+      });
   };
 
   useEffect(() => {
@@ -274,8 +289,57 @@ export function Viewer({
               </button>
             ),
           )}
+          {request.uac && (
+            <button
+              type="button"
+              className="button"
+              disabled={phase !== "live"}
+              onClick={() => {
+                setSas(null);
+                send({ type: "sas" });
+              }}
+            >
+              {c.sas}
+            </button>
+          )}
           <p className="muted">{c.secureAttention}</p>
+          <p role="status" aria-live="polite" hidden={!sas}>
+            {sas === "sent"
+              ? c.sasSent
+              : sas === "unavailable"
+                ? c.sasUnavailable
+                : ""}
+          </p>
         </fieldset>
+        <form
+          className="remote-viewer-text"
+          onSubmit={(event) => {
+            event.preventDefault();
+            for (const message of textMessages(typed)) send(message);
+            setTyped("");
+          }}
+        >
+          <label htmlFor={`${id}-text`}>{c.typeText}</label>
+          <textarea
+            id={`${id}-text`}
+            rows={2}
+            value={typed}
+            maxLength={TEXT_LIMIT}
+            disabled={phase !== "live"}
+            aria-describedby={`${id}-text-hint`}
+            onChange={(event) => setTyped(event.target.value)}
+          />
+          <button
+            type="submit"
+            className="button"
+            disabled={phase !== "live" || typed === ""}
+          >
+            {c.send}
+          </button>
+          <p id={`${id}-text-hint`} className="muted">
+            {c.textHint}
+          </p>
+        </form>
       </div>
     </section>
   );
