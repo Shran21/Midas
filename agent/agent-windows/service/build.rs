@@ -1,11 +1,12 @@
 fn main() {
-    // Loading user32, or shell32 and ole32 which initialize it, connects the process to its desktop,
+    // Loading user32, or gdi32, shell32 and ole32 which initialize it, connects the process to its desktop,
     // and a remote participant may run on a desktop its token cannot use. These and the capture
     // libraries load only on first use, in every executable: test programs also start as
     // participants in the isolated trial.
     if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
         for library in [
             "user32.dll",
+            "gdi32.dll",
             "shell32.dll",
             "ole32.dll",
             "d3d11.dll",
