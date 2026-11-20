@@ -126,9 +126,9 @@ async fn validation_failure_notifies_supervision_without_another_operation() {
 #[tokio::test]
 async fn idle_lease_expires_at_its_existing_deadline() {
     let f = Fixture::new(Mode::Normal, false);
-    let mut lease = f.lease();
-    lease.deadline = Instant::now() + Duration::from_millis(20);
-    let deadline = lease.deadline;
+    let lease = f.lease();
+    let deadline = Instant::now() + Duration::from_millis(20);
+    lease.life.current.lock().unwrap().deadline = deadline;
     tokio::time::timeout(Duration::from_secs(2), lease.ended())
         .await
         .unwrap();
@@ -146,13 +146,13 @@ async fn idle_lease_expires_at_its_existing_deadline() {
 async fn cancelling_a_wait_does_not_cancel_or_extend_its_lease() {
     let f = Fixture::new(Mode::Normal, false);
     let lease = f.lease();
-    let deadline = lease.deadline;
+    let deadline = lease.life.deadline();
     {
         let ended = lease.ended();
         tokio::pin!(ended);
         assert!(futures_util::poll!(ended.as_mut()).is_pending());
     }
-    assert_eq!(lease.deadline, deadline);
+    assert_eq!(lease.life.deadline(), deadline);
     assert_eq!(lease.capture(f.observation, Worker::User), Ok(()));
     f.channel.revoke();
     tokio::time::timeout(Duration::from_secs(2), lease.ended())
@@ -425,4 +425,94 @@ fn a_consented_lease_serves_only_the_occupied_desktop_that_answered() {
         lease.capture(occupied, Worker::User),
         Err(Error::ConsentRequired)
     );
+}
+
+fn renewal(f: &Fixture, previous: Uuid) -> (SignedGrant, Uuid) {
+    let id = Uuid::new_v4();
+    let claims = Claims {
+        id,
+        challenge: previous,
+        operator: f.operator,
+        target: f.target,
+        rights: f.rights,
+        issued_at: 200,
+        expires_at: 230,
+    };
+    (f.key.sign(&claims).unwrap(), id)
+}
+
+#[tokio::test]
+async fn a_renewal_extends_only_the_last_grant_of_its_own_lease() {
+    let f = Fixture::new(Mode::Normal, true);
+    let lease = f.lease();
+    let renewer = lease.renewer();
+    let short = Instant::now() + Duration::from_millis(50);
+    lease.life.current.lock().unwrap().deadline = short;
+    let (first, next) = renewal(&f, lease.id());
+    assert_eq!(renewer.renew(&first, f.observation), Ok(()));
+    assert!(lease.life.deadline() > Instant::now() + Duration::from_secs(25));
+    // The same renewal, or one chained to an older grant, cannot be applied again.
+    assert_eq!(renewer.renew(&first, f.observation), Err(Error::Target));
+    let (stale, _) = renewal(&f, lease.id());
+    assert_eq!(renewer.renew(&stale, f.observation), Err(Error::Target));
+    let (second, _) = renewal(&f, next);
+    assert_eq!(renewer.renew(&second, f.observation), Ok(()));
+    // Another key, another target or more rights do not extend it.
+    let other = Fixture::new(Mode::Normal, true);
+    let (foreign, _) = renewal(&other, lease.id());
+    assert!(renewer.renew(&foreign, f.observation).is_err());
+    let wider = Claims {
+        id: Uuid::new_v4(),
+        challenge: lease.life.current.lock().unwrap().id,
+        operator: f.operator,
+        target: f.target,
+        rights: Rights {
+            mode: Mode::Administrative,
+            uac: true,
+        },
+        issued_at: 200,
+        expires_at: 230,
+    };
+    assert_eq!(
+        renewer.renew(&f.key.sign(&wider).unwrap(), f.observation),
+        Err(Error::Target)
+    );
+    assert_eq!(lease.capture(f.observation, Worker::User), Ok(()));
+}
+
+#[tokio::test]
+async fn without_renewal_the_lease_ends_and_says_why() {
+    let f = Fixture::new(Mode::Normal, false);
+    let lease = f.lease();
+    let renewer = lease.renewer();
+    lease.life.current.lock().unwrap().deadline = Instant::now() + Duration::from_millis(30);
+    tokio::time::timeout(Duration::from_secs(2), lease.ended())
+        .await
+        .unwrap();
+    assert_eq!(renewer.ended().await, Ending::Expired);
+    let (late, _) = renewal(&f, lease.id());
+    assert_eq!(renewer.renew(&late, f.observation), Err(Error::Revoked));
+}
+
+#[tokio::test]
+async fn a_local_end_stops_at_once_and_a_changed_desktop_ends_the_lease() {
+    let f = Fixture::new(Mode::Normal, false);
+    let lease = f.lease();
+    let renewer = lease.renewer();
+    lease.cancellation().end_locally();
+    assert_eq!(
+        lease.capture(f.observation, Worker::User),
+        Err(Error::Revoked)
+    );
+    assert_eq!(renewer.ended().await, Ending::Local);
+
+    let lease = f.lease();
+    let renewer = lease.renewer();
+    let elsewhere = Observation {
+        desktop_epoch: Uuid::nil(),
+        ..f.observation
+    };
+    let (renewal, _) = renewal(&f, lease.id());
+    assert_eq!(renewer.renew(&renewal, elsewhere), Err(Error::Target));
+    assert_eq!(renewer.ended().await, Ending::Desktop);
 }

@@ -26,6 +26,18 @@ const hu = {
     "Most nem kérhető helyi jóváhagyás: nincs bejelentkezett felhasználó, vagy már fut egy távsegítés. Nem jött létre kapcsolat.",
   cancelled: "Visszavontad a kérést. Nem jött létre kapcsolat.",
   ended: "A kapcsolat véget ért.",
+  endedBy: (reason: string | null) =>
+    ({
+      local: "A felhasználó a gépén befejezte a kapcsolatot.",
+      desktop:
+        "A kapcsolat véget ért, mert a gépen megváltozott a munkamenet vagy a bejelentkezett felhasználó.",
+      expired:
+        "A kapcsolat véget ért, mert a gép nem kapott időben megújítást.",
+      offline: "A kapcsolat véget ért, mert a gép nem érhető el.",
+      revoked:
+        "A kapcsolat véget ért, mert a jogosultságod vagy a bejelentkezésed időközben megszűnt.",
+      stopped: "A kapcsolat a gépen leállt.",
+    })[reason ?? ""] ?? "A kapcsolat véget ért.",
   failedFresh:
     "A felhasználó engedélyezte a kérést, de a passkey-megerősítés közben elavult. Küldj új kérést; a panel előtte újra megerősítteti.",
   failed:
@@ -75,6 +87,18 @@ const en: {
     "Local consent cannot be requested now: nobody is signed in, or remote support is already running. No connection was made.",
   cancelled: "You withdrew the request. No connection was made.",
   ended: "The connection has ended.",
+  endedBy: (reason: string | null) =>
+    ({
+      local: "The user ended the connection on their computer.",
+      desktop:
+        "The connection ended because the session or the signed-in user changed on the computer.",
+      expired:
+        "The connection ended because the computer did not receive a renewal in time.",
+      offline: "The connection ended because the computer is not reachable.",
+      revoked:
+        "The connection ended because your permission or sign-in ended meanwhile.",
+      stopped: "The connection stopped on the computer.",
+    })[reason ?? ""] ?? "The connection has ended.",
   failedFresh:
     "The user allowed the request, but the passkey confirmation went stale meanwhile. Send a new request; the panel asks for a confirmation first.",
   failed:

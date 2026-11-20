@@ -57,6 +57,12 @@ impl Broker {
             consenting: AtomicBool::new(false),
         }
     }
+    /// The local user's End on the agent side.
+    fn end_locally(&self) {
+        if let Some((_, lease)) = self.lease.lock().unwrap().as_ref() {
+            lease.cancellation().end_locally();
+        }
+    }
     pub fn allowed(&self) -> bool {
         self.lease
             .lock()
@@ -168,6 +174,17 @@ impl Native for Broker {
     }
 }
 
+/// Waits for an active request to end, without the short limit of `settled`.
+async fn settled_slowly(ctx: &Context<'_>, path: &str) -> Value {
+    loop {
+        let (_, body, _) = call(ctx.app, "GET", path, Some(ctx.manager), None, &[]).await;
+        if body["state"] != "active" {
+            return body;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+}
+
 async fn settled(ctx: &Context<'_>, path: &str, from: &str) -> Value {
     for _ in 0..200 {
         let (status, body, _) = call(ctx.app, "GET", path, Some(ctx.manager), None, &[]).await;
@@ -253,6 +270,21 @@ pub async fn verify_attended(
     let path = start(request("normal", false)).await;
     let active = settled(ctx, &path, "waiting").await;
     assert_eq!(active["state"], "active", "{active}");
+    assert!(broker.allowed());
+    // The server renews the grant with a fresh authorization check before it runs out.
+    let first_until = active["until"].as_i64().unwrap();
+    let renewed = tokio::time::timeout(Duration::from_secs(25), async {
+        loop {
+            let (_, body, _) = call(ctx.app, "GET", &path, Some(ctx.manager), None, &[]).await;
+            if body["state"] != "active" || body["until"].as_i64().unwrap() > first_until {
+                return body;
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+    })
+    .await
+    .expect("the session is renewed");
+    assert_eq!(renewed["state"], "active", "{renewed}");
     assert!(broker.allowed());
     let asked = broker.asked.lock().unwrap().last().cloned().unwrap();
     assert_eq!(asked.timeout, Duration::from_secs(60));
@@ -471,14 +503,26 @@ pub async fn verify_attended(
         .0,
         StatusCode::OK
     );
-    assert_eq!(
-        call(ctx.app, "DELETE", &path, Some(ctx.manager), None, &[])
-            .await
-            .0,
-        StatusCode::NO_CONTENT
-    );
-    assert_eq!(settled(ctx, &path, "active").await["state"], "ended");
+    // Withdrawn while it runs: the next renewal is refused and the session ends.
+    sqlx::query("INSERT INTO midas.permission_overrides (tenant_id,id,operator_id,permission,effect) VALUES ($1,gen_random_uuid(),$2,'remote.admin','deny')")
+        .bind(ctx.tenant).bind(operator).execute(&mut *admin).await.unwrap();
+    let revoked = tokio::time::timeout(Duration::from_secs(25), settled_slowly(ctx, &path))
+        .await
+        .expect("the session ends at its next renewal");
+    assert_eq!(revoked["state"], "ended", "{revoked}");
+    assert_eq!(revoked["reason"], "revoked");
     broker.stopped().await;
+    sqlx::query("DELETE FROM midas.permission_overrides WHERE tenant_id=$1 AND operator_id=$2 AND permission='remote.admin'")
+        .bind(ctx.tenant).bind(operator).execute(&mut *admin).await.unwrap();
+
+    // The local user's End stops the session at once, and the server learns why.
+    let path = start(request("normal", false)).await;
+    assert_eq!(settled(ctx, &path, "waiting").await["state"], "active");
+    broker.end_locally();
+    let local = settled(ctx, &path, "active").await;
+    assert_eq!(local["state"], "ended", "{local}");
+    assert_eq!(local["reason"], "local");
+    assert!(!broker.allowed());
 
     let consents: Vec<(String, String)> = sqlx::query_as("SELECT outcome, details->>'result' FROM midas.tenant_audit WHERE tenant_id=$1 AND device_id=$2 AND action='remote.consent' ORDER BY sequence")
         .bind(ctx.tenant).bind(ctx.device).fetch_all(&mut *admin).await.unwrap();
@@ -494,6 +538,7 @@ pub async fn verify_attended(
             "unavailable",
             "cancelled",
             "allowed",
+            "allowed",
             "allowed"
         ]
     );
@@ -503,7 +548,10 @@ pub async fn verify_attended(
     assert_eq!(media, [answered.clone(), answered]);
     let issued: i64 = sqlx::query_scalar("SELECT count(*) FROM midas.tenant_audit WHERE tenant_id=$1 AND device_id=$2 AND action='remote.grant_issued' AND details->>'unattended'='false'")
         .bind(ctx.tenant).bind(ctx.device).fetch_one(&mut *admin).await.unwrap();
-    assert_eq!(issued, 2);
+    assert_eq!(issued, 3);
+    let ends: Vec<String> = sqlx::query_scalar("SELECT details->>'result' FROM midas.tenant_audit WHERE tenant_id=$1 AND device_id=$2 AND action='remote.session_end' ORDER BY sequence")
+        .bind(ctx.tenant).bind(ctx.device).fetch_all(&mut *admin).await.unwrap();
+    assert_eq!(ends, ["operator", "revoked", "local"]);
     broker.presence.store(0, Ordering::SeqCst);
     sqlx::query("UPDATE midas.devices SET platform='linux' WHERE tenant_id=$1 AND id=$2")
         .bind(ctx.tenant)

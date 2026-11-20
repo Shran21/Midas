@@ -48,7 +48,7 @@ impl VersionRange {
 pub struct Envelope {
     #[prost(
         oneof = "Body",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28"
     )]
     pub body: Option<Body>,
 }
@@ -105,6 +105,14 @@ pub enum Body {
     MediaOffer(remote::MediaOffer),
     #[prost(message, tag = "25")]
     MediaAnswer(remote::MediaAnswer),
+    /// A renewal of the active grant, chained to the last one.
+    #[prost(message, tag = "26")]
+    RemoteRenew(remote::Deliver),
+    #[prost(message, tag = "27")]
+    RemoteRenewed(remote::Ack),
+    /// The agent ended the session itself, and why.
+    #[prost(message, tag = "28")]
+    RemoteEnded(remote::Ended),
 }
 
 /// First message from the agent.

@@ -329,7 +329,7 @@ export function RequestStatus({
       case "cancelled":
         return c.cancelled;
       case "ended":
-        return c.ended;
+        return c.endedBy(request.reason);
       case "failed":
         return request.reason === "fresh_passkey_required"
           ? c.failedFresh

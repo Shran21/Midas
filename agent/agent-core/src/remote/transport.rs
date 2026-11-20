@@ -12,7 +12,8 @@ use tokio::sync::{Semaphore, mpsc};
 use uuid::Uuid;
 
 use super::{
-    Cancellation, Channel, Consent, ConsentRequest, Lease, Observation, Pending, Presence,
+    Cancellation, Channel, Consent, ConsentRequest, Ending, Lease, Observation, Pending, Presence,
+    Renewer,
 };
 
 /// The local answer window and the names it shows stay within these limits.
@@ -119,6 +120,11 @@ enum Work {
         offer: String,
         stop: Arc<Revocation>,
     },
+    Renew {
+        request: Uuid,
+        grant: SignedGrant,
+        stop: Arc<Revocation>,
+    },
 }
 
 struct Prepared {
@@ -133,6 +139,8 @@ struct Engine {
     pending: Option<Prepared>,
     /// The request whose grant the native backend accepted last.
     active: Option<Uuid>,
+    /// Renews that request's lease while it lasts.
+    renewer: Option<(Uuid, Renewer)>,
 }
 
 impl Engine {
@@ -249,16 +257,44 @@ impl Engine {
                     let lease = prepared.pending.accept(&grant, observed)?;
                     stop.install(lease.cancellation());
                     stop.check()?;
+                    let renewer = lease.renewer();
                     self.native.activate(lease)?;
-                    stop.check()
-                })()
-                .is_ok();
+                    stop.check()?;
+                    Ok::<_, Error>(renewer)
+                })();
+                let accepted = accepted.map(|renewer| self.renewer = Some((request, renewer)));
+                let accepted = accepted.is_ok();
                 if accepted {
                     self.active = Some(request);
                 } else {
                     stop.revoke();
                 }
                 Body::RemoteAck(wire::Ack {
+                    request: request.as_bytes().to_vec(),
+                    accepted,
+                })
+            }
+            Work::Renew {
+                request,
+                grant,
+                stop,
+            } => {
+                let accepted = (|| {
+                    stop.check()?;
+                    let (_, renewer) = self
+                        .renewer
+                        .as_ref()
+                        .filter(|(current, _)| *current == request)
+                        .ok_or(Error::Revoked)?;
+                    if !available {
+                        return Err(Error::Target);
+                    }
+                    let observed = self.native.observe(renewer.target())?;
+                    stop.check()?;
+                    renewer.renew(&grant, observed)
+                })()
+                .is_ok();
+                Body::RemoteRenewed(wire::Ack {
                     request: request.as_bytes().to_vec(),
                     accepted,
                 })
@@ -286,6 +322,28 @@ struct RevokeChannel(Arc<Channel>);
 impl Drop for RevokeChannel {
     fn drop(&mut self) {
         self.0.revoke();
+    }
+}
+
+enum Next {
+    Work(Box<Work>),
+    Ended(Ending),
+    Closed,
+}
+
+async fn ended(watched: &Option<(Uuid, Renewer)>) -> Ending {
+    match watched {
+        Some((_, renewer)) => renewer.ended().await,
+        None => std::future::pending().await,
+    }
+}
+
+fn end_reason(ending: Ending) -> wire::EndReason {
+    match ending {
+        Ending::Local => wire::EndReason::Local,
+        Ending::Desktop => wire::EndReason::Desktop,
+        Ending::Expired => wire::EndReason::Expired,
+        Ending::Stopped => wire::EndReason::Stopped,
     }
 }
 
@@ -327,8 +385,40 @@ impl Transport {
                 native: backend.native,
                 pending: None,
                 active: None,
+                renewer: None,
             };
-            while let Some(work) = inbox.recv().await {
+            // The active lease is watched beside the work, so its end reaches the server even
+            // when nothing else is asked.
+            let mut watched: Option<(Uuid, Renewer)> = None;
+            loop {
+                let next = tokio::select! {
+                    work = inbox.recv() => work.map_or(Next::Closed, |work| Next::Work(Box::new(work))),
+                    ending = ended(&watched) => Next::Ended(ending),
+                };
+                let work = match next {
+                    Next::Work(work) => *work,
+                    Next::Closed => break,
+                    Next::Ended(ending) => {
+                        let Some((request, _)) = watched.take() else {
+                            continue;
+                        };
+                        if engine
+                            .renewer
+                            .as_ref()
+                            .is_some_and(|(current, _)| *current == request)
+                        {
+                            engine.renewer = None;
+                        }
+                        let ended = Body::RemoteEnded(wire::Ended {
+                            request: request.as_bytes().to_vec(),
+                            reason: end_reason(ending) as i32,
+                        });
+                        if outbox.send(ended).await.is_err() {
+                            break;
+                        }
+                        continue;
+                    }
+                };
                 let output = if let Ok(permit) = backend.slot.clone().try_acquire_owned() {
                     let result = tokio::task::spawn_blocking(move || {
                         let output = engine.process(work, true);
@@ -346,6 +436,13 @@ impl Transport {
                 };
                 if outbox.send(output).await.is_err() {
                     break;
+                }
+                if let Some((request, renewer)) = &engine.renewer
+                    && watched
+                        .as_ref()
+                        .is_none_or(|(watching, _)| watching != request)
+                {
+                    watched = Some((*request, renewer.clone()));
                 }
             }
         });
@@ -406,6 +503,25 @@ impl Transport {
             .map_err(|_| Error::Revoked)?;
         self.operation = Some((request_id, stop));
         Ok(())
+    }
+
+    /// Passes a renewal on, only for the current request.
+    pub fn renew(&mut self, renewal: wire::Deliver) -> Result<(), Error> {
+        let request = id(&renewal.request)?;
+        let Some((current, stop)) = &self.operation else {
+            return Ok(());
+        };
+        if *current != request {
+            return Ok(());
+        }
+        let grant = SignedGrant::decode_checked(&renewal.grant)?;
+        self.commands
+            .try_send(Work::Renew {
+                request,
+                grant,
+                stop: stop.clone(),
+            })
+            .map_err(|_| Error::Revoked)
     }
 
     pub fn deliver(&mut self, delivery: wire::Deliver) -> Result<(), Error> {
@@ -508,7 +624,20 @@ fn id(bytes: &[u8]) -> Result<Uuid, Error> {
 
 pub(crate) async fn next(transport: &mut Option<Transport>) -> Option<Body> {
     match transport {
-        Some(transport) => transport.results.recv().await,
+        Some(transport) => {
+            let body = transport.results.recv().await;
+            // A session the agent ended itself is over: the next request may start.
+            if let Some(Body::RemoteEnded(ended)) = &body
+                && transport
+                    .operation
+                    .as_ref()
+                    .is_some_and(|(current, _)| current.as_bytes().as_slice() == ended.request)
+                && let Some((_, stop)) = transport.operation.take()
+            {
+                stop.revoke();
+            }
+            body
+        }
         None => std::future::pending().await,
     }
 }

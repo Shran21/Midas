@@ -37,6 +37,7 @@ names!(Action {
     RemoteGrantDelivery => "remote.grant_delivery",
     RemoteConsent => "remote.consent",
     RemoteMedia => "remote.media",
+    RemoteSessionEnd => "remote.session_end",
     RemoteSessionsRead => "remote.sessions_read",
     UnattendedPolicySet => "remote.unattended_policy_set",
     TenantCreate => "tenant.create",

@@ -1,6 +1,6 @@
 use std::{
     sync::{
-        Arc, Weak,
+        Arc, Mutex, Weak,
         atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},
@@ -145,8 +145,15 @@ impl Pending {
         }
         let lease = Lease {
             channel: self.channel,
+            life: Arc::new(Life {
+                current: Mutex::new(Current {
+                    id: claims.id,
+                    deadline,
+                }),
+                ending: Mutex::new(None),
+                renewed: Notify::new(),
+            }),
             claims,
-            deadline,
             started: self.started,
             attended: self.attended,
             active: Arc::new(Signal::new()),
@@ -184,11 +191,60 @@ pub struct Observation {
 
 pub struct Lease {
     channel: Weak<ChannelState>,
+    /// The first grant; renewals keep its target, operator and rights.
     claims: Claims,
-    deadline: Instant,
+    life: Arc<Life>,
     started: Instant,
     attended: bool,
     active: Arc<Signal>,
+}
+
+/// Why a lease ended on the agent's side; the server learns it, since nothing else tells it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Ending {
+    /// The local user stopped the session.
+    Local,
+    /// The target session or desktop changed.
+    Desktop,
+    /// No renewal arrived within the grant's lifetime.
+    Expired,
+    /// The workers stopped, or the server revoked the grant.
+    Stopped,
+}
+
+struct Current {
+    /// The last applied grant; only a renewal naming it as its challenge extends the lease.
+    id: Uuid,
+    deadline: Instant,
+}
+
+struct Life {
+    current: Mutex<Current>,
+    ending: Mutex<Option<Ending>>,
+    renewed: Notify,
+}
+
+impl Life {
+    fn deadline(&self) -> Instant {
+        self.current
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .deadline
+    }
+
+    fn record(&self, ending: Ending) {
+        self.ending
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get_or_insert(ending);
+    }
+
+    fn ending(&self) -> Ending {
+        self.ending
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or(Ending::Stopped)
+    }
 }
 
 /// An attended request as the local consent window shows it. The names come from the
@@ -213,10 +269,86 @@ pub enum Consent {
     Cancelled,
 }
 #[derive(Clone)]
-pub struct Cancellation(Arc<Signal>);
+pub struct Cancellation(Arc<Signal>, Arc<Life>);
 impl Cancellation {
     pub fn revoke(&self) {
         self.0.revoke();
+    }
+    /// The local user's End: capture and input stop at once, and the server learns why.
+    pub fn end_locally(&self) {
+        self.1.record(Ending::Local);
+        self.0.revoke();
+    }
+}
+
+/// Extends one lease with renewals the server signs while the session lasts.
+#[derive(Clone)]
+pub struct Renewer {
+    channel: Weak<ChannelState>,
+    claims: Claims,
+    life: Arc<Life>,
+    attended: bool,
+    active: Arc<Signal>,
+}
+
+impl Renewer {
+    /// Applies a renewal: it must name the last applied grant as its challenge, keep the
+    /// target, operator and rights, and the session must still be the one observed.
+    pub fn renew(&self, grant: &SignedGrant, observed: Observation) -> Result<(), Error> {
+        self.renew_at(grant, observed, Instant::now())
+    }
+
+    fn renew_at(
+        &self,
+        grant: &SignedGrant,
+        observed: Observation,
+        now: Instant,
+    ) -> Result<(), Error> {
+        let channel = live(&self.channel)?;
+        if !self.active.active() {
+            return Err(Error::Revoked);
+        }
+        let claims = verify(&channel.key, grant)?.into_claims();
+        let lifetime = Duration::from_secs(claims.lifetime_seconds()?);
+        if claims.target != self.claims.target
+            || claims.operator != self.claims.operator
+            || claims.rights != self.claims.rights
+        {
+            return Err(Error::Target);
+        }
+        let presence_ok = matches!(
+            (observed.presence, self.attended),
+            (Presence::Vacant, false) | (Presence::Occupied, true)
+        );
+        if observed.target != self.claims.target || observed.desktop_epoch.is_nil() || !presence_ok
+        {
+            self.life.record(Ending::Desktop);
+            self.active.revoke();
+            return Err(Error::Target);
+        }
+        let mut current = self.life.current.lock().unwrap_or_else(|e| e.into_inner());
+        if claims.challenge != current.id || claims.id == current.id {
+            return Err(Error::Target);
+        }
+        if now >= current.deadline {
+            return Err(Error::Expired);
+        }
+        current.id = claims.id;
+        current.deadline = now.checked_add(lifetime).ok_or(Error::Invalid)?;
+        drop(current);
+        self.life.renewed.notify_waiters();
+        Ok(())
+    }
+
+    /// The session the lease serves; native code observes it before each renewal.
+    pub fn target(&self) -> Target {
+        self.claims.target
+    }
+
+    /// Waits until the lease ends for any reason, and says why.
+    pub async fn ended(&self) -> Ending {
+        self.active.ended().await;
+        self.life.ending()
     }
 }
 
@@ -250,24 +382,50 @@ impl Lease {
         self.attended
     }
     pub fn cancellation(&self) -> Cancellation {
-        Cancellation(self.active.clone())
+        Cancellation(self.active.clone(), self.life.clone())
+    }
+    pub fn renewer(&self) -> Renewer {
+        Renewer {
+            channel: self.channel.clone(),
+            claims: self.claims.clone(),
+            life: self.life.clone(),
+            attended: self.attended,
+            active: self.active.clone(),
+        }
     }
 
-    /// Wakes native supervision on revocation, channel loss or the original local deadline.
+    /// Wakes native supervision on revocation, channel loss or the current deadline, which
+    /// each applied renewal moves.
     /// Execution still requires fresh observation and the per-operation checks below.
     pub async fn ended(&self) {
         if let Some(channel) = self.channel.upgrade() {
-            tokio::select! {
-                _ = self.active.ended() => {},
-                _ = channel.live.ended() => {},
-                _ = tokio::time::sleep_until(self.deadline.into()) => {},
+            loop {
+                let renewed = self.life.renewed.notified();
+                tokio::pin!(renewed);
+                renewed.as_mut().enable();
+                let deadline = self.life.deadline();
+                if Instant::now() >= deadline {
+                    self.life.record(Ending::Expired);
+                    break;
+                }
+                tokio::select! {
+                    _ = self.active.ended() => break,
+                    _ = channel.live.ended() => break,
+                    _ = tokio::time::sleep_until(deadline.into()) => {},
+                    _ = &mut renewed => {},
+                }
             }
         }
         self.active.revoke();
     }
     fn validate(&self, observed: Observation, now: Instant) -> Result<(), Error> {
         let result = self.validate_inner(observed, now);
-        if result.is_err() {
+        if let Err(error) = &result {
+            self.life.record(match error {
+                Error::Expired => Ending::Expired,
+                Error::Revoked => Ending::Stopped,
+                _ => Ending::Desktop,
+            });
             self.active.revoke();
         }
         result
@@ -277,7 +435,7 @@ impl Lease {
         if !self.active.active() {
             return Err(Error::Revoked);
         }
-        if now < self.started || now >= self.deadline {
+        if now < self.started || now >= self.life.deadline() {
             return Err(Error::Expired);
         }
         if observed.target != self.claims.target || observed.desktop_epoch.is_nil() {

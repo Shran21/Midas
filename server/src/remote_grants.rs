@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicI32, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -46,6 +46,7 @@ pub(crate) enum Command {
         message: wire::Prepare,
         stop: watch::Receiver<bool>,
         active: Arc<AtomicBool>,
+        ended: Arc<AtomicI32>,
         reply: oneshot::Sender<Result<Challenge>>,
     },
     Deliver {
@@ -56,6 +57,12 @@ pub(crate) enum Command {
     Media {
         message: wire::MediaOffer,
         reply: oneshot::Sender<Result<String>>,
+    },
+    /// A renewal chained to the last grant of the active request.
+    Renew {
+        message: wire::Deliver,
+        lifetime: Duration,
+        reply: oneshot::Sender<Result<()>>,
     },
 }
 
@@ -87,9 +94,12 @@ struct Flow {
     deadline: Instant,
     stop: watch::Receiver<bool>,
     active: Arc<AtomicBool>,
+    /// Why the agent ended the session itself, as `wire::EndReason`.
+    ended: Arc<AtomicI32>,
     challenge: Option<oneshot::Sender<Result<Challenge>>>,
     delivery: Option<oneshot::Sender<Result<()>>>,
     media: Option<oneshot::Sender<Result<String>>>,
+    renewal: Option<(oneshot::Sender<Result<()>>, Duration)>,
     prepared: bool,
     attended: bool,
 }
@@ -103,11 +113,21 @@ impl Drop for Flow {
 /// Owned by the protected connection/session coordinator, never returned to a browser.
 pub struct Session {
     request: Uuid,
-    deadline: Instant,
+    deadline: Mutex<Instant>,
     active: Arc<AtomicBool>,
+    ended: Arc<AtomicI32>,
     stop: watch::Sender<bool>,
     sender: mpsc::Sender<Command>,
+    /// What renewals of an attended session are signed for, once its grant is acknowledged.
+    renewal: Option<Box<Renewal>>,
     _slot: OwnedSemaphorePermit,
+}
+
+pub(crate) struct Renewal {
+    pub(crate) authority: Arc<GrantAuthority>,
+    pub(crate) observation: SessionObservation,
+    /// The last grant the agent applied; the next renewal names it as its challenge.
+    grant: Mutex<Uuid>,
 }
 
 impl Session {
@@ -116,7 +136,7 @@ impl Session {
     }
     /// Acknowledged, unexpired grant ownership; not proof of an active media channel.
     pub fn is_active(&self) -> bool {
-        Instant::now() < self.deadline
+        Instant::now() < *self.deadline.lock().unwrap_or_else(|e| e.into_inner())
             && self.active.load(Ordering::Acquire)
             && !*self.stop.borrow()
     }
@@ -124,8 +144,58 @@ impl Session {
         self.active.store(false, Ordering::Release);
         self.stop.send_replace(true);
     }
+    /// Why the agent ended the session itself, if it did.
+    pub fn ended_by_agent(&self) -> Option<wire::EndReason> {
+        wire::EndReason::try_from(self.ended.load(Ordering::Acquire))
+            .ok()
+            .filter(|reason| *reason != wire::EndReason::Unspecified)
+    }
+
+    pub(crate) fn renewal(&self) -> Option<(&Renewal, Uuid)> {
+        let renewal = self.renewal.as_ref()?;
+        let grant = *renewal.grant.lock().unwrap_or_else(|e| e.into_inner());
+        Some((renewal, grant))
+    }
+
+    /// Delivers a renewal; once the agent applied it, the session lives one more lifetime.
+    pub(crate) async fn renew(&self, grant: SignedGrant) -> Result<()> {
+        let renewal = self.renewal.as_ref().ok_or(AccessError::Offline)?;
+        if !self.is_active() {
+            return Err(AccessError::Offline);
+        }
+        let claims = verify(&renewal.authority.public_key(), &grant)
+            .map_err(|_| AccessError::Unavailable)?
+            .into_claims();
+        let lifetime = Duration::from_secs(
+            claims
+                .lifetime_seconds()
+                .map_err(|_| AccessError::Unavailable)?,
+        );
+        let (reply, result) = oneshot::channel();
+        self.sender
+            .try_send(Command::Renew {
+                message: wire::Deliver {
+                    request: self.request.as_bytes().to_vec(),
+                    grant: grant.encode_to_vec(),
+                },
+                lifetime,
+                reply,
+            })
+            .map_err(|_| AccessError::Offline)?;
+        wait(result, REPLY_LIMIT).await?;
+        if !self.active.load(Ordering::Acquire) {
+            return Err(AccessError::Offline);
+        }
+        *renewal.grant.lock().unwrap_or_else(|e| e.into_inner()) = claims.id;
+        *self.deadline.lock().unwrap_or_else(|e| e.into_inner()) = Instant::now() + lifetime;
+        Ok(())
+    }
+
     pub fn remaining(&self) -> Duration {
-        self.deadline.saturating_duration_since(Instant::now())
+        self.deadline
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .saturating_duration_since(Instant::now())
     }
 
     /// Passes the browser's WebRTC offer to the agent and returns its answer.
@@ -246,6 +316,7 @@ impl Registration {
                 message,
                 stop,
                 active,
+                ended,
                 reply,
             } => {
                 if self.flow.is_some()
@@ -274,9 +345,11 @@ impl Registration {
                     deadline: now + REPLY_LIMIT + answer.unwrap_or_default(),
                     stop,
                     active,
+                    ended,
                     challenge: Some(reply),
                     delivery: None,
                     media: None,
+                    renewal: None,
                     prepared: false,
                 });
                 Some(Body::RemotePrepare(message))
@@ -325,6 +398,66 @@ impl Registration {
                 flow.media = Some(reply);
                 Some(Body::MediaOffer(message))
             }
+            Command::Renew {
+                message,
+                lifetime,
+                reply,
+            } => {
+                let Some(flow) = self.flow.as_mut().filter(|flow| {
+                    flow.request == message.request
+                        && flow.active.load(Ordering::Acquire)
+                        && flow.renewal.is_none()
+                        && !*flow.stop.borrow()
+                        && flow.stop.has_changed().is_ok()
+                        && Instant::now() < flow.deadline
+                        && !reply.is_closed()
+                }) else {
+                    let _ = reply.send(Err(AccessError::Offline));
+                    return None;
+                };
+                flow.renewal = Some((reply, lifetime.min(LIFETIME)));
+                Some(Body::RemoteRenew(message))
+            }
+        }
+    }
+
+    /// The agent applied a renewal or refused it; only an applied one moves the deadline.
+    pub fn renewed(&mut self, message: wire::Ack) {
+        let Some(flow) = self
+            .flow
+            .as_mut()
+            .filter(|flow| flow.request == message.request)
+        else {
+            return;
+        };
+        let Some((reply, lifetime)) = flow.renewal.take() else {
+            return;
+        };
+        let applied = message.accepted
+            && flow.active.load(Ordering::Acquire)
+            && !*flow.stop.borrow()
+            && flow.stop.has_changed().is_ok()
+            && Instant::now() < flow.deadline
+            && !reply.is_closed();
+        if applied {
+            flow.deadline = Instant::now() + lifetime;
+        }
+        let _ = reply.send(if applied {
+            Ok(())
+        } else {
+            Err(AccessError::Offline)
+        });
+    }
+
+    /// The agent ended the session itself; the flow closes without a revocation.
+    pub fn ended(&mut self, message: wire::Ended) {
+        if let Some(flow) = self
+            .flow
+            .take_if(|flow| flow.request == message.request && flow.active.load(Ordering::Acquire))
+        {
+            let reason =
+                wire::EndReason::try_from(message.reason).unwrap_or(wire::EndReason::Stopped);
+            flow.ended.store(reason as i32, Ordering::Release);
         }
     }
 
@@ -575,10 +708,12 @@ impl Enrollment {
         let (stop, stopped) = watch::channel(false);
         let mut session = Session {
             request: id,
-            deadline: Instant::now() + LIFETIME,
+            deadline: Mutex::new(Instant::now() + LIFETIME),
             active: Arc::new(AtomicBool::new(false)),
+            ended: Arc::new(AtomicI32::new(0)),
             stop,
             sender: sender.clone(),
+            renewal: None,
             _slot: slot,
         };
         let (reply, result) = oneshot::channel();
@@ -598,6 +733,7 @@ impl Enrollment {
                 },
                 stop: stopped,
                 active: session.active.clone(),
+                ended: session.ended.clone(),
                 reply,
             })
             .map_err(|_| AccessError::Offline)?;
@@ -673,10 +809,12 @@ impl Enrollment {
         let (stop, stopped) = watch::channel(false);
         let mut session = Session {
             request: id,
-            deadline: Instant::now() + CONSENT_TIMEOUT + REPLY_LIMIT + LIFETIME,
+            deadline: Mutex::new(Instant::now() + CONSENT_TIMEOUT + REPLY_LIMIT + LIFETIME),
             active: Arc::new(AtomicBool::new(false)),
+            ended: Arc::new(AtomicI32::new(0)),
             stop,
             sender: sender.clone(),
+            renewal: None,
             _slot: slot,
         };
         let (reply, result) = oneshot::channel();
@@ -700,6 +838,7 @@ impl Enrollment {
                 },
                 stop: stopped,
                 active: session.active.clone(),
+                ended: session.ended.clone(),
                 reply,
             })
             .map_err(|_| AccessError::Offline)?;
@@ -739,6 +878,10 @@ impl Enrollment {
                 },
             )
             .await?;
+        let first = verify(&authority.public_key(), &grant)
+            .map_err(|_| AccessError::Unavailable)?
+            .claims()
+            .id;
         let delivered = send_grant(
             &authority,
             &sender,
@@ -748,6 +891,11 @@ impl Enrollment {
             &mut session,
         )
         .await;
+        session.renewal = Some(Box::new(Renewal {
+            authority: authority.clone(),
+            observation,
+            grant: Mutex::new(first),
+        }));
         self.authorizer
             .record_attended(
                 &requester.identity,
@@ -770,6 +918,18 @@ impl Enrollment {
             .await?;
         delivered?;
         Ok(Attended::Granted(session))
+    }
+}
+
+impl Enrollment {
+    /// Renews an active attended session after a fresh check of the operator's authorization.
+    pub(crate) async fn renew_attended(&self, asked: &Asked<'_>, session: &Session) -> Result<()> {
+        let (renewal, previous) = session.renewal().ok_or(AccessError::Offline)?;
+        let grant = self
+            .authorizer
+            .renew_attended_grant(asked, &renewal.authority, &renewal.observation, previous)
+            .await?;
+        session.renew(grant).await
     }
 }
 
@@ -803,7 +963,10 @@ async fn send_grant(
             .lifetime_seconds()
             .map_err(|_| AccessError::Unavailable)?,
     );
-    session.deadline = started + lifetime;
+    *session
+        .deadline
+        .get_mut()
+        .unwrap_or_else(|e| e.into_inner()) = started + lifetime;
     let (reply, result) = oneshot::channel();
     sender
         .try_send(Command::Deliver {

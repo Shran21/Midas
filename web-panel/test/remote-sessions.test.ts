@@ -216,6 +216,16 @@ test("attended requests are read only for the expected request and session", () 
     "ended",
   ])
     assert.equal(readRequest({ ...waiting, state })?.state, state);
+  assert.equal(
+    readRequest({ ...waiting, state: "ended", reason: "local" })?.reason,
+    "local",
+  );
+  assert.equal(readRequest({ ...waiting, state: "ended" })?.reason, null);
+  assert.equal(readRequest({ ...waiting, state: "ended", reason: 3 }), null);
+  assert.equal(
+    readRequest({ ...waiting, state: "ended", reason: "Local End" }),
+    null,
+  );
   for (const invalid of [
     null,
     { ...waiting, id: "00000000-0000-0000-0000-000000000000" },

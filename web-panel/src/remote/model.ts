@@ -148,11 +148,21 @@ export function readRequest(
         return null;
       reason = value.reason;
       break;
+    case "ended":
+      // Present when the session did not end by the operator's own action.
+      if (value.reason !== undefined) {
+        if (
+          typeof value.reason !== "string" ||
+          !/^[a-z_]{1,64}$/.test(value.reason)
+        )
+          return null;
+        reason = value.reason;
+      }
+      break;
     case "declined":
     case "expired":
     case "unavailable":
     case "cancelled":
-    case "ended":
       break;
     default:
       return null;

@@ -301,6 +301,11 @@ async fn session(
                         return Outcome::Ended { connected };
                     }
                 }
+                Ok(Body::RemoteRenew(renewal)) => {
+                    if remote.as_mut().is_none_or(|remote| remote.renew(renewal).is_err()) {
+                        return Outcome::Ended { connected };
+                    }
+                }
                 Ok(Body::RemoteRevoke(request)) => {
                     if remote.as_mut().is_none_or(|remote| remote.revoke(request).is_err()) {
                         return Outcome::Ended { connected };

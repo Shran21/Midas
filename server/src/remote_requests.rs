@@ -28,6 +28,8 @@ type Result<T> = std::result::Result<T, AccessError>;
 const OPERATOR_LIMIT: usize = 4;
 /// Finished requests stay readable this long, so the panel sees the final state.
 const RETAIN: Duration = Duration::from_secs(300);
+/// How often an active attended session is renewed; well inside the 30-second grant lifetime.
+const RENEW_EVERY: Duration = Duration::from_secs(10);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
@@ -45,7 +47,13 @@ pub enum Status {
     /// Nobody could be asked: no signed-in user, no consent component or a session in progress.
     Unavailable,
     Cancelled,
-    Ended,
+    /// The session ended; `reason` says how when it was not the operator: the local user
+    /// (`local`), a changed session (`desktop`), no renewal (`expired`, `offline`), lost
+    /// authorization (`revoked`) or stopped workers (`stopped`).
+    Ended {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reason: Option<&'static str>,
+    },
     Failed {
         reason: &'static str,
     },
@@ -265,14 +273,64 @@ impl Enrollment {
             status.send_replace(Status::Active {
                 until: unix_now() + session.remaining().as_secs() as i64,
             });
+            // Each renewal checks the operator's authorization again; without one the agent ends
+            // the session within a grant lifetime.
+            let mut renew =
+                tokio::time::interval_at(tokio::time::Instant::now() + RENEW_EVERY, RENEW_EVERY);
+            let mut reason = None;
             while session.is_active() {
                 tokio::select! {
                     () = tokio::time::sleep(Duration::from_millis(250)) => {}
-                    () = cancelled(&mut stop) => session.revoke(),
+                    () = cancelled(&mut stop) => {
+                        reason = Some("operator");
+                        session.revoke();
+                    }
+                    _ = renew.tick() => match enrollment.renew_attended(&asked, &session).await {
+                        Ok(()) => {
+                            status.send_replace(Status::Active {
+                                until: unix_now() + session.remaining().as_secs() as i64,
+                            });
+                        }
+                        Err(error) => {
+                            reason = Some(match error {
+                                AccessError::Offline
+                                | AccessError::Unavailable
+                                | AccessError::Conflict => "offline",
+                                _ => "revoked",
+                            });
+                            session.revoke();
+                        }
+                    },
                 }
             }
+            let reason = reason.or_else(|| {
+                session.ended_by_agent().map(|ended| match ended {
+                    wire::EndReason::Local => "local",
+                    wire::EndReason::Desktop => "desktop",
+                    wire::EndReason::Expired => "expired",
+                    _ => "stopped",
+                })
+            });
             drop(session);
-            status.send_replace(Status::Ended);
+            let label = reason.unwrap_or("expired");
+            let outcome = if matches!(label, "operator" | "local") {
+                Outcome::Success
+            } else {
+                Outcome::Failure
+            };
+            let _ = enrollment
+                .authorizer
+                .record_attended(
+                    &requester.identity,
+                    target,
+                    &request,
+                    id,
+                    (Action::RemoteSessionEnd, outcome, label),
+                )
+                .await;
+            status.send_replace(Status::Ended {
+                reason: reason.filter(|reason| *reason != "operator"),
+            });
         });
         Ok(view)
     }

@@ -257,6 +257,16 @@ async fn serve(
                     registration.acknowledged(message);
                 }
             }
+            Ok(Ok(Body::RemoteRenewed(message))) => {
+                if let Some(registration) = &mut remote_grants {
+                    registration.renewed(message);
+                }
+            }
+            Ok(Ok(Body::RemoteEnded(message))) => {
+                if let Some(registration) = &mut remote_grants {
+                    registration.ended(message);
+                }
+            }
             Ok(Ok(Body::MediaAnswer(message))) => {
                 if let Some(registration) = &mut remote_grants {
                     registration.media_answer(message);

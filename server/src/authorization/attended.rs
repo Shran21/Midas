@@ -8,7 +8,9 @@ use serde::Deserialize;
 
 use super::{
     unattended::{
-        Presence, SessionObservation, SessionSelection, grants::GrantRequest, observed_presence,
+        Presence, SessionObservation, SessionSelection,
+        grants::{GrantAuthority, GrantRequest},
+        observed_presence,
     },
     *,
 };
@@ -22,6 +24,32 @@ pub struct AttendedRequest {
     pub mode: RemoteMode,
     pub uac: bool,
     pub session: SessionSelection,
+}
+
+/// The session and rights an attended request names, as its grants bind them.
+fn granted(target: Target, request: &AttendedRequest) -> Result<(GrantTarget, Rights)> {
+    Ok((
+        GrantTarget {
+            connection: Connection {
+                tenant: target.tenant,
+                device: target.device.ok_or(AccessError::InvalidInput)?,
+                id: request.session.connection_id,
+            },
+            session: request
+                .session
+                .os_session_id
+                .parse()
+                .map_err(|_| AccessError::InvalidInput)?,
+            generation: request.session.generation,
+        },
+        Rights {
+            mode: match request.mode {
+                RemoteMode::Normal => Mode::Normal,
+                RemoteMode::Administrative => Mode::Administrative,
+            },
+            uac: request.uac,
+        },
+    ))
 }
 
 /// Every permission an attended session of this mode needs; administrative mode and UAC each
@@ -95,6 +123,51 @@ impl Authorizer {
         let identity = sessions.validate(token, false).await?;
         self.evaluate(&identity, target, &mode_permissions(mode, uac), false)
             .await
+    }
+
+    /// Renews an active attended session. The operator's browser session must still be valid and
+    /// hold every permission of the mode, and the agent credential must be current; the passkey
+    /// is not asked again. The renewal names the last applied grant, so only that lease extends.
+    pub(crate) async fn renew_attended_grant(
+        &self,
+        asked: &Asked<'_>,
+        authority: &GrantAuthority,
+        observation: &SessionObservation,
+        previous: Uuid,
+    ) -> Result<SignedGrant> {
+        let Asked {
+            sessions,
+            token,
+            target,
+            request,
+            ..
+        } = *asked;
+        let identity = sessions.validate(token, false).await?;
+        let mut tx = self.unattended_tx(target.tenant).await?;
+        Self::evaluate_in(&mut tx, &identity, target, &request.permissions(), false).await?;
+        let active: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM midas.devices d JOIN midas.agent_credentials c ON c.tenant_id=d.tenant_id AND c.device_id=d.id WHERE d.tenant_id=$1 AND d.id=$2 AND d.enrollment='active' AND c.fingerprint=$3 AND c.revoked_at IS NULL AND c.expires_at > clock_timestamp())")
+            .bind(target.tenant).bind(target.device).bind(&observation.source.credential_fingerprint).fetch_one(&mut *tx).await?;
+        if !active {
+            return Err(AccessError::Offline);
+        }
+        let (now, session_deadline): (i64, i64) = sqlx::query_as("SELECT floor(extract(epoch FROM clock_timestamp()))::bigint, floor(extract(epoch FROM least(expires_at, idle_expires_at)))::bigint FROM midas.browser_sessions WHERE id=$1")
+            .bind(identity.id).fetch_one(&mut *tx).await?;
+        drop(tx);
+        let expiry = (now + midas_remote_auth::MAX_LIFETIME_SECONDS as i64).min(session_deadline);
+        if expiry <= now {
+            return Err(AccessError::Unauthenticated);
+        }
+        let (grant_target, rights) = granted(target, request)?;
+        let claims = Claims {
+            id: Uuid::new_v4(),
+            challenge: previous,
+            operator: identity.operator_id,
+            target: grant_target,
+            rights,
+            issued_at: now,
+            expires_at: expiry,
+        };
+        authority.sign(&claims, &observation.source)
     }
 
     /// Checks the request and records a refusal; on success it names who asks, for the window.
@@ -210,30 +283,13 @@ impl Authorizer {
                     AccessError::Unauthenticated
                 });
             }
+            let (grant_target, rights) = granted(target, request)?;
             let claims = Claims {
                 id: Uuid::new_v4(),
                 challenge: issuance.challenge,
                 operator: identity.operator_id,
-                target: GrantTarget {
-                    connection: Connection {
-                        tenant: target.tenant,
-                        device: target.device.ok_or(AccessError::InvalidInput)?,
-                        id: request.session.connection_id,
-                    },
-                    session: request
-                        .session
-                        .os_session_id
-                        .parse()
-                        .map_err(|_| AccessError::InvalidInput)?,
-                    generation: request.session.generation,
-                },
-                rights: Rights {
-                    mode: match request.mode {
-                        RemoteMode::Normal => Mode::Normal,
-                        RemoteMode::Administrative => Mode::Administrative,
-                    },
-                    uac: request.uac,
-                },
+                target: grant_target,
+                rights,
                 issued_at: now,
                 expires_at: expiry,
             };

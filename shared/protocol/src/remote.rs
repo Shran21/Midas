@@ -103,6 +103,29 @@ pub struct Ack {
     pub accepted: bool,
 }
 
+/// Why the agent ended a session without the server asking.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, prost::Enumeration)]
+#[repr(i32)]
+pub enum EndReason {
+    Unspecified = 0,
+    /// The local user pressed End.
+    Local = 1,
+    /// The target session or desktop changed.
+    Desktop = 2,
+    /// No renewal arrived within the grant's lifetime.
+    Expired = 3,
+    /// The workers stopped.
+    Stopped = 4,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct Ended {
+    #[prost(bytes = "vec", tag = "1")]
+    pub request: Vec<u8>,
+    #[prost(enumeration = "EndReason", tag = "2")]
+    pub reason: i32,
+}
+
 /// The most SDP bytes either side accepts.
 pub const MAX_SDP: usize = 16 * 1024;
 
@@ -178,6 +201,18 @@ mod tests {
                 request: vec![1; 16],
                 sdp: String::new(),
             }),
+            Body::RemoteRenew(Deliver {
+                request: vec![1; 16],
+                grant: b"private renewal".to_vec(),
+            }),
+            Body::RemoteRenewed(Ack {
+                request: vec![1; 16],
+                accepted: false,
+            }),
+            Body::RemoteEnded(Ended {
+                request: vec![1; 16],
+                reason: EndReason::Local as i32,
+            }),
         ];
         for message in messages {
             assert_eq!(
@@ -186,6 +221,9 @@ mod tests {
             );
             if matches!(message, Body::RemoteDeliver(_)) {
                 assert_eq!(format!("{message:?}"), "RemoteDeliver(Deliver { .. })");
+            }
+            if matches!(message, Body::RemoteRenew(_)) {
+                assert_eq!(format!("{message:?}"), "RemoteRenew(Deliver { .. })");
             }
         }
     }
