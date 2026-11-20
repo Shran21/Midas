@@ -20,14 +20,17 @@ use std::{
 use midas_agent_core::media::{
     adapt::{Limits, Profile, Settings},
     codec::{Encoder, Kind, Profile as H264Profile},
+    files::Files,
     link::{
         Command, Desktop, KEEPALIVE_MESSAGE, command_message, desktop_message, read_command,
-        read_desktop, sas_result_message,
+        read_desktop, sas_result_message, transfer_reply_message,
     },
     peer::{Answered, answer},
     session::{Input, Transport},
+    transfer::{read_request, reply_message},
     turn::{Server, allocate},
 };
+use midas_remote_auth::Transfer;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::windows::named_pipe::NamedPipeServer,
@@ -59,8 +62,14 @@ const LISTENING: u8 = 5;
 const POLL: Duration = Duration::from_millis(100);
 
 /// The service's request to the companion: candidate addresses, the relay the agent may
-/// allocate on with its short-lived credential, and the browser's offer.
-pub fn offer_message(hosts: &[IpAddr], relay: Option<&Server>, sdp: &str) -> Vec<u8> {
+/// allocate on with its short-lived credential, the transfer the grant allows and the browser's
+/// offer.
+pub fn offer_message(
+    hosts: &[IpAddr],
+    relay: Option<&Server>,
+    sdp: &str,
+    transfer: Transfer,
+) -> Vec<u8> {
     let mut message = vec![OFFER, hosts.len().min(16) as u8];
     let address = |message: &mut Vec<u8>, host: &IpAddr| match host {
         IpAddr::V4(v4) => {
@@ -87,6 +96,11 @@ pub fn offer_message(hosts: &[IpAddr], relay: Option<&Server>, sdp: &str) -> Vec
         }
         None => message.push(0),
     }
+    message.push(
+        u8::from(transfer.clipboard)
+            | (u8::from(transfer.upload) << 1)
+            | (u8::from(transfer.download) << 2),
+    );
     message.extend_from_slice(sdp.as_bytes());
     message
 }
@@ -117,7 +131,16 @@ fn read_text(rest: &mut &[u8]) -> Option<String> {
         .filter(|text| !text.is_empty() && !text.chars().any(char::is_control))
 }
 
-fn read_offer(message: &[u8]) -> Option<(Vec<IpAddr>, Option<Server>, String)> {
+/// What the service asks the companion to answer.
+#[derive(Debug, PartialEq)]
+struct Offer {
+    hosts: Vec<IpAddr>,
+    relay: Option<Server>,
+    transfer: Transfer,
+    sdp: String,
+}
+
+fn read_offer(message: &[u8]) -> Option<Offer> {
     let (&[kind, count], mut rest) = message.split_first_chunk::<2>()?;
     if kind != OFFER || count > 16 {
         return None;
@@ -145,8 +168,22 @@ fn read_offer(message: &[u8]) -> Option<(Vec<IpAddr>, Option<Server>, String)> {
         }
         _ => return None,
     };
+    let (&[flags], rest) = rest.split_first_chunk::<1>()?;
+    if flags >= 8 {
+        return None;
+    }
+    let transfer = Transfer {
+        clipboard: flags & 1 != 0,
+        upload: flags & 2 != 0,
+        download: flags & 4 != 0,
+    };
     let sdp = String::from_utf8(rest.to_vec()).ok()?;
-    (!sdp.is_empty() && sdp.len() <= midas_protocol::remote::MAX_SDP).then_some((hosts, relay, sdp))
+    (!sdp.is_empty() && sdp.len() <= midas_protocol::remote::MAX_SDP).then_some(Offer {
+        hosts,
+        relay,
+        transfer,
+        sdp,
+    })
 }
 
 /// The companion's answer, or `None` when it refused the offer.
@@ -314,6 +351,42 @@ type Thread = Box<
 
 /// A worker's side of the control channel. Its thread captures and, without `inline`, also
 /// executes input; with `inline`, input runs here against the view the thread keeps.
+/// Clipboard and files on their own thread with the user's token, so hashing a large file never
+/// stalls the picture. The transport has checked each message against the grant already.
+fn transfers(replies: mpsc::Sender<Vec<u8>>) -> blocking::Sender<Vec<u8>> {
+    let (sender, requests) = blocking::channel::<Vec<u8>>();
+    std::thread::spawn(move || {
+        let Some((home, folder)) = crate::win::transfer::folders() else {
+            tracing::warn!("the user's folders are not known; no transfer");
+            return;
+        };
+        let platform = match crate::win::transfer::Windows::new() {
+            Ok(platform) => platform,
+            Err(error) => {
+                tracing::warn!(%error, "clipboard window not created; no transfer");
+                return;
+            }
+        };
+        let all = Transfer {
+            clipboard: true,
+            upload: true,
+            download: true,
+        };
+        let mut files = Files::new(platform, home, folder);
+        while let Ok(request) = requests.recv() {
+            let Some(request) = read_request(&request, all) else {
+                continue;
+            };
+            for reply in files.handle(request) {
+                if replies.blocking_send(reply_message(&reply)).is_err() {
+                    return;
+                }
+            }
+        }
+    });
+    sender
+}
+
 async fn serve<S>(
     connection: Connection<S>,
     inline: Option<Arc<Mutex<Option<Rect>>>>,
@@ -329,6 +402,8 @@ where
     let running = std::thread::spawn(move || thread(thread_commands, out_sender));
     let mut held = Held::default();
     let mut tick = tokio::time::interval(KEEPALIVE);
+    let (replies_sender, mut replies) = mpsc::channel::<Vec<u8>>(64);
+    let mut files: Option<blocking::Sender<Vec<u8>>> = None;
     let result = loop {
         tokio::select! {
             message = incoming.recv() => {
@@ -340,12 +415,23 @@ where
                     (Some(Command::Stop), _) => break Ok(()),
                     (Some(Command::Input(input)), Some(view)) => inject(&mut held, input, view),
                     (Some(Command::Release), Some(_)) => release(&mut held),
+                    (Some(Command::Transfer(request)), Some(_)) => {
+                        let sender = files.get_or_insert_with(|| transfers(replies_sender.clone()));
+                        let _ = sender.send(request);
+                    }
+                    // Only the user worker handles the user's files and clipboard.
+                    (Some(Command::Transfer(_)), None) => {}
                     (Some(command), _) => {
                         if commands.send(command).is_err() {
                             break Ok(());
                         }
                     }
                     (None, _) => break Err(denied()),
+                }
+            }
+            Some(reply) = replies.recv() => {
+                if let Err(error) = send_all(&mut writer, &transfer_reply_message(&reply)).await {
+                    break Err(error);
                 }
             }
             sent = out.recv() => {
@@ -446,7 +532,7 @@ fn follow(
                 Command::Input(input) => inject(&mut held, input, &view),
                 Command::Release => release(&mut held),
                 // The transport side answers Ctrl+Alt+Del; a worker never acts on it.
-                Command::Sas => {}
+                Command::Sas | Command::Transfer(_) => {}
                 Command::Settings(changed) => {
                     settings = Some(changed);
                     if let Some(active) = &mut stream
@@ -596,9 +682,15 @@ const RELAY_WAIT: Duration = Duration::from_secs(3);
 
 /// Answers the offer and starts the transport thread; `None` refuses it. With a relay, the
 /// answer also carries the relayed and server-reflexive addresses.
-fn start(hosts: &[IpAddr], relay: Option<&Server>, sdp: &str) -> Option<(String, Transport)> {
+fn start(offer: &Offer) -> Option<(String, Transport)> {
+    let Offer {
+        hosts,
+        relay,
+        transfer,
+        sdp,
+    } = offer;
     let socket = UdpSocket::bind(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0))).ok()?;
-    let allocation = relay.and_then(|relay| {
+    let allocation = relay.as_ref().and_then(|relay| {
         allocate(&socket, relay, Instant::now() + RELAY_WAIT)
             .inspect_err(|error| tracing::warn!(?error, "relay not allocated"))
             .ok()
@@ -613,10 +705,9 @@ fn start(hosts: &[IpAddr], relay: Option<&Server>, sdp: &str) -> Option<(String,
     }
     let Answered { answer, peer } =
         answer(sdp, socket, &hosts, allocation, software(), Instant::now()).ok()?;
-    Some((
-        answer,
-        Transport::new(peer, Profile::Text, (1920, 1080), Instant::now()),
-    ))
+    let mut transport = Transport::new(peer, Profile::Text, (1920, 1080), Instant::now());
+    transport.allow_transfer(*transfer);
+    Some((answer, transport))
 }
 
 /// Which worker serves the browser for a desktop state: frames come from the privileged worker
@@ -728,12 +819,10 @@ where
                 let offer = read_offer(&message).filter(|_| !started);
                 // Allocating on the relay waits on the network, so it runs off this thread.
                 let answered = match offer {
-                    Some((hosts, relay, sdp)) => {
-                        tokio::task::spawn_blocking(move || start(&hosts, relay.as_ref(), &sdp))
-                            .await
-                            .ok()
-                            .flatten()
-                    }
+                    Some(offer) => tokio::task::spawn_blocking(move || start(&offer))
+                        .await
+                        .ok()
+                        .flatten(),
                     None => None,
                 };
                 match answered {
@@ -851,6 +940,8 @@ where
                         (true, true)
                     }
                     Command::Keyframe | Command::Stop => (true, true),
+                    // Files and the clipboard belong to the user; never to the privileged worker.
+                    Command::Transfer(_) => (true, false),
                     // Only with UAC rights, whose privileged worker handles the secure desktop
                     // that Ctrl+Alt+Del opens; the console session and Windows policy decide too.
                     Command::Sas => {
@@ -903,22 +994,44 @@ mod tests {
             IpAddr::V4(Ipv4Addr::new(10, 0, 0, 5)),
             IpAddr::V6("2001:db8::1".parse().unwrap()),
         ];
-        let message = offer_message(&hosts, None, "v=0");
+        let download = Transfer {
+            download: true,
+            ..Transfer::NONE
+        };
+        let message = offer_message(&hosts, None, "v=0", download);
         assert_eq!(
             read_offer(&message),
-            Some((hosts.to_vec(), None, "v=0".into()))
+            Some(Offer {
+                hosts: hosts.to_vec(),
+                relay: None,
+                transfer: download,
+                sdp: "v=0".into()
+            })
         );
-        assert_eq!(read_offer(&offer_message(&hosts, None, "")), None);
+        assert_eq!(
+            read_offer(&offer_message(&hosts, None, "", Transfer::NONE)),
+            None
+        );
         let relay = Server {
             address: "[2001:db8::7]:3478".parse().unwrap(),
             username: "1700000300:request".into(),
             password: "credential".into(),
         };
-        let with_relay = offer_message(&hosts, Some(&relay), "v=0");
+        let with_relay = offer_message(&hosts, Some(&relay), "v=0", Transfer::NONE);
         assert_eq!(
             read_offer(&with_relay),
-            Some((hosts.to_vec(), Some(relay.clone()), "v=0".into()))
+            Some(Offer {
+                hosts: hosts.to_vec(),
+                relay: Some(relay.clone()),
+                transfer: Transfer::NONE,
+                sdp: "v=0".into()
+            })
         );
+        // An unknown transfer flag is refused.
+        let mut unknown = message.clone();
+        let flags = unknown.len() - 4;
+        unknown[flags] = 8;
+        assert_eq!(read_offer(&unknown), None);
         assert_eq!(read_offer(&with_relay[..with_relay.len() - 8]), None);
         assert_eq!(read_offer(&message[..5]), None);
         assert_eq!(read_offer(&[OFFER, 17]), None);
@@ -939,7 +1052,10 @@ mod tests {
         let mut longer = message.clone();
         longer.push(0);
         assert_eq!(read_listen(&longer), None);
-        assert_eq!(read_listen(&offer_message(&[], None, "v=0")), None);
+        assert_eq!(
+            read_listen(&offer_message(&[], None, "v=0", Transfer::NONE)),
+            None
+        );
         assert!(listening(&[LISTENING]) && !listening(&[REFUSED]));
     }
 

@@ -51,6 +51,7 @@ pub async fn verify(ctx: Context<'_>, admin: &mut PgConnection) {
             Rights {
                 mode: Mode::Administrative,
                 uac: true,
+                transfer: Default::default(),
             },
         )
         .unwrap();
@@ -64,6 +65,7 @@ pub async fn verify(ctx: Context<'_>, admin: &mut PgConnection) {
             os_session_id: "7".into(),
             generation: target.generation,
         },
+        transfer: Default::default(),
     };
     let vacant =
         SessionObservation::from_agent(ctx.admission, request.session.clone(), Presence::Vacant)

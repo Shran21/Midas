@@ -1,3 +1,5 @@
+import type { Transfer } from "./remote/model";
+
 export type Method =
   | "passkey"
   | "password_totp"
@@ -473,6 +475,7 @@ export const api = {
       mode: "normal" | "administrative";
       uac: boolean;
       session: SessionSelection;
+      transfer: Transfer;
     },
     csrf: string,
     signal: AbortSignal,

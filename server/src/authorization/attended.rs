@@ -24,6 +24,8 @@ pub struct AttendedRequest {
     pub mode: RemoteMode,
     pub uac: bool,
     pub session: SessionSelection,
+    #[serde(default)]
+    pub transfer: Transfer,
 }
 
 /// The session and rights an attended request names, as its grants bind them.
@@ -48,13 +50,14 @@ fn granted(target: Target, request: &AttendedRequest) -> Result<(GrantTarget, Ri
                 RemoteMode::Administrative => Mode::Administrative,
             },
             uac: request.uac,
+            transfer: request.transfer.rights(),
         },
     ))
 }
 
-/// Every permission an attended session of this mode needs; administrative mode and UAC each
-/// add their own, separately granted permission.
-fn mode_permissions(mode: RemoteMode, uac: bool) -> Vec<Permission> {
+/// Every permission an attended session of this mode needs; administrative mode, UAC and each
+/// kind of transfer add their own, separately granted permission.
+fn mode_permissions(mode: RemoteMode, uac: bool, transfer: Transfer) -> Vec<Permission> {
     let mut permissions = vec![
         Permission::DeviceRead,
         Permission::RemoteView,
@@ -66,12 +69,13 @@ fn mode_permissions(mode: RemoteMode, uac: bool) -> Vec<Permission> {
     if uac {
         permissions.push(Permission::RemoteUacInteract);
     }
+    permissions.extend(transfer.permissions());
     permissions
 }
 
 impl AttendedRequest {
     fn permissions(&self) -> Vec<Permission> {
-        mode_permissions(self.mode, self.uac)
+        mode_permissions(self.mode, self.uac, self.transfer)
     }
 
     fn fresh_passkey(&self) -> bool {
@@ -119,10 +123,16 @@ impl Authorizer {
         target: Target,
         mode: RemoteMode,
         uac: bool,
+        transfer: Transfer,
     ) -> Result<AccessDecision> {
         let identity = sessions.validate(token, false).await?;
-        self.evaluate(&identity, target, &mode_permissions(mode, uac), false)
-            .await
+        self.evaluate(
+            &identity,
+            target,
+            &mode_permissions(mode, uac, transfer),
+            false,
+        )
+        .await
     }
 
     /// Renews an active attended session. The operator's browser session must still be valid and
@@ -225,6 +235,7 @@ impl Authorizer {
             .detail("request_id", id.to_string())
             .detail("mode", json!(request.mode))
             .detail("uac", request.uac)
+            .detail("transfer", json!(request.transfer))
             .detail("session", json!(request.session))
             .detail("result", label);
         event.tenant = Some(target.tenant);
@@ -306,6 +317,7 @@ impl Authorizer {
         .detail("request_id", id.to_string())
         .detail("mode", json!(request.mode))
         .detail("uac", request.uac)
+        .detail("transfer", json!(request.transfer))
         .detail("session", json!(request.session));
         event.tenant = Some(target.tenant);
         event.device = target.device;

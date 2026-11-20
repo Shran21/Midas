@@ -29,6 +29,14 @@ pub struct Prepare {
     /// Present only for an attended request: the agent must obtain local consent first.
     #[prost(message, optional, tag = "7")]
     pub consent: Option<ConsentRequest>,
+    #[prost(bool, tag = "8")]
+    pub clipboard: bool,
+    /// Files from the operator to the device.
+    #[prost(bool, tag = "9")]
+    pub upload: bool,
+    /// Files from the device to the operator.
+    #[prost(bool, tag = "10")]
+    pub download: bool,
 }
 
 /// What the local consent window names, as verified by the server.
@@ -197,6 +205,9 @@ mod tests {
                     customer_name: "Customer".into(),
                     timeout_seconds: 60,
                 }),
+                clipboard: true,
+                upload: false,
+                download: true,
             }),
             Body::RemoteChallenge(Challenge {
                 request: vec![1; 16],

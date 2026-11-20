@@ -9,6 +9,13 @@ use prost::Message;
 use super::*;
 use crate::remote::{DesktopKind, Worker};
 
+/// The transfer the fixture's request asks for; the grant must carry exactly this.
+const TRANSFER: Transfer = Transfer {
+    clipboard: true,
+    upload: false,
+    download: true,
+};
+
 struct Broker {
     observed: Observation,
     occupied: AtomicBool,
@@ -153,6 +160,9 @@ impl Fixture {
                 mode: wire::Mode::Administrative as i32,
                 uac: true,
                 consent: None,
+                clipboard: TRANSFER.clipboard,
+                upload: TRANSFER.upload,
+                download: TRANSFER.download,
             },
             key,
             broker,
@@ -175,6 +185,7 @@ impl Fixture {
                 rights: Rights {
                     mode: Mode::Administrative,
                     uac: true,
+                    transfer: TRANSFER,
                 },
                 issued_at: 1,
                 expires_at: 31,
@@ -422,7 +433,8 @@ async fn an_occupied_desktop_gets_a_challenge_only_after_the_local_user_allows()
         asked[0].rights,
         Rights {
             mode: Mode::Administrative,
-            uac: true
+            uac: true,
+            transfer: TRANSFER,
         }
     );
     transport.deliver(f.sign(challenge)).unwrap();

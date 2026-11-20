@@ -252,6 +252,7 @@ mod tests {
             customer: "Trial Customer".into(),
             administrative: true,
             uac: false,
+            transfer: midas_remote_auth::Transfer::NONE,
             seconds: 30,
         }
     }

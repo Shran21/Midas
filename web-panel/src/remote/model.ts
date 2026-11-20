@@ -91,10 +91,49 @@ export type RequestState =
   | "ended"
   | "failed";
 
+/** What a session may move besides the picture and input; each needs its own permission. */
+export type Transfer = {
+  clipboard: boolean;
+  /** Files to the device. */
+  upload: boolean;
+  /** Files from the device. */
+  download: boolean;
+};
+
+export const NO_TRANSFER: Transfer = {
+  clipboard: false,
+  upload: false,
+  download: false,
+};
+
+function readTransfer(value: unknown): Transfer | null {
+  if (
+    !record(value) ||
+    typeof value.clipboard !== "boolean" ||
+    typeof value.upload !== "boolean" ||
+    typeof value.download !== "boolean"
+  )
+    return null;
+  return {
+    clipboard: value.clipboard,
+    upload: value.upload,
+    download: value.download,
+  };
+}
+
+export function sameTransfer(a: Transfer, b: Transfer) {
+  return (
+    a.clipboard === b.clipboard &&
+    a.upload === b.upload &&
+    a.download === b.download
+  );
+}
+
 export type RemoteRequest = {
   id: string;
   mode: "normal" | "administrative";
   uac: boolean;
+  transfer: Transfer;
   os_session_id: string;
   /** The requester's name as the consent window showed it. */
   requester: string;
@@ -129,6 +168,8 @@ export function readRequest(
         value.os_session_id !== expected.os_session_id))
   )
     return null;
+  const transfer = readTransfer(value.transfer);
+  if (!transfer) return null;
   const time = (field: unknown) =>
     typeof field === "number" && Number.isSafeInteger(field) && field > 0
       ? field
@@ -175,6 +216,7 @@ export function readRequest(
     id: value.id,
     mode: value.mode,
     uac: value.uac,
+    transfer,
     os_session_id: value.os_session_id,
     requester: value.requester,
     state: value.state,

@@ -61,10 +61,28 @@ pub enum Mode {
     Administrative,
 }
 
+/// What may move between the operator and the device besides the picture and input.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Transfer {
+    pub clipboard: bool,
+    /// Files from the operator to the device.
+    pub upload: bool,
+    /// Files from the device to the operator.
+    pub download: bool,
+}
+impl Transfer {
+    pub const NONE: Self = Self {
+        clipboard: false,
+        upload: false,
+        download: false,
+    };
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Rights {
     pub mode: Mode,
     pub uac: bool,
+    pub transfer: Transfer,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -158,6 +176,12 @@ struct Wire {
     issued_at: i64,
     #[prost(int64, tag = "13")]
     expires_at: i64,
+    #[prost(bool, tag = "14")]
+    clipboard: bool,
+    #[prost(bool, tag = "15")]
+    upload: bool,
+    #[prost(bool, tag = "16")]
+    download: bool,
 }
 
 impl From<&Claims> for Wire {
@@ -179,6 +203,9 @@ impl From<&Claims> for Wire {
             uac: c.rights.uac,
             issued_at: c.issued_at,
             expires_at: c.expires_at,
+            clipboard: c.rights.transfer.clipboard,
+            upload: c.rights.transfer.upload,
+            download: c.rights.transfer.download,
         }
     }
 }
@@ -260,6 +287,11 @@ pub fn verify(key: &[u8; 32], grant: &SignedGrant) -> Result<VerifiedGrant, Erro
                 _ => return Err(Error::Invalid),
             },
             uac: wire.uac,
+            transfer: Transfer {
+                clipboard: wire.clipboard,
+                upload: wire.upload,
+                download: wire.download,
+            },
         },
         issued_at: wire.issued_at,
         expires_at: wire.expires_at,

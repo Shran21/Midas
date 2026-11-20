@@ -80,7 +80,7 @@ Natív szerződés: [WTS-munkamenetállapotok](https://learn.microsoft.com/en-us
 
 ### Hozzáférés ellenőrzése az adminpanelről
 
-A `POST /api/tenants/{id}/devices/{device}/unattended-check` a `mode` (`normal` vagy `administrative`), `uac`, `reason` és `session` mezőket fogadja. A `session` a fenti háromelemű kijelölés. Ismeretlen mező, például a böngésző által beküldött `presence`, elutasított. Origin- és CSRF-védelem kötelező. A szerver a jogosultságot és a friss passkeyt még a natív lekérés előtt ellenőrzi, majd az agenttől új listát kér. Csak az azonos kapcsolatú, munkamenet-azonosítójú és generációjú cél fogadható el.
+A `POST /api/tenants/{id}/devices/{device}/unattended-check` a `mode` (`normal` vagy `administrative`), `uac`, `reason` és `session` mezőket fogadja, valamint a nem kötelező `transfer` mezőt (vágólap és fájlátvitel, lásd [jogosultságok](jogosultsagok.md)). A `session` a fenti háromelemű kijelölés. Ismeretlen mező, például a böngésző által beküldött `presence`, elutasított. Origin- és CSRF-védelem kötelező. A szerver a jogosultságot és a friss passkeyt még a natív lekérés előtt ellenőrzi, majd az agenttől új listát kér. Csak az azonos kapcsolatú, munkamenet-azonosítójú és generációjú cél fogadható el.
 
 Sikeres ellenőrzéskor a válasz `decision: "eligible"`, `session` és `expires_at` mezőket tartalmaz, vagy kizárólag `decision: "local_consent_required"` eredményt ad. Egyik sem végrehajtható felhatalmazás. Ismeretlen, eltűnt, lecserélt vagy megszakadt cél `409`; nem engedélyezett kérés `404`; lejárt passkey `403` és `fresh_passkey_required`; auditálási hiba `503`. A tanúsítvány, jogosultság és szabályzat a natív válasz után ismét ellenőrzött. Az elutasított előzetes jogosultsági ellenőrzés és a sikertelen agentlekérés is auditált.
 
@@ -149,7 +149,7 @@ Native contracts: [WTS session states](https://learn.microsoft.com/en-us/windows
 
 ### Access check from the administration panel
 
-`POST /api/tenants/{id}/devices/{device}/unattended-check` accepts `mode` (`normal` or `administrative`), `uac`, `reason` and `session`, with the three-part selection illustrated above. Unknown fields, including browser-supplied `presence`, are rejected. Origin and CSRF validation are required. The server checks permissions and fresh passkey authentication before querying the agent, then requests a new native list. The connection, session ID and generation must all match.
+`POST /api/tenants/{id}/devices/{device}/unattended-check` accepts `mode` (`normal` or `administrative`), `uac`, `reason` and `session`, plus the optional `transfer` field (clipboard and file transfer, see [permissions](jogosultsagok.md#english)), with the three-part selection illustrated above. Unknown fields, including browser-supplied `presence`, are rejected. Origin and CSRF validation are required. The server checks permissions and fresh passkey authentication before querying the agent, then requests a new native list. The connection, session ID and generation must all match.
 
 A successful response contains `decision: "eligible"`, `session` and `expires_at`, or only `decision: "local_consent_required"`. Neither is an executable grant. Unknown, missing, replaced or disconnected targets return `409`; disallowed requests return `404`; stale passkeys return `403` with `fresh_passkey_required`; audit failures return `503`. Credentials, authorization and policy are rechecked after the native response. Refused preliminary authorization and failed agent queries are audited too.
 

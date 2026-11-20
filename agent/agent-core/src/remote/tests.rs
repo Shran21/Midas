@@ -1,5 +1,5 @@
 use super::*;
-use midas_remote_auth::SigningKey;
+use midas_remote_auth::{SigningKey, Transfer};
 
 struct Fixture {
     key: SigningKey,
@@ -27,7 +27,11 @@ impl Fixture {
             key,
             target,
             operator: Uuid::new_v4(),
-            rights: Rights { mode, uac },
+            rights: Rights {
+                mode,
+                uac,
+                transfer: Transfer::NONE,
+            },
             observation: Observation {
                 target,
                 presence: Presence::Vacant,
@@ -190,7 +194,7 @@ fn a_grant_is_consumed_once_for_its_exact_request() {
         next.accept(&grant, f.observation),
         Err(Error::Target)
     ));
-    let changes: [fn(&mut Claims); 9] = [
+    let changes: [fn(&mut Claims); 12] = [
         |c| c.challenge = Uuid::new_v4(),
         |c| c.operator = Uuid::new_v4(),
         |c| c.target.connection.tenant = Uuid::new_v4(),
@@ -200,6 +204,9 @@ fn a_grant_is_consumed_once_for_its_exact_request() {
         |c| c.target.generation = Uuid::new_v4(),
         |c| c.rights.uac = true,
         |c| c.rights.mode = Mode::Administrative,
+        |c| c.rights.transfer.clipboard = true,
+        |c| c.rights.transfer.upload = true,
+        |c| c.rights.transfer.download = true,
     ];
     for change in changes {
         let (pending, mut c) = f.prepare();
@@ -469,6 +476,7 @@ async fn a_renewal_extends_only_the_last_grant_of_its_own_lease() {
         rights: Rights {
             mode: Mode::Administrative,
             uac: true,
+            transfer: Transfer::NONE,
         },
         issued_at: 200,
         expires_at: 230,

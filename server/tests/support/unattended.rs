@@ -251,6 +251,7 @@ pub async fn verify(database: &Database, admin: &mut PgConnection) {
         uac: true,
         reason: "Planned maintenance".into(),
         session: selected.clone(),
+        transfer: Default::default(),
     };
     let target = Target {
         tenant,
@@ -305,6 +306,7 @@ pub async fn verify(database: &Database, admin: &mut PgConnection) {
         mode: request.mode,
         uac: request.uac,
         reason: request.reason.clone(),
+        transfer: request.transfer,
     };
     let stale = SessionObservation::from_agent(
         &disconnected,

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { api, type DeviceSummary } from "../api";
 import type { Language } from "../i18n";
 import type { RemoteRequest } from "./model";
+import { TransferPanel } from "./TransferPanel";
 import { viewerCopy } from "./viewerCopy";
 import {
   bitrate,
@@ -66,6 +67,13 @@ export function Viewer({
   const [profile, setProfile] = useState<"text" | "motion">("text");
   const [sas, setSas] = useState<"sent" | "unavailable" | null>(null);
   const [typed, setTyped] = useState("");
+  const [transferChannel, setTransferChannel] = useState<RTCDataChannel | null>(
+    null,
+  );
+  const transfers =
+    request.transfer.clipboard ||
+    request.transfer.upload ||
+    request.transfer.download;
   const latest = useRef({ fail, csrf });
   latest.current = { fail, csrf };
 
@@ -91,6 +99,8 @@ export function Viewer({
           const sas = readSasResult(text);
           if (sas) setSas(sas);
         };
+        // Bulk data has its own channel, so it never holds up input.
+        if (transfers) setTransferChannel(peer.createDataChannel("transfer"));
         peer.ontrack = (event) => {
           if (video.current)
             video.current.srcObject =
@@ -135,9 +145,10 @@ export function Viewer({
       closed = true;
       clearInterval(tick);
       channel.current = null;
+      setTransferChannel(null);
       connection?.close();
     };
-  }, [tenant, device.id, request.id]);
+  }, [tenant, device.id, request.id, transfers]);
 
   const send = useCallback((message: object) => {
     const control = channel.current;
@@ -340,6 +351,13 @@ export function Viewer({
             {c.textHint}
           </p>
         </form>
+        {transferChannel && (
+          <TransferPanel
+            channel={transferChannel}
+            rights={request.transfer}
+            language={language}
+          />
+        )}
       </div>
     </section>
   );

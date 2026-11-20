@@ -230,7 +230,7 @@ pub async fn verify(database: &Database, admin: &mut PgConnection, runtime: &PgP
     );
     assert_eq!(
         context["fresh_passkey"].as_array().map(Vec::len),
-        Some(12),
+        Some(14),
         "every permission that needs a fresh passkey"
     );
     let (_, context) = call(

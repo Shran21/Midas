@@ -7,7 +7,7 @@ use std::{
 };
 
 use midas_protocol::{Body, Welcome, remote as wire, sessions::Presence as WirePresence};
-use midas_remote_auth::{Connection, Error, Mode, Rights, SignedGrant, Target};
+use midas_remote_auth::{Connection, Error, Mode, Rights, SignedGrant, Target, Transfer};
 use tokio::sync::{Semaphore, mpsc};
 use uuid::Uuid;
 
@@ -519,6 +519,11 @@ impl Transport {
                 _ => return Err(Error::Invalid),
             },
             uac: request.uac,
+            transfer: Transfer {
+                clipboard: request.clipboard,
+                upload: request.upload,
+                download: request.download,
+            },
         };
         let operator = id(&request.operator)?;
         let attended = request

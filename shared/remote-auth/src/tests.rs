@@ -17,6 +17,11 @@ fn claims() -> Claims {
         rights: Rights {
             mode: Mode::Normal,
             uac: true,
+            transfer: Transfer {
+                clipboard: true,
+                upload: false,
+                download: true,
+            },
         },
         issued_at: 100,
         expires_at: 130,
@@ -132,4 +137,30 @@ fn signing_rejects_unbounded_or_ambiguous_authority() {
         change(&mut c);
         assert!(key.sign(&c).is_err());
     }
+}
+
+#[test]
+fn transfer_rights_are_signed_and_absent_ones_stay_absent() {
+    let key = SigningKey::generate().unwrap();
+    let mut c = claims();
+    for transfer in [
+        Transfer::NONE,
+        Transfer {
+            clipboard: false,
+            upload: true,
+            download: false,
+        },
+    ] {
+        c.rights.transfer = transfer;
+        let grant = key.sign(&c).unwrap();
+        let verified = verify(&key.public_key(), &grant).unwrap();
+        assert_eq!(verified.claims().rights.transfer, transfer);
+    }
+    // A grant with no transfer right encodes exactly as one issued before the fields existed.
+    c.rights.transfer = Transfer::NONE;
+    let payload = Wire::from(&c).encode_to_vec();
+    assert!(!Wire::decode(payload.as_slice()).unwrap().clipboard);
+    let mut widened = Wire::from(&c);
+    widened.download = true;
+    assert_ne!(widened.encode_to_vec(), payload);
 }

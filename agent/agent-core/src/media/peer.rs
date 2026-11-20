@@ -53,6 +53,8 @@ pub enum PeerEvent {
     Keyframe,
     /// A data-channel message from the browser; untrusted input.
     Data(Vec<u8>),
+    /// A message on the browser's `transfer` channel; untrusted input.
+    Transfer(Vec<u8>),
     /// No usable H.264 format was negotiated; nothing can be sent.
     NoCodec,
     Closed,
@@ -77,6 +79,8 @@ pub struct Peer {
     video: Option<(Mid, Pt)>,
     choice: Option<Choice>,
     channel: Option<ChannelId>,
+    /// Clipboard and files, apart from input so bulk data never holds it up.
+    transfer: Option<ChannelId>,
     sample: Sample,
     started: Instant,
     events: VecDeque<PeerEvent>,
@@ -152,6 +156,7 @@ pub fn answer(
         video: None,
         choice: None,
         channel: None,
+        transfer: None,
         sample: Sample::default(),
         started: now,
         events: VecDeque::new(),
@@ -242,8 +247,13 @@ impl Peer {
             {
                 self.choose(added.mid)
             }
+            Event::ChannelOpen(id, label) if label == "transfer" => self.transfer = Some(id),
             Event::ChannelOpen(id, _) => self.channel = Some(id),
             Event::ChannelClose(id) if Some(id) == self.channel => self.close(),
+            Event::ChannelClose(id) if Some(id) == self.transfer => self.transfer = None,
+            Event::ChannelData(data) if Some(data.id) == self.transfer => {
+                self.events.push_back(PeerEvent::Transfer(data.data));
+            }
             Event::ChannelData(data) => self.events.push_back(PeerEvent::Data(data.data)),
             Event::KeyframeRequest(_) => self.events.push_back(PeerEvent::Keyframe),
             Event::EgressBitrateEstimate(BweKind::Twcc { estimate, .. }) => {
@@ -418,6 +428,16 @@ impl Peer {
             return Ok(false);
         };
         let sent = channel.write(false, message).unwrap_or(false);
+        self.pump()?;
+        Ok(sent)
+    }
+
+    /// Sends on the browser's `transfer` channel; file data goes as binary, the rest as text.
+    pub fn send_transfer(&mut self, message: &[u8], binary: bool) -> Result<bool, PeerError> {
+        let Some(mut channel) = self.transfer.and_then(|id| self.rtc.channel(id)) else {
+            return Ok(false);
+        };
+        let sent = channel.write(binary, message).unwrap_or(false);
         self.pump()?;
         Ok(sent)
     }

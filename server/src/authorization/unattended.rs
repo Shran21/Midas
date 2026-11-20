@@ -116,6 +116,8 @@ pub struct UnattendedRequest {
     pub uac: bool,
     pub reason: String,
     pub session: SessionSelection,
+    #[serde(default)]
+    pub transfer: Transfer,
 }
 
 impl UnattendedRequest {
@@ -143,6 +145,7 @@ impl UnattendedRequest {
         if self.uac {
             permissions.push(Permission::RemoteUacInteract);
         }
+        permissions.extend(self.transfer.permissions());
         permissions
     }
 }
@@ -227,6 +230,7 @@ impl Authorizer {
         .detail("unattended", true)
         .detail("mode", json!(request.mode))
         .detail("uac", request.uac)
+        .detail("transfer", json!(request.transfer))
         .detail("result", label);
         event.tenant = Some(target.tenant);
         event.device = target.device;
@@ -310,7 +314,7 @@ impl Authorizer {
                     id, challenge: issuance.challenge, operator: identity.operator_id,
                     target: GrantTarget { connection: Connection { tenant: target.tenant, device: target.device.ok_or(AccessError::InvalidInput)?, id: request.session.connection_id },
                         session: request.session.os_session_id.parse().map_err(|_| AccessError::InvalidInput)?, generation: request.session.generation },
-                    rights: Rights { mode: match request.mode { RemoteMode::Normal => Mode::Normal, RemoteMode::Administrative => Mode::Administrative }, uac: request.uac },
+                    rights: Rights { mode: match request.mode { RemoteMode::Normal => Mode::Normal, RemoteMode::Administrative => Mode::Administrative }, uac: request.uac, transfer: request.transfer.rights() },
                     issued_at: now, expires_at: expiry,
                 };
                 signed = Some(issuance.authority.sign(&claims, &observation.source)?);
@@ -333,6 +337,7 @@ impl Authorizer {
             .detail("unattended", true)
             .detail("mode", json!(request.mode))
             .detail("uac", request.uac)
+            .detail("transfer", json!(request.transfer))
             .detail("result", label);
         event.tenant = Some(target.tenant);
         event.device = target.device;

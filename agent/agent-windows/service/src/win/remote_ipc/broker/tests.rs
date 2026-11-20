@@ -313,7 +313,12 @@ async fn release_participants(parent: &Peer, token: &OwnedHandle, session: u32, 
         let offered = std::time::Instant::now();
         let reply = control
             .exchange(
-                &super::super::media::offer_message(&[host], None, &browser_offer()),
+                &super::super::media::offer_message(
+                    &[host],
+                    None,
+                    &browser_offer(),
+                    midas_remote_auth::Transfer::NONE,
+                ),
                 tokio::time::Instant::now() + Duration::from_secs(5),
             )
             .await
@@ -329,7 +334,12 @@ async fn release_participants(parent: &Peer, token: &OwnedHandle, session: u32, 
         );
         let again = control
             .exchange(
-                &super::super::media::offer_message(&[host], None, &browser_offer()),
+                &super::super::media::offer_message(
+                    &[host],
+                    None,
+                    &browser_offer(),
+                    midas_remote_auth::Transfer::NONE,
+                ),
                 tokio::time::Instant::now() + Duration::from_secs(5),
             )
             .await
@@ -584,6 +594,7 @@ async fn consent_participant(parent: &Peer, token: &OwnedHandle, session: u32, i
         customer: "Trial Customer".into(),
         administrative: false,
         uac: true,
+        transfer: midas_remote_auth::Transfer::NONE,
         seconds: 30,
     };
     let answer = control

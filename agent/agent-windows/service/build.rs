@@ -12,6 +12,7 @@ fn main() {
             "d3d11.dll",
             "dxgi.dll",
             "sas.dll",
+            "combase.dll",
         ] {
             println!("cargo:rustc-link-arg=/DELAYLOAD:{library}");
         }

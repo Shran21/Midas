@@ -81,6 +81,9 @@ A webpanel Hozzáférés nézete a tagokat, szerepeket, szabályokat és telephe
 | `remote.admin` | Rendszergazdai távvezérlési mód | Igen |
 | `remote.uac.interact` | Windows UAC kezelése bármelyik módban | Igen |
 | `remote.unattended` | Felügyelet nélküli szerveres kérés | Igen |
+| `remote.clipboard` | Szöveges vágólap mindkét irányban, távsegítés közben | Nem |
+| `remote.files.upload` | Fájlküldés a célgépre, távsegítés közben | Igen |
+| `remote.files.download` | Fájlletöltés a célgépről, távsegítés közben | Igen |
 | `terminal.execute` | Háttérterminál | Igen |
 | `files.read` | Háttér-fájlolvasás | Nem |
 | `files.write` | Háttér-fájlmódosítás | Igen |
@@ -103,6 +106,7 @@ A `check_remote_request` egy célgéphez ellenőrzi a kérés indításának jog
 2. A rendszergazdai módhoz hozzáadódik `remote.admin`.
 3. Az UAC kérése külön `remote.uac.interact` jogot igényel, normál módban is. Csak Windows-célgépnél értelmezett.
 4. A felügyelet nélküli kéréshez `remote.unattended`, szerver típusú célgép, valamint az ügyfél és a konkrét gép `unattended_enabled` beállítása is kell. Mindkét kapcsoló alapból hamis.
+5. A felügyelt és a felügyelet nélküli kérés `transfer` része külön kérheti a vágólapot (`remote.clipboard`), a fájlküldést (`remote.files.upload`) és a fájlletöltést (`remote.files.download`). Alapból egyik sincs bekapcsolva. A kért részek bekerülnek az aláírt felhatalmazásba és a helyi jóváhagyó ablakba. A munkamenet minden megújításakor és a kép indításakor ugyanezek a jogok újra ellenőrzésre kerülnek (MIDAS-055). A beépített Technikus szerep egyiket sem kapja meg; az Administrator mindhármat.
 
 Ugyanezek a gép- és szabályzatfeltételek az `authorize` hívásra is vonatkoznak, ha az önmagában `remote.uac.interact` vagy `remote.unattended` jogot kér. Az eredmény csak jogosultsági döntés. Nem bizonyítja, hogy nincs helyi felhasználó, és nem helyettesíti a cél OS-munkamenet hitelesített azonosítását, a beleegyezést, az indoklást, a lejáratot, az auditot vagy az agent által ellenőrzött felhatalmazást. Ezek nélkül az eredmény nem használható kép, bevitel, UAC vagy háttérparancs indítására. Normál kapcsolatban az UAC-jog nem változtatja át a felhasználó Windows-fiókját rendszergazdává.
 
@@ -187,6 +191,9 @@ The web panel's Access view manages members, roles, rules and sites; the platfor
 | `remote.admin` | Administrative support mode | Yes |
 | `remote.uac.interact` | Windows UAC in either mode | Yes |
 | `remote.unattended` | Unattended server request | Yes |
+| `remote.clipboard` | Text clipboard both ways during remote support | No |
+| `remote.files.upload` | Sending files to the device during remote support | Yes |
+| `remote.files.download` | Downloading files from the device during remote support | Yes |
 | `terminal.execute` | Background terminal | Yes |
 | `files.read` | Background file reads | No |
 | `files.write` | Background file changes | Yes |
@@ -203,7 +210,7 @@ Fresh currently means a verified passkey login within five minutes, with a still
 
 ### Remote eligibility
 
-`check_remote_request` requires a concrete device and checks `device.read`, `remote.view` and `remote.control`; administrative mode additionally requires `remote.admin`. UAC separately requires `remote.uac.interact` in either mode and a Windows target. Unattended requests require `remote.unattended`, a server target and both tenant/device `unattended_enabled` flags; both default to false.
+`check_remote_request` requires a concrete device and checks `device.read`, `remote.view` and `remote.control`; administrative mode additionally requires `remote.admin`. UAC separately requires `remote.uac.interact` in either mode and a Windows target. Unattended requests require `remote.unattended`, a server target and both tenant/device `unattended_enabled` flags; both default to false. The `transfer` part of an attended or unattended request can separately ask for the clipboard (`remote.clipboard`), sending files (`remote.files.upload`) and downloading files (`remote.files.download`); none is on by default. Requested parts go into the signed grant and the local consent window, and every renewal and the picture start check the same permissions again (MIDAS-055). The built-in Technician role gets none of them; Administrator gets all three.
 
 The same device and policy conditions apply when `authorize` is called with `remote.uac.interact` or `remote.unattended` alone. The result is only a policy decision. It does not prove absence of a local user or replace authenticated OS-session targeting, consent, reason, expiry, audit or an agent-validated grant. It cannot by itself start capture, input, UAC interaction or commands. Normal-mode UAC permission does not elevate the local user's Windows account.
 

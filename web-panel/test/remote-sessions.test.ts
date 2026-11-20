@@ -183,6 +183,7 @@ test("attended requests are read only for the expected request and session", () 
     id,
     mode: "administrative",
     uac: true,
+    transfer: { clipboard: true, upload: false, download: false },
     os_session_id: "2",
     requester: "Trial Operator",
     state: "waiting",
@@ -192,12 +193,22 @@ test("attended requests are read only for the expected request and session", () 
     id,
     mode: "administrative",
     uac: true,
+    transfer: { clipboard: true, upload: false, download: false },
     os_session_id: "2",
     requester: "Trial Operator",
     state: "waiting",
     until: 1_700_000_060,
     reason: null,
   });
+  // The transfer rights are read strictly: missing or malformed means no request.
+  assert.equal(readRequest({ ...waiting, transfer: undefined }), null);
+  assert.equal(
+    readRequest({
+      ...waiting,
+      transfer: { clipboard: "yes", upload: false, download: false },
+    }),
+    null,
+  );
   assert.equal(
     readRequest({ ...waiting, state: "active", until: 1_700_000_090 })?.until,
     1_700_000_090,

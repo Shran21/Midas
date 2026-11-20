@@ -1,6 +1,7 @@
 //! The question the service sends to the consent window in the user's session, the answer that
 //! comes back, and the window's texts. The service keeps its own deadline; the window only shows it.
 
+use midas_remote_auth::Transfer;
 use uuid::Uuid;
 
 const QUESTION: &[u8; 4] = b"MCQ1";
@@ -20,6 +21,7 @@ pub struct Question {
     pub customer: String,
     pub administrative: bool,
     pub uac: bool,
+    pub transfer: Transfer,
     pub seconds: u32,
 }
 
@@ -49,7 +51,13 @@ impl Question {
         let mut bytes = QUESTION.to_vec();
         bytes.extend_from_slice(self.request.as_bytes());
         bytes.extend_from_slice(&self.seconds.to_le_bytes());
-        bytes.push(u8::from(self.administrative) | (u8::from(self.uac) << 1));
+        bytes.push(
+            u8::from(self.administrative)
+                | (u8::from(self.uac) << 1)
+                | (u8::from(self.transfer.clipboard) << 2)
+                | (u8::from(self.transfer.upload) << 3)
+                | (u8::from(self.transfer.download) << 4),
+        );
         for name in [&self.operator, &self.customer] {
             if name.is_empty() || name.len() > NAME_BYTES {
                 return None;
@@ -73,10 +81,15 @@ impl Question {
             customer: text(&mut bytes)?,
             administrative: flags & 1 != 0,
             uac: flags & 2 != 0,
+            transfer: Transfer {
+                clipboard: flags & 4 != 0,
+                upload: flags & 8 != 0,
+                download: flags & 16 != 0,
+            },
             seconds,
         };
         (bytes.is_empty()
-            && flags < 4
+            && flags < 32
             && !request.is_nil()
             && (1..=LONGEST_WAIT).contains(&seconds))
         .then_some(question)
@@ -141,6 +154,15 @@ pub fn texts(question: &Question, hungarian: bool) -> Texts {
         if question.administrative {
             lines.push("• a cége által engedélyezett rendszergazdai műveleteket futtathat".into());
         }
+        if question.transfer.clipboard {
+            lines.push("• szöveget másolhat a vágólapodra és onnan".into());
+        }
+        if question.transfer.upload {
+            lines.push("• fájlokat küldhet a gépedre, a Letöltések\\MIDAS mappába".into());
+        }
+        if question.transfer.download {
+            lines.push("• letöltheti azokat a fájlokat, amelyekhez neked hozzáférésed van".into());
+        }
     } else {
         lines.push(format!("Organisation: {}", question.customer));
         lines.push(format!(
@@ -161,6 +183,15 @@ pub fn texts(question: &Question, hungarian: bool) -> Texts {
         }
         if question.administrative {
             lines.push("• run administrative actions approved by their company".into());
+        }
+        if question.transfer.clipboard {
+            lines.push("• copy text to and from your clipboard".into());
+        }
+        if question.transfer.upload {
+            lines.push("• send files to your computer, into Downloads\\MIDAS".into());
+        }
+        if question.transfer.download {
+            lines.push("• download the files you can open".into());
         }
     }
     Texts {
@@ -236,6 +267,7 @@ mod tests {
             customer: "Norda Kft.".into(),
             administrative: true,
             uac: false,
+            transfer: Transfer::NONE,
             seconds: 60,
         }
     }
@@ -251,6 +283,22 @@ mod tests {
         let mut longer = bytes.clone();
         longer.push(0);
         assert_eq!(Question::decode(&longer), None);
+        let everything = Question {
+            uac: true,
+            transfer: Transfer {
+                clipboard: true,
+                upload: true,
+                download: true,
+            },
+            ..question.clone()
+        };
+        assert_eq!(
+            Question::decode(&everything.encode().unwrap()),
+            Some(everything)
+        );
+        let mut unknown = bytes.clone();
+        unknown[24] |= 32;
+        assert_eq!(Question::decode(&unknown), None);
         for seconds in [0, LONGEST_WAIT + 1] {
             let encoded = Question {
                 seconds,
@@ -303,6 +351,42 @@ mod tests {
                 full.content.lines().count(),
                 plain.content.lines().count() + 2
             );
+        }
+        for hungarian in [true, false] {
+            let plain = texts(&question(), hungarian).content.lines().count();
+            for (transfer, word) in [
+                (
+                    Transfer {
+                        clipboard: true,
+                        ..Transfer::NONE
+                    },
+                    if hungarian { "vágólap" } else { "clipboard" },
+                ),
+                (
+                    Transfer {
+                        upload: true,
+                        ..Transfer::NONE
+                    },
+                    "MIDAS",
+                ),
+                (
+                    Transfer {
+                        download: true,
+                        ..Transfer::NONE
+                    },
+                    if hungarian { "letöltheti" } else { "download" },
+                ),
+            ] {
+                let shown = texts(
+                    &Question {
+                        transfer,
+                        ..question()
+                    },
+                    hungarian,
+                );
+                assert!(shown.content.contains(word), "{word}");
+                assert_eq!(shown.content.lines().count(), plain + 1);
+            }
         }
         assert_eq!(texts(&normal, true).allow, "Engedélyezés");
         assert_eq!(texts(&normal, false).decline, "Decline");

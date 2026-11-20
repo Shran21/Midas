@@ -11,11 +11,16 @@ use serde::Deserialize;
 use serde_json::json;
 
 pub use super::link::Input;
+use super::transfer::{self, Ledger, Message, Report};
 use super::{
     adapt::{Controller, Limits, Profile, Settings, frame_size},
-    link::{Assembler, Command, Desktop, Encoded, LinkError, read_desktop, read_sas_result},
+    link::{
+        Assembler, Command, Desktop, Encoded, LinkError, read_desktop, read_sas_result,
+        read_transfer_reply,
+    },
     peer::{Peer, PeerError, PeerEvent},
 };
+use midas_remote_auth::Transfer as Rights;
 
 const ADAPT_EVERY: Duration = Duration::from_millis(500);
 const STATS_EVERY: Duration = Duration::from_secs(1);
@@ -35,6 +40,9 @@ enum Control {
 
 /// Browser messages above this size are dropped unread.
 const MESSAGE_LIMIT: usize = 4096;
+/// Commands waiting for the worker; transfer messages beyond this are dropped, which breaks
+/// off a transfer from a browser that ignores its window.
+const COMMAND_QUEUE: usize = 1024;
 
 pub struct Transport {
     peer: Peer,
@@ -52,6 +60,9 @@ pub struct Transport {
     frames: u32,
     stopped: bool,
     desktop: Desktop,
+    /// What the grant allows besides picture and input.
+    transfer: Rights,
+    ledger: Ledger,
 }
 
 impl Transport {
@@ -75,6 +86,8 @@ impl Transport {
             frames: 0,
             stopped: false,
             desktop: Desktop::User,
+            transfer: Rights::NONE,
+            ledger: Ledger::default(),
         };
         transport.settings();
         transport
@@ -109,6 +122,16 @@ impl Transport {
         self.inputs.pop_front()
     }
 
+    /// Clipboard and file transfer as the grant allows; nothing without it.
+    pub fn allow_transfer(&mut self, rights: Rights) {
+        self.transfer = rights;
+    }
+
+    /// The next finished transfer for the audit.
+    pub fn next_report(&mut self) -> Option<Report> {
+        self.ledger.take()
+    }
+
     pub fn is_stopped(&self) -> bool {
         self.stopped
     }
@@ -119,6 +142,7 @@ impl Transport {
             self.stopped = true;
             self.commands.push_back(Command::Stop);
             self.peer.close();
+            self.ledger.close();
         }
     }
 
@@ -156,6 +180,20 @@ impl Transport {
             self.set_desktop(desktop);
             return Ok(());
         }
+        if let Some(reply) = read_transfer_reply(message) {
+            let Some(reply) = transfer::read_reply(reply, self.transfer) else {
+                self.stop();
+                return Err(LinkError::Invalid);
+            };
+            if let Message::Control(control) = &reply {
+                self.ledger.reply(control);
+            }
+            let binary = matches!(reply, Message::Data(_));
+            let _ = self
+                .peer
+                .send_transfer(&transfer::reply_message(&reply), binary);
+            return Ok(());
+        }
         let frame = match self.assembler.push(message) {
             Ok(frame) => frame,
             Err(error) => {
@@ -176,6 +214,20 @@ impl Transport {
             self.frames += 1;
         }
         Ok(())
+    }
+
+    fn transfer_message(&mut self, data: &[u8]) {
+        let Some(request) = transfer::read_request(data, self.transfer) else {
+            return;
+        };
+        if self.commands.len() >= COMMAND_QUEUE {
+            return;
+        }
+        if let Message::Control(control) = &request {
+            self.ledger.request(control);
+        }
+        self.commands
+            .push_back(Command::Transfer(transfer::request_message(&request)));
     }
 
     fn browser_message(&mut self, data: &[u8], now: Instant) {
@@ -260,6 +312,7 @@ impl Transport {
                 }
                 PeerEvent::Keyframe => self.commands.push_back(Command::Keyframe),
                 PeerEvent::Data(data) => self.browser_message(&data, now),
+                PeerEvent::Transfer(data) => self.transfer_message(&data),
                 PeerEvent::NoCodec | PeerEvent::Closed => self.stop(),
             }
         }

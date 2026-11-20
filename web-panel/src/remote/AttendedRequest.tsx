@@ -9,11 +9,21 @@ import type { Language } from "../i18n";
 import {
   CONSENT_LIFETIME,
   finished,
+  NO_TRANSFER,
   type RemoteRequest,
   readRequest,
+  sameTransfer,
+  type Transfer,
 } from "./model";
 import { requestCopy } from "./requestCopy";
 import { Viewer } from "./Viewer";
+
+/** Each kind of transfer and the permission that offers it. */
+const TRANSFER_PERMISSIONS = [
+  ["clipboard", "remote.clipboard"],
+  ["upload", "remote.files.upload"],
+  ["download", "remote.files.download"],
+] as const satisfies readonly (readonly [keyof Transfer, string])[];
 
 /** A request the panel follows; the server keeps its state, the panel only reads it. */
 export type Started = {
@@ -75,6 +85,7 @@ export function RequestButtons({
   const c = requestCopy[language];
   const id = useId();
   const [uac, setUac] = useState(false);
+  const [transfer, setTransfer] = useState<Transfer>(NO_TRANSFER);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Problem | null>(null);
   const request = useRef<AbortController | null>(null);
@@ -99,9 +110,14 @@ export function RequestButtons({
     setBusy(true);
     setError(null);
     let token = csrf;
-    // Administrative mode and UAC start only after a passkey confirmation that stays fresh
-    // until the user has answered.
-    if (mode === "administrative" || uac) {
+    // Administrative mode, UAC and file transfer start only after a passkey confirmation that
+    // stays fresh until the user has answered.
+    if (
+      mode === "administrative" ||
+      uac ||
+      transfer.upload ||
+      transfer.download
+    ) {
       try {
         token = await confirmIdentity(false, CONSENT_MARGIN);
       } catch (caught) {
@@ -118,7 +134,7 @@ export function RequestButtons({
       const response = await api.requestRemote(
         tenant,
         device.id,
-        { mode, uac, session },
+        { mode, uac, session, transfer },
         token,
         controller.signal,
       );
@@ -128,7 +144,8 @@ export function RequestButtons({
         !value ||
         value.os_session_id !== session.os_session_id ||
         value.mode !== mode ||
-        value.uac !== uac
+        value.uac !== uac ||
+        !sameTransfer(value.transfer, transfer)
       )
         throw new Error("invalid request");
       if (mounted.current)
@@ -171,6 +188,23 @@ export function RequestButtons({
           {c.uac}
         </label>
       )}
+      {TRANSFER_PERMISSIONS.filter(([, permission]) =>
+        device.permissions.includes(permission),
+      ).map(([kind]) => (
+        <label key={kind} className="remote-check-uac">
+          <input
+            type="checkbox"
+            checked={transfer[kind]}
+            disabled={disabled}
+            onChange={(event) => {
+              const checked = event.target.checked;
+              setTransfer((current) => ({ ...current, [kind]: checked }));
+              setError(null);
+            }}
+          />
+          {c[kind]}
+        </label>
+      ))}
       <div className="remote-request-actions">
         <button
           type="button"
@@ -345,6 +379,7 @@ export function RequestStatus({
       <p className="muted">
         {c.target(device.name, request.os_session_id)} ·{" "}
         {c.mode(request.mode === "administrative", request.uac)}
+        {c.transfer(request.transfer) && ` · ${c.transfer(request.transfer)}`}
       </p>
       <p className="muted">{c.people(request.requester, account)}</p>
       <div ref={message} tabIndex={-1} role="status" aria-live="polite">

@@ -423,6 +423,7 @@ async fn signed_lease_revocation_channel_loss_and_expiry_stop_real_workers() {
         let rights = Rights {
             mode: Mode::Administrative,
             uac: true,
+            transfer: midas_remote_auth::Transfer::NONE,
         };
         let operator = Uuid::new_v4();
         let started = Instant::now();

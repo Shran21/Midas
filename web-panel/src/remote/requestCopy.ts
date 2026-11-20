@@ -1,3 +1,5 @@
+import type { Transfer } from "./model";
+
 const hu = {
   title: "Távsegítés kérése",
   intro:
@@ -5,6 +7,17 @@ const hu = {
   normal: "Távoli vezérlés kérése",
   administrative: "Rendszergazdai távvezérlés kérése",
   uac: "Windows rendszergazdai engedélykérések (UAC) kezelése",
+  clipboard: "Vágólap (szöveg) mindkét irányban",
+  upload: "Fájlküldés a gépre",
+  download: "Fájlletöltés a gépről",
+  transfer: (transfer: Transfer) =>
+    [
+      transfer.clipboard && "vágólap",
+      transfer.upload && "fájlküldés",
+      transfer.download && "fájlletöltés",
+    ]
+      .filter(Boolean)
+      .join(", "),
   sending: "Kérés küldése…",
   unsupported:
     "Ezen a gépen nincs bekapcsolva a távsegítés. A kéréshez az agent távsegítési beállítását be kell kapcsolni.",
@@ -70,6 +83,17 @@ const en: {
   normal: "Request remote control",
   administrative: "Request administrative remote control",
   uac: "Handle Windows administrator prompts (UAC)",
+  clipboard: "Clipboard (text) both ways",
+  upload: "Send files to the device",
+  download: "Download files from the device",
+  transfer: (transfer) =>
+    [
+      transfer.clipboard && "clipboard",
+      transfer.upload && "sending files",
+      transfer.download && "downloading files",
+    ]
+      .filter(Boolean)
+      .join(", "),
   sending: "Sending request…",
   unsupported:
     "Remote support is not turned on for this device. Turn on the agent's remote support setting to send requests.",

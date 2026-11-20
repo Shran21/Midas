@@ -12,6 +12,7 @@ pub mod network;
 pub mod remote_ipc;
 pub mod service;
 pub mod stream;
+pub mod transfer;
 pub mod tray;
 
 use std::{ffi::c_void, io, os::windows::io::RawHandle, path::PathBuf, ptr};

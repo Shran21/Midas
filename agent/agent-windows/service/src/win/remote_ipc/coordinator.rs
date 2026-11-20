@@ -12,7 +12,7 @@ use midas_agent_core::remote::{
     transport::{Native, Relay},
 };
 use midas_protocol::sessions::{OsSession, Presence as WirePresence};
-use midas_remote_auth::{Error, Mode, Rights, Target};
+use midas_remote_auth::{Error, Mode, Rights, Target, Transfer};
 
 use super::{
     IO_TIMEOUT, Peer, STARTUP_TIMEOUT,
@@ -51,7 +51,8 @@ pub struct Coordinator {
     runtime: tokio::runtime::Handle,
     active: Mutex<Option<tokio::task::JoinHandle<()>>>,
     /// The running ordinary session's companion, which carries its video.
-    media: Arc<tokio::sync::Mutex<Option<Control>>>,
+    /// The companion's control channel and the transfer the grant allows.
+    media: Arc<tokio::sync::Mutex<Option<(Control, Transfer)>>>,
     window: Mutex<Option<Window>>,
 }
 
@@ -175,6 +176,7 @@ impl Coordinator {
                 customer: request.customer_name.clone(),
                 administrative: request.rights.mode == Mode::Administrative,
                 uac: request.rights.uac,
+                transfer: request.rights.transfer,
                 seconds: seconds as u32,
             }
             .encode()
@@ -313,7 +315,8 @@ impl Native for Coordinator {
                 window.allowed.elapsed() < START_WAIT && window.session == lease.target().session
             });
         let media = self.media.clone();
-        *media.blocking_lock() = control;
+        let transfer = lease.rights().transfer;
+        *media.blocking_lock() = control.map(|control| (control, transfer));
         *active = Some(self.runtime.spawn(async move {
             match supervise(workers, watched(&lease, window)).await {
                 Ok(stopped) => tracing::info!(lease = %id, ?stopped, "remote support workers stopped"),
@@ -332,10 +335,10 @@ impl Native for Coordinator {
         let hosts = crate::win::network::local_addresses().unwrap_or_default();
         // The agent allocates over UDP; the browser may use any relay the server named.
         let relay = midas_agent_core::media::turn::udp_relay(relays);
-        let request = super::media::offer_message(&hosts, relay.as_ref(), offer);
         let reply = self.runtime.block_on(async {
             let mut media = self.media.lock().await;
-            let control = media.as_mut().ok_or(Error::Target)?;
+            let (control, transfer) = media.as_mut().ok_or(Error::Target)?;
+            let request = super::media::offer_message(&hosts, relay.as_ref(), offer, *transfer);
             control
                 .exchange(&request, tokio::time::Instant::now() + IO_TIMEOUT)
                 .await
@@ -414,14 +417,17 @@ mod tests {
         let normal = Rights {
             mode: Mode::Normal,
             uac: false,
+            transfer: midas_remote_auth::Transfer::NONE,
         };
         let administrative = Rights {
             mode: Mode::Administrative,
             uac: false,
+            transfer: midas_remote_auth::Transfer::NONE,
         };
         let uac = Rights {
             mode: Mode::Normal,
             uac: true,
+            transfer: midas_remote_auth::Transfer::NONE,
         };
         assert_eq!(worker_for(Presence::Vacant, normal), Err(Error::Desktop));
         assert_eq!(
@@ -441,14 +447,17 @@ mod tests {
             Rights {
                 mode: Mode::Administrative,
                 uac: false,
+                transfer: midas_remote_auth::Transfer::NONE,
             },
             Rights {
                 mode: Mode::Administrative,
                 uac: true,
+                transfer: midas_remote_auth::Transfer::NONE,
             },
             Rights {
                 mode: Mode::Normal,
                 uac: true,
+                transfer: midas_remote_auth::Transfer::NONE,
             },
         ] {
             assert_eq!(

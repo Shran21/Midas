@@ -559,9 +559,47 @@ pub async fn verify_attended(
     sqlx::query("DELETE FROM midas.permission_overrides WHERE tenant_id=$1 AND operator_id=$2 AND permission='remote.admin'")
         .bind(ctx.tenant).bind(operator).execute(&mut *admin).await.unwrap();
 
-    // The local user's End stops the session at once, and the server learns why.
-    let path = start(request("normal", false)).await;
-    assert_eq!(settled(ctx, &path, "waiting").await["state"], "active");
+    // The local user's End stops the session at once, and the server learns why. This request
+    // also asks for the clipboard and downloads: each needs its own permission, and the consent
+    // window and the grant carry exactly what was asked.
+    let with_transfer = || {
+        let mut body = request("normal", false);
+        body["transfer"] = serde_json::json!({ "clipboard": true, "download": true });
+        body
+    };
+    sqlx::query("INSERT INTO midas.permission_overrides (tenant_id,id,operator_id,permission,effect) VALUES ($1,gen_random_uuid(),$2,'remote.files.download','deny')")
+        .bind(ctx.tenant).bind(operator).execute(&mut *admin).await.unwrap();
+    assert_eq!(
+        call(
+            ctx.app,
+            "POST",
+            &base,
+            Some(ctx.manager),
+            Some(with_transfer()),
+            &[]
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND,
+        "downloads without remote.files.download"
+    );
+    sqlx::query("DELETE FROM midas.permission_overrides WHERE tenant_id=$1 AND operator_id=$2 AND permission='remote.files.download'")
+        .bind(ctx.tenant).bind(operator).execute(&mut *admin).await.unwrap();
+    let path = start(with_transfer()).await;
+    let active = settled(ctx, &path, "waiting").await;
+    assert_eq!(active["state"], "active", "{active}");
+    assert_eq!(
+        active["transfer"],
+        serde_json::json!({ "clipboard": true, "upload": false, "download": true })
+    );
+    assert_eq!(
+        broker.asked.lock().unwrap().last().unwrap().rights.transfer,
+        midas_remote_auth::Transfer {
+            clipboard: true,
+            upload: false,
+            download: true,
+        }
+    );
     broker.end_locally();
     let local = settled(ctx, &path, "active").await;
     assert_eq!(local["state"], "ended", "{local}");
@@ -619,6 +657,7 @@ pub async fn verify(
         uac: true,
         reason: "Protected transport trial".into(),
         session: selection.clone(),
+        transfer: Default::default(),
     };
     let operator = ctx
         .web

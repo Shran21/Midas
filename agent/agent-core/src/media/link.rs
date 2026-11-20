@@ -23,6 +23,8 @@ const DESKTOP: u8 = 7;
 const RELEASE: u8 = 8;
 const SAS: u8 = 9;
 const SAS_RESULT: u8 = 10;
+const TRANSFER: u8 = 11;
+const TRANSFER_REPLY: u8 = 12;
 const TEXT: u8 = 4;
 /// Characters of one text message; longer text arrives in several.
 const TEXT_LIMIT: usize = 64;
@@ -147,6 +149,20 @@ pub enum Command {
     Stop,
     /// Ctrl+Alt+Del for the session; only the transport side may act on it.
     Sas,
+    /// A checked clipboard or file transfer message for the user worker.
+    Transfer(Vec<u8>),
+}
+
+/// The user worker's answer to a transfer message; the transport checks it again.
+pub fn transfer_reply_message(reply: &[u8]) -> Vec<u8> {
+    [&[TRANSFER_REPLY], reply].concat()
+}
+
+pub fn read_transfer_reply(message: &[u8]) -> Option<&[u8]> {
+    match message {
+        [TRANSFER_REPLY, reply @ ..] if !reply.is_empty() => Some(reply),
+        _ => None,
+    }
 }
 
 /// The transport side's answer to a Ctrl+Alt+Del request.
@@ -204,6 +220,7 @@ pub fn command_message(command: &Command) -> Vec<u8> {
         Command::Release => vec![RELEASE],
         Command::Sas => vec![SAS],
         Command::Stop => vec![STOP],
+        Command::Transfer(request) => [&[TRANSFER], request.as_slice()].concat(),
         Command::Input(Input::Pointer {
             x,
             y,
@@ -244,6 +261,11 @@ pub fn read_command(message: &[u8]) -> Option<Command> {
         [RELEASE] => Some(Command::Release),
         [SAS] => Some(Command::Sas),
         [STOP] => Some(Command::Stop),
+        [TRANSFER, request @ ..]
+            if !request.is_empty() && request.len() <= super::transfer::MESSAGE_LIMIT =>
+        {
+            Some(Command::Transfer(request.to_vec()))
+        }
         [INPUT, POINTER, x0, x1, y0, y1, buttons, modifiers] => {
             let unit = |low: u8, high: u8| f64::from(u16::from_le_bytes([low, high])) / 65_535.0;
             let input = Input::Pointer {

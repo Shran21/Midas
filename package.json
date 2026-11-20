@@ -14,7 +14,7 @@
     "typecheck": "pnpm --filter @midas/web-panel typecheck",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "test:web": "node --test web-panel/test/service-worker.test.mjs web-panel/test/usability.test.ts web-panel/test/devices.test.ts web-panel/test/unattended.test.ts web-panel/test/remote-sessions.test.ts web-panel/test/viewer.test.ts web-panel/test/dependencies.test.mjs",
+    "test:web": "node --test web-panel/test/service-worker.test.mjs web-panel/test/usability.test.ts web-panel/test/devices.test.ts web-panel/test/unattended.test.ts web-panel/test/remote-sessions.test.ts web-panel/test/viewer.test.ts web-panel/test/transfer.test.ts web-panel/test/dependencies.test.mjs",
     "test:dependencies": "node --test web-panel/test/dependencies.test.mjs .github/scripts/check-vendored-dependencies.test.mjs",
     "audit:vendored": "node .github/scripts/check-vendored-dependencies.mjs"
   },

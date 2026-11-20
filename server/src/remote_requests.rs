@@ -16,7 +16,7 @@ use crate::{
     audit::{Action, Actor, Event, Outcome},
     auth::sessions::{SessionToken, Sessions},
     authorization::{
-        AccessError, Permission, RemoteMode, Target,
+        AccessError, Permission, RemoteMode, Target, Transfer,
         attended::{Asked, AttendedRequest, CONSENT_TIMEOUT, refusal},
     },
     enrollment::Enrollment,
@@ -70,6 +70,7 @@ pub struct RequestView {
     pub id: Uuid,
     pub mode: RemoteMode,
     pub uac: bool,
+    pub transfer: Transfer,
     pub os_session_id: String,
     /// The requester's name as the consent window shows it.
     pub requester: String,
@@ -83,6 +84,7 @@ struct Tracked {
     operator: Uuid,
     mode: RemoteMode,
     uac: bool,
+    transfer: Transfer,
     os_session_id: String,
     requester: String,
     status: watch::Receiver<Status>,
@@ -99,6 +101,7 @@ impl Tracked {
             id,
             mode: self.mode,
             uac: self.uac,
+            transfer: self.transfer,
             os_session_id: self.os_session_id.clone(),
             requester: self.requester.clone(),
             status: *self.status.borrow(),
@@ -206,6 +209,7 @@ impl Enrollment {
             operator,
             mode: request.mode,
             uac: request.uac,
+            transfer: request.transfer,
             os_session_id: request.session.os_session_id.clone(),
             requester: requester.operator_name.clone(),
             status: watched,
@@ -359,7 +363,7 @@ impl Enrollment {
             .authorizer
             .authorize(sessions, token, target, Permission::RemoteControl)
             .await?;
-        let Some((mode, uac, active)) = self
+        let Some((mode, uac, transfer, active)) = self
             .remote_requests
             .entries()
             .get(&id)
@@ -372,13 +376,13 @@ impl Enrollment {
                     .as_ref()
                     .and_then(Weak::upgrade)
                     .is_some_and(|session| session.is_active());
-                (e.mode, e.uac, active)
+                (e.mode, e.uac, e.transfer, active)
             })
         else {
             return Ok(None);
         };
         self.authorizer
-            .authorize_attended_operation(sessions, token, target, mode, uac)
+            .authorize_attended_operation(sessions, token, target, mode, uac, transfer)
             .await?;
         if !active {
             return Err(AccessError::Offline);
@@ -435,18 +439,18 @@ impl Enrollment {
         let own = |e: &Tracked| {
             e.tenant == tenant && e.device == device && e.operator == decision.operator_id
         };
-        let Some((mode, uac)) = self
+        let Some((mode, uac, transfer)) = self
             .remote_requests
             .entries()
             .get(&id)
             .filter(|e| own(e))
-            .map(|e| (e.mode, e.uac))
+            .map(|e| (e.mode, e.uac, e.transfer))
         else {
             return Ok(None);
         };
         // The picture starts control: the session's whole mode must still be granted.
         self.authorizer
-            .authorize_attended_operation(sessions, token, target, mode, uac)
+            .authorize_attended_operation(sessions, token, target, mode, uac, transfer)
             .await?;
         let session = {
             let mut entries = self.remote_requests.entries();

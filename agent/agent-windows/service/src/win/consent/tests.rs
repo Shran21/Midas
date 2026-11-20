@@ -50,6 +50,7 @@ fn show(seconds: u32) -> Shown {
         customer: "Test Customer".into(),
         administrative: true,
         uac: true,
+        transfer: midas_remote_auth::Transfer::NONE,
         seconds,
     };
     // SAFETY: a plain query of the user's interface language.

@@ -40,6 +40,9 @@ permissions! {
     RemoteAdmin => ("remote.admin", true),
     RemoteUacInteract => ("remote.uac.interact", true),
     RemoteUnattended => ("remote.unattended", true),
+    RemoteClipboard => ("remote.clipboard", false),
+    RemoteFilesUpload => ("remote.files.upload", true),
+    RemoteFilesDownload => ("remote.files.download", true),
     TerminalExecute => ("terminal.execute", true),
     FilesRead => ("files.read", false),
     FilesWrite => ("files.write", true),
@@ -62,6 +65,9 @@ impl Permission {
                 | Self::RemoteAdmin
                 | Self::RemoteUacInteract
                 | Self::RemoteUnattended
+                | Self::RemoteClipboard
+                | Self::RemoteFilesUpload
+                | Self::RemoteFilesDownload
         )
     }
 }
@@ -146,6 +152,38 @@ pub struct Target {
 pub enum RemoteMode {
     Normal,
     Administrative,
+}
+
+/// What a remote session may move besides the picture and input. Each part needs its own
+/// permission; the agent enforces the signed copy.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Transfer {
+    pub clipboard: bool,
+    /// Files from the operator to the device.
+    pub upload: bool,
+    /// Files from the device to the operator.
+    pub download: bool,
+}
+
+impl Transfer {
+    pub(crate) fn permissions(self) -> impl Iterator<Item = Permission> {
+        [
+            (self.clipboard, Permission::RemoteClipboard),
+            (self.upload, Permission::RemoteFilesUpload),
+            (self.download, Permission::RemoteFilesDownload),
+        ]
+        .into_iter()
+        .filter_map(|(on, permission)| on.then_some(permission))
+    }
+
+    pub(crate) fn rights(self) -> midas_remote_auth::Transfer {
+        midas_remote_auth::Transfer {
+            clipboard: self.clipboard,
+            upload: self.upload,
+            download: self.download,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
