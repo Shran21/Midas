@@ -19,6 +19,8 @@ const KEYFRAME: u8 = 3;
 const STOP: u8 = 4;
 const KEEPALIVE: u8 = 5;
 const INPUT: u8 = 6;
+const DESKTOP: u8 = 7;
+const RELEASE: u8 = 8;
 const POINTER: u8 = 1;
 const WHEEL: u8 = 2;
 const KEY: u8 = 3;
@@ -97,13 +99,44 @@ pub fn frame_messages(frame: &Encoded) -> Option<Vec<Vec<u8>>> {
     )
 }
 
-/// What the transport tells the worker.
+/// What the transport tells the worker. `Release` lets go of every key and button the worker
+/// still holds, when input moves to the other worker of the session.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
     Settings(Settings),
     Keyframe,
     Input(Input),
+    Release,
     Stop,
+}
+
+/// The desktop the session's privileged component sees: the user's ordinary work, an elevated
+/// window in the foreground, or the secure desktop, such as a UAC prompt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Desktop {
+    User,
+    Elevated,
+    Secure,
+}
+
+pub fn desktop_message(desktop: Desktop) -> [u8; 2] {
+    [
+        DESKTOP,
+        match desktop {
+            Desktop::User => 0,
+            Desktop::Elevated => 1,
+            Desktop::Secure => 2,
+        },
+    ]
+}
+
+pub fn read_desktop(message: &[u8]) -> Option<Desktop> {
+    match message {
+        [DESKTOP, 0] => Some(Desktop::User),
+        [DESKTOP, 1] => Some(Desktop::Elevated),
+        [DESKTOP, 2] => Some(Desktop::Secure),
+        _ => None,
+    }
 }
 
 pub fn command_message(command: &Command) -> Vec<u8> {
@@ -116,6 +149,7 @@ pub fn command_message(command: &Command) -> Vec<u8> {
             message
         }
         Command::Keyframe => vec![KEYFRAME],
+        Command::Release => vec![RELEASE],
         Command::Stop => vec![STOP],
         Command::Input(Input::Pointer { x, y, buttons }) => {
             let scale =
@@ -143,6 +177,7 @@ pub fn command_message(command: &Command) -> Vec<u8> {
 pub fn read_command(message: &[u8]) -> Option<Command> {
     match message {
         [KEYFRAME] => Some(Command::Keyframe),
+        [RELEASE] => Some(Command::Release),
         [STOP] => Some(Command::Stop),
         [INPUT, POINTER, x0, x1, y0, y1, buttons] => {
             let unit = |low: u8, high: u8| f64::from(u16::from_le_bytes([low, high])) / 65_535.0;
@@ -371,6 +406,7 @@ mod tests {
         for command in [
             Command::Settings(settings),
             Command::Keyframe,
+            Command::Release,
             Command::Stop,
             Command::Input(Input::Pointer {
                 x: 0.0,
@@ -414,5 +450,17 @@ mod tests {
         assert_eq!(Assembler::default().push(&KEEPALIVE_MESSAGE), Ok(None));
         assert_eq!(read_command(&[SETTINGS, 1, 2]), None);
         assert_eq!(read_command(&[FRAME]), None);
+    }
+
+    #[test]
+    fn desktop_states_round_trip_and_unknown_ones_are_refused() {
+        for desktop in [Desktop::User, Desktop::Elevated, Desktop::Secure] {
+            assert_eq!(read_desktop(&desktop_message(desktop)), Some(desktop));
+            assert_eq!(read_command(&desktop_message(desktop)), None);
+        }
+        assert_eq!(read_desktop(&[DESKTOP, 3]), None);
+        assert_eq!(read_desktop(&[DESKTOP]), None);
+        assert_eq!(read_desktop(&[DESKTOP, 0, 0]), None);
+        assert_eq!(read_desktop(&[KEYFRAME]), None);
     }
 }

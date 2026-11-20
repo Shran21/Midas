@@ -340,6 +340,49 @@ async fn release_participants(parent: &Peer, token: &OwnedHandle, session: u32, 
             "one transport per session"
         );
         assert!(!broker.has_exited().unwrap() && !worker.has_exited().unwrap());
+        // With UAC rights the session's privileged worker joins the companion, once.
+        let observer = std::sync::Arc::new(crate::win::sessions::Observer::default());
+        let target = observer
+            .collect()
+            .expect("native sessions")
+            .into_iter()
+            .find(|candidate| candidate.id == session)
+            .expect("console session");
+        let token = super::super::tokens::PreparedToken::privileged(parent, observer, target)
+            .expect("privileged token for the console session");
+        let joining = super::super::launch::SuspendedWorker::spawn(parent, token, image).unwrap();
+        let joined = std::time::Instant::now();
+        let privileged = super::super::bootstrap::attach_privileged(
+            parent,
+            &broker_peer,
+            &broker,
+            &mut control,
+            joining,
+            tokio::time::Instant::now() + super::super::STARTUP_TIMEOUT,
+        )
+        .await
+        .unwrap_or_else(|error| {
+            panic!(
+                "privileged worker must join the companion: {error} (companion {})",
+                process_state(&broker_process)
+            )
+        });
+        println!(
+            "release privileged worker joined the companion after {:?}",
+            joined.elapsed()
+        );
+        let again = control
+            .exchange(
+                &super::super::media::listen_message(4, uuid::Uuid::new_v4()),
+                tokio::time::Instant::now() + Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+        assert!(
+            !super::super::media::listening(&again),
+            "one privileged worker per session"
+        );
+        assert!(!broker.has_exited().unwrap() && !privileged.has_exited().unwrap());
         drop(worker);
         assert_eq!(
             // SAFETY: bounded wait on the retained CI companion while its own job is still open.
@@ -355,6 +398,16 @@ async fn release_participants(parent: &Peer, token: &OwnedHandle, session: u32, 
         assert_eq!(
             code, 0,
             "companion should exit cleanly after worker disconnect"
+        );
+        for _ in 0..50 {
+            if privileged.has_exited().unwrap() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        assert!(
+            privileged.has_exited().unwrap(),
+            "privileged worker should stop with its companion"
         );
     }
 }

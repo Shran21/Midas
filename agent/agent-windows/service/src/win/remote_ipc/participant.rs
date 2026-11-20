@@ -17,6 +17,8 @@ use crate::consent::{Answer, Question, encode_answer};
 
 pub(in crate::win::remote_ipc) const WORKER_HELLO: &[u8] = b"worker-ready/1";
 pub(in crate::win::remote_ipc) const BROKER_HELLO: &[u8] = b"broker-ready/1";
+/// The companion's greeting to the privileged worker of a session with UAC rights.
+pub(in crate::win::remote_ipc) const MEDIA_HELLO: &[u8] = b"media-ready/1";
 const ANSWER_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub enum Participant {
@@ -79,17 +81,28 @@ impl Participant {
                     super::media::worker(connection).await
                 }
                 Self::Privileged => {
-                    let connection =
+                    let (connection, media) =
                         delivery::receive_privileged(&image, deadline, async |destination| {
                             let mut connection = destination.connect()?;
                             connection.send(WORKER_HELLO, deadline).await?;
-                            expect(&mut connection, BROKER_HELLO, deadline).await?;
-                            Ok(connection)
+                            let hello = connection.receive(deadline).await?;
+                            let media = match &*hello {
+                                BROKER_HELLO => false,
+                                MEDIA_HELLO => true,
+                                _ => return Err(denied()),
+                            };
+                            Ok((connection, media))
                         })
                         .await?;
                     reached(Stage::Connected);
                     reached(Stage::Standby);
-                    standby(connection).await
+                    // The service itself stands by; the companion of a session with UAC rights
+                    // runs the secure desktop and elevated input through this worker.
+                    if media {
+                        super::media::privileged(connection).await
+                    } else {
+                        standby(connection).await
+                    }
                 }
                 Self::Consent => consent(deadline, crate::win::consent::ask).await,
                 Self::Broker => {
@@ -101,7 +114,7 @@ impl Participant {
                     let control = launcher.connected(deadline).await?;
                     reached(Stage::Connected);
                     reached(Stage::Standby);
-                    super::media::companion(connection, control).await
+                    super::media::companion(connection, control, &image).await
                 }
             }
         })

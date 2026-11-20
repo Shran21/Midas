@@ -41,6 +41,9 @@ export type Stats = {
   sentFps: number;
   profile: "text" | "motion";
   auto: boolean;
+  /** What the remote computer shows: the user's own desktop, an elevated window in front, or
+   * the secure desktop of a UAC prompt. */
+  desktop: "user" | "elevated" | "secure";
 };
 
 function count(value: unknown, limit: number) {
@@ -69,6 +72,10 @@ export function readStats(text: string): Stats | null {
   const targetFps = count(record.target_fps, 240);
   const sentBitrate = count(record.sent_bitrate, 1e9);
   const sentFps = count(record.sent_fps, 240);
+  // Agents without a privileged component never report a desktop.
+  const desktop = record.desktop ?? "user";
+  if (desktop !== "user" && desktop !== "elevated" && desktop !== "secure")
+    return null;
   if (
     width === null ||
     height === null ||
@@ -89,6 +96,7 @@ export function readStats(text: string): Stats | null {
     sentFps,
     profile: record.profile,
     auto: record.auto,
+    desktop,
   };
 }
 

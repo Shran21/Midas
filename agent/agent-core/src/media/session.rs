@@ -13,7 +13,7 @@ use serde_json::json;
 pub use super::link::Input;
 use super::{
     adapt::{Controller, Limits, Profile, Settings, frame_size},
-    link::{Assembler, Command, Encoded, LinkError},
+    link::{Assembler, Command, Desktop, Encoded, LinkError, read_desktop},
     peer::{Peer, PeerError, PeerEvent},
 };
 
@@ -47,6 +47,7 @@ pub struct Transport {
     bytes: u64,
     frames: u32,
     stopped: bool,
+    desktop: Desktop,
 }
 
 impl Transport {
@@ -69,6 +70,7 @@ impl Transport {
             bytes: 0,
             frames: 0,
             stopped: false,
+            desktop: Desktop::User,
         };
         transport.settings();
         transport
@@ -116,9 +118,30 @@ impl Transport {
         }
     }
 
-    /// A message from the capture worker; a malformed one ends the session.
+    /// The desktop the privileged component last reported.
+    pub fn desktop(&self) -> Desktop {
+        self.desktop
+    }
+
+    /// Frames come from the privileged component only while the secure desktop is shown. On a
+    /// change of source the unfinished frame of the old one is dropped and a keyframe requested.
+    fn set_desktop(&mut self, desktop: Desktop) {
+        let switched = (self.desktop == Desktop::Secure) != (desktop == Desktop::Secure);
+        self.desktop = desktop;
+        if switched {
+            self.assembler = Assembler::default();
+            self.commands.push_back(Command::Keyframe);
+        }
+    }
+
+    /// A message from the capture worker or a desktop report from the privileged component; a
+    /// malformed one ends the session. The companion passes only the current source's frames.
     pub fn worker_message(&mut self, message: &[u8]) -> Result<(), LinkError> {
         if self.stopped {
+            return Ok(());
+        }
+        if let Some(desktop) = read_desktop(message) {
+            self.set_desktop(desktop);
             return Ok(());
         }
         let frame = match self.assembler.push(message) {
@@ -187,6 +210,11 @@ impl Transport {
             "target_fps": current.fps,
             "sent_bitrate": (self.bytes as f64 * 8.0 / elapsed.max(0.001)).round(),
             "sent_fps": (f64::from(self.frames) / elapsed.max(0.001) * 10.0).round() / 10.0,
+            "desktop": match self.desktop {
+                Desktop::User => "user",
+                Desktop::Elevated => "elevated",
+                Desktop::Secure => "secure",
+            },
         });
         self.bytes = 0;
         self.frames = 0;

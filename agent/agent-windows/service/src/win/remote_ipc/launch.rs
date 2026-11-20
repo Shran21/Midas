@@ -271,6 +271,17 @@ impl RunningWorker {
         self.process.has_exited()
     }
 
+    /// Hands this running process a query-only handle to `peer`'s process. The value is valid
+    /// only in this process's handle table; it is never owned or closed here.
+    pub(super) fn share(&self, owner: &Peer, peer: &Peer) -> io::Result<u64> {
+        owner.check(self.process.pid()?)?;
+        self.session.check()?;
+        if self.has_exited()? {
+            return Err(denied());
+        }
+        self.process.duplicate_into(peer)
+    }
+
     /// Requests termination; `has_exited` separately confirms that the process has stopped.
     pub fn terminate(&self) -> io::Result<()> {
         // SAFETY: this owner retains the job handle; no job handle is exported or inherited.
@@ -392,9 +403,15 @@ impl Process {
         if self.thread.is_none() || self.has_exited()? {
             return Err(denied());
         }
+        let value = self.duplicate_into(peer)?;
+        // The foreign value is never owned here; failure drops the child, closing its handle table.
+        Ok((self, value))
+    }
+
+    fn duplicate_into(&self, peer: &Peer) -> io::Result<u64> {
         let source = peer.process_handle()?;
         let mut remote = ptr::null_mut();
-        // SAFETY: both process objects are retained; only query/synchronize access enters the suspended child.
+        // SAFETY: both process objects are retained; only query/synchronize access enters the child.
         check(unsafe {
             DuplicateHandle(
                 GetCurrentProcess(),
@@ -410,8 +427,7 @@ impl Process {
         if remote.is_null() || self.has_exited()? {
             return Err(denied());
         }
-        // The foreign value is never owned here; failure drops the child, closing its handle table.
-        Ok((self, remote as usize as u64))
+        Ok(remote as usize as u64)
     }
 
     pub(super) fn resume(mut self) -> io::Result<Self> {

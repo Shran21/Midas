@@ -15,6 +15,10 @@ const hu = {
   profile: "Képprofil",
   text: "Szöveg",
   motion: "Mozgás",
+  secureDesktop:
+    "A távoli gépen a biztonságos asztal látszik, például egy UAC-kérdés. A képet és a bevitelt most a rendszerkomponens kezeli.",
+  elevatedWindow:
+    "Rendszergazdai jogú ablak van elöl vagy a mutató alatt. A bevitelt most a rendszerkomponens kézbesíti.",
 };
 
 const en: {
@@ -38,6 +42,10 @@ const en: {
   profile: "Picture profile",
   text: "Text",
   motion: "Motion",
+  secureDesktop:
+    "The remote computer shows its secure desktop, for example a UAC prompt. The system component now handles the picture and input.",
+  elevatedWindow:
+    "An administrator window is in front or under the pointer. The system component now delivers the input.",
 };
 
 export const viewerCopy = { hu, en };

@@ -56,7 +56,7 @@ impl Encoding {
             Command::Stop => return Ok(false),
             Command::Keyframe => self.keyframe = true,
             // Input is executed beside the stream, not by the encoder.
-            Command::Input(_) => {}
+            Command::Input(_) | Command::Release => {}
             Command::Settings(settings) => {
                 let changed = settings.bitrate != self.settings.bitrate;
                 self.settings = settings;

@@ -195,6 +195,18 @@ export function Viewer({
         <p role="status" aria-live="polite">
           {c[state]}
         </p>
+        <p
+          className="remote-viewer-desktop"
+          role="status"
+          aria-live="polite"
+          hidden={!fresh || fresh.desktop === "user"}
+        >
+          {fresh?.desktop === "secure"
+            ? c.secureDesktop
+            : fresh?.desktop === "elevated"
+              ? c.elevatedWindow
+              : ""}
+        </p>
         {fresh && (
           <p className="muted">
             {c.quality(

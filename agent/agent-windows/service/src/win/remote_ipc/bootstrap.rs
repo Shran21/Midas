@@ -104,6 +104,50 @@ pub async fn start_consent(
     Ok((running, sent.connected(deadline).await?))
 }
 
+/// Starts the privileged worker of a consented session with UAC rights in the companion's
+/// session. It connects to the companion, which carries the secure desktop and input to elevated
+/// windows in the same connection; the ordinary worker keeps the user's own work.
+pub async fn attach_privileged(
+    parent: &Peer,
+    companion: &Peer,
+    running: &RunningWorker,
+    control: &mut delivery::Control,
+    worker: SuspendedWorker,
+    deadline: tokio::time::Instant,
+) -> io::Result<RunningWorker> {
+    let id = worker.bootstrap_id.ok_or_else(denied)?;
+    let peer = worker.peer()?;
+    if !matches!(
+        peer.role,
+        super::identity::Role::Worker {
+            kind: super::Worker::Privileged,
+            ..
+        }
+    ) || companion.role != super::identity::Role::Broker
+    {
+        return Err(denied());
+    }
+    let binding = worker.binding(parent)?;
+    let shared = running.share(companion, &peer)?;
+    let endpoint = uuid::Uuid::new_v4();
+    let reply = control
+        .exchange(&super::media::listen_message(shared, endpoint), deadline)
+        .await?;
+    if !super::media::listening(&reply) {
+        return Err(denied());
+    }
+    let (worker, handle_value) = worker.transfer_broker(parent, companion)?;
+    let sender = delivery::Sender::for_privileged(id, peer)?;
+    if tokio::time::Instant::now() >= deadline {
+        return Err(io::ErrorKind::TimedOut.into());
+    }
+    let running = worker.resume(parent)?;
+    sender
+        .send(handle_value, endpoint, &binding, companion, deadline)
+        .await?;
+    Ok(running)
+}
+
 /// Owns the suspended worker and its single query-only companion handle transfer.
 pub struct Prepared {
     worker: SuspendedWorker,
@@ -186,6 +230,20 @@ impl Prepared {
 /// The image must come from trusted installation configuration, never the received metadata.
 pub fn import_broker(handle_value: u64, installed_image: &Path) -> io::Result<Peer> {
     Peer::broker(import_process(handle_value)?, installed_image)
+}
+
+/// The companion's view of the privileged worker the service handed it, in its own session.
+pub(super) fn import_privileged(
+    handle_value: u64,
+    installed_image: &Path,
+    session: u32,
+) -> io::Result<Peer> {
+    Peer::worker(
+        import_process(handle_value)?,
+        installed_image,
+        super::Worker::Privileged,
+        session,
+    )
 }
 
 fn import_process(handle_value: u64) -> io::Result<OwnedHandle> {

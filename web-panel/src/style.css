@@ -3372,6 +3372,16 @@ h1[tabindex="-1"]:focus {
 .remote-viewer-bar p {
   margin: 0;
 }
+.remote-viewer-bar .remote-viewer-desktop {
+  flex-basis: 100%;
+  padding: 6px 10px;
+  border-radius: 6px;
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+.remote-viewer-desktop[hidden] {
+  display: none;
+}
 .remote-viewer-profile {
   display: flex;
   gap: 8px;

@@ -54,7 +54,21 @@ test("agent statistics are read strictly", () => {
     sentFps: 29.5,
     profile: "text",
     auto: true,
+    desktop: "user",
   });
+  assert.equal(
+    readStats(JSON.stringify({ ...report, desktop: "secure" }))?.desktop,
+    "secure",
+  );
+  assert.equal(
+    readStats(JSON.stringify({ ...report, desktop: "elevated" }))?.desktop,
+    "elevated",
+  );
+  assert.equal(
+    readStats(JSON.stringify({ ...report, desktop: "admin" })),
+    null,
+  );
+  assert.equal(readStats(JSON.stringify({ ...report, desktop: 2 })), null);
   for (const invalid of [
     "not json",
     "null",

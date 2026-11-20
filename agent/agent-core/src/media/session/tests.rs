@@ -1,6 +1,6 @@
 use super::*;
 use crate::media::{
-    link::frame_messages,
+    link::{desktop_message, frame_messages},
     testing::{connect, keyframe, software},
 };
 
@@ -79,6 +79,7 @@ fn worker_frames_reach_the_browser_and_commands_flow_back() {
         (Some(1280), Some(720))
     );
     assert_eq!(report["auto"], true);
+    assert_eq!(report["desktop"], "user");
     assert!(report["target_bitrate"].as_u64().is_some() && report["sent_fps"].as_f64().is_some());
     assert!(seen.contains(&Command::Keyframe));
     assert!(
@@ -90,6 +91,41 @@ fn worker_frames_reach_the_browser_and_commands_flow_back() {
     assert!(transport.is_stopped());
     assert_eq!(commands(&mut transport).last(), Some(&Command::Stop));
     assert!(transport.drive(Instant::now()).is_err());
+}
+
+#[test]
+fn a_change_of_frame_source_drops_the_unfinished_frame_and_asks_for_a_keyframe() {
+    let (_browser, peer, _) = connect(software());
+    let mut transport = Transport::new(peer, Profile::Text, (1920, 1080), Instant::now());
+    commands(&mut transport);
+    let large = Encoded {
+        data: vec![7; 150_000],
+        ..encoded(1)
+    };
+    let messages = frame_messages(&large).unwrap();
+    assert!(messages.len() > 1);
+    transport.worker_message(&messages[0]).unwrap();
+    transport
+        .worker_message(&desktop_message(Desktop::Secure))
+        .unwrap();
+    assert_eq!(transport.desktop(), Desktop::Secure);
+    assert_eq!(commands(&mut transport), vec![Command::Keyframe]);
+    // The rest of the old source's frame arrives late and is not mistaken for a new one.
+    for message in &messages[1..] {
+        transport.worker_message(message).unwrap();
+    }
+    for message in frame_messages(&encoded(0)).unwrap() {
+        transport.worker_message(&message).unwrap();
+    }
+    transport
+        .worker_message(&desktop_message(Desktop::Elevated))
+        .unwrap();
+    assert_eq!(commands(&mut transport), vec![Command::Keyframe]);
+    transport
+        .worker_message(&desktop_message(Desktop::User))
+        .unwrap();
+    assert!(commands(&mut transport).is_empty(), "same source");
+    assert!(!transport.is_stopped());
 }
 
 #[test]

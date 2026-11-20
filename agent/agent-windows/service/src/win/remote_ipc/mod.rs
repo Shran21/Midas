@@ -3,6 +3,7 @@
 pub mod bootstrap;
 pub mod broker;
 pub mod coordinator;
+mod desktop;
 mod identity;
 pub mod launch;
 pub mod media;

@@ -15,7 +15,9 @@ use midas_remote_auth::{Error, Mode, Rights, Target};
 
 use super::{
     IO_TIMEOUT, Peer, STARTUP_TIMEOUT,
-    bootstrap::{delivery::Control, start_consent, start_pair, start_privileged},
+    bootstrap::{
+        attach_privileged, delivery::Control, start_consent, start_pair, start_privileged,
+    },
     broker::SuspendedBroker,
     denied,
     launch::{RunningWorker, SuspendedWorker, supervise},
@@ -67,10 +69,13 @@ impl Coordinator {
 
     /// Started workers, plus the service's control channel to a privileged worker or to the
     /// ordinary pair's companion; closing it stops them, so it lives as long as the supervision.
+    /// With UAC rights an occupied session also gets the privileged worker, attached to the
+    /// companion, for the secure desktop and elevated windows in the same connection.
     fn start(
         &self,
         session: OsSession,
         kind: Kind,
+        uac: bool,
     ) -> std::io::Result<(Vec<RunningWorker>, Option<Channel>, Option<Control>)> {
         let deadline = tokio::time::Instant::now() + STARTUP_TIMEOUT;
         match kind {
@@ -84,13 +89,30 @@ impl Coordinator {
                 Ok((vec![running], Some(connection), None))
             }
             Kind::Ordinary => {
-                let token = PreparedToken::user(&self.parent, self.observer.clone(), session)?;
+                let token =
+                    PreparedToken::user(&self.parent, self.observer.clone(), session.clone())?;
                 let worker = SuspendedWorker::spawn(&self.parent, token, &self.image)?;
                 let companion = SuspendedBroker::spawn(&self.parent, &worker, &self.image)?;
-                let (pair, control) =
+                let identity = companion.peer()?;
+                let (pair, mut control) =
                     self.runtime
                         .block_on(start_pair(&self.parent, companion, worker, deadline))?;
-                Ok((pair.into(), None, Some(control)))
+                let mut workers: Vec<RunningWorker> = pair.into();
+                if uac {
+                    let token =
+                        PreparedToken::privileged(&self.parent, self.observer.clone(), session)?;
+                    let privileged = SuspendedWorker::spawn(&self.parent, token, &self.image)?;
+                    let running = self.runtime.block_on(attach_privileged(
+                        &self.parent,
+                        &identity,
+                        &workers[0],
+                        &mut control,
+                        privileged,
+                        deadline,
+                    ))?;
+                    workers.push(running);
+                }
+                Ok((workers, None, Some(control)))
             }
         }
     }
@@ -228,11 +250,12 @@ impl Native for Coordinator {
         let session = select(lease.target(), self.observer.collect())?;
         let kind = worker_for(presence(&session), lease.rights())?;
         let id = lease.id();
-        let (workers, channel, control) = self.start(session, kind).map_err(|error| {
+        let uac = lease.rights().uac;
+        let (workers, channel, control) = self.start(session, kind, uac).map_err(|error| {
             tracing::warn!(lease = %id, ?kind, %error, "remote support workers could not start");
             Error::Target
         })?;
-        tracing::info!(lease = %id, ?kind, "remote support workers started");
+        tracing::info!(lease = %id, ?kind, uac, "remote support workers started");
         let media = self.media.clone();
         *media.blocking_lock() = control;
         *active = Some(self.runtime.spawn(async move {
