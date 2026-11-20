@@ -737,7 +737,13 @@ where
             }
             connection = attached.recv(), if privileged.is_none() => {
                 let Some(connection) = connection else { continue };
-                let (incoming, writer) = connection.split()?;
+                let (incoming, writer) = match connection.split() {
+                    Ok(halves) => halves,
+                    Err(error) => {
+                        tracing::warn!(%error, "privileged worker channel not split");
+                        continue;
+                    }
+                };
                 privileged = Some(Privileged { incoming: reader(incoming), writer });
                 if let Some(settings) = &settings {
                     send_privileged(&mut privileged, &command_message(settings)).await;
