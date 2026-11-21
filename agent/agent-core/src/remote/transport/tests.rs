@@ -711,5 +711,13 @@ async fn chat_goes_both_ways_only_for_the_active_request() {
         panic!("the user's chat");
     };
     assert_eq!(said, chat(&f.prepare.request, "Köszönöm!"));
+    // The operator's message is handed on by the engine, which may come after the collection.
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while f.broker.shown.lock().unwrap().is_empty() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the operator's message is shown");
     assert_eq!(*f.broker.shown.lock().unwrap(), ["Mindjárt nézem."]);
 }

@@ -16,13 +16,13 @@ use windows::{
             CODECAPI_AVEncCommonMeanBitRate, CODECAPI_AVEncVideoForceKeyFrame, ICodecAPI,
             IMFActivate, IMFMediaEventGenerator, IMFSample, IMFTransform, METransformHaveOutput,
             METransformNeedInput, MF_E_NO_EVENTS_AVAILABLE, MF_E_TRANSFORM_STREAM_CHANGE,
-            MF_EVENT_FLAG_NO_WAIT, MF_EVENT_TYPE, MF_TRANSFORM_ASYNC_UNLOCK, MFCreateMemoryBuffer,
-            MFCreateSample, MFMediaType_Video, MFT_CATEGORY_VIDEO_ENCODER, MFT_ENUM_FLAG_HARDWARE,
-            MFT_ENUM_FLAG_SORTANDFILTER, MFT_ENUM_HARDWARE_VENDOR_ID_Attribute,
-            MFT_FRIENDLY_NAME_Attribute, MFT_MESSAGE_NOTIFY_BEGIN_STREAMING,
-            MFT_MESSAGE_NOTIFY_START_OF_STREAM, MFT_OUTPUT_DATA_BUFFER,
-            MFT_OUTPUT_STREAM_PROVIDES_SAMPLES, MFT_REGISTER_TYPE_INFO, MFTEnumEx,
-            MFVideoFormat_H264, MFVideoFormat_NV12,
+            MF_EVENT_FLAG_NO_WAIT, MF_EVENT_TYPE, MF_LOW_LATENCY, MF_TRANSFORM_ASYNC_UNLOCK,
+            MFCreateMemoryBuffer, MFCreateSample, MFMediaType_Video, MFT_CATEGORY_VIDEO_ENCODER,
+            MFT_ENUM_FLAG_HARDWARE, MFT_ENUM_FLAG_SORTANDFILTER,
+            MFT_ENUM_HARDWARE_VENDOR_ID_Attribute, MFT_FRIENDLY_NAME_Attribute,
+            MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, MFT_MESSAGE_NOTIFY_START_OF_STREAM,
+            MFT_OUTPUT_DATA_BUFFER, MFT_OUTPUT_STREAM_PROVIDES_SAMPLES, MFT_REGISTER_TYPE_INFO,
+            MFTEnumEx, MFVideoFormat_H264, MFVideoFormat_NV12,
         },
         System::{Com::CoTaskMemFree, Variant::VARIANT},
     },
@@ -173,11 +173,15 @@ impl HardwareH264 {
         unsafe {
             let transform: IMFTransform = candidate.activate.ActivateObject().map_err(failed)?;
             // An asynchronous encoder works only once its caller says it handles the events.
-            transform
-                .GetAttributes()
-                .map_err(failed)?
+            let attributes = transform.GetAttributes().map_err(failed)?;
+            attributes
                 .SetUINT32(&MF_TRANSFORM_ASYNC_UNLOCK, 1)
                 .map_err(failed)?;
+            // Some encoders, AMD's among them, read low latency from the transform's own
+            // attributes rather than the codec property; the others ignore it.
+            if let Err(error) = attributes.SetUINT32(&MF_LOW_LATENCY, 1) {
+                tracing::info!(%error, "the encoder does not take the low-latency attribute");
+            }
             let codec: ICodecAPI = transform.cast().map_err(failed)?;
             let events: IMFMediaEventGenerator = transform.cast().map_err(failed)?;
             configure(
