@@ -67,6 +67,90 @@ fn pack(high: u32, low: u32) -> u64 {
     (u64::from(high) << 32) | u64::from(low)
 }
 
+/// Low-latency constant-bitrate constrained baseline from NV12; the same for every encoder.
+///
+/// # Safety
+/// `transform` and `codec` must be one live encoder, used from this thread.
+unsafe fn configure(
+    transform: &IMFTransform,
+    codec: &ICodecAPI,
+    width: u32,
+    height: u32,
+    fps: u32,
+    bitrate: u32,
+) -> io::Result<()> {
+    // SAFETY: the caller's encoder; every value passed is owned for the call.
+    unsafe {
+        // Encoder properties go before the media types, which fix the encoder's buffering.
+        codec
+            .SetValue(&CODECAPI_AVLowLatencyMode, &VARIANT::from(true))
+            .map_err(failed)?;
+        codec
+            .SetValue(
+                &CODECAPI_AVEncCommonRateControlMode,
+                &VARIANT::from(eAVEncCommonRateControlMode_CBR.0 as u32),
+            )
+            .map_err(failed)?;
+        codec
+            .SetValue(&CODECAPI_AVEncCommonMeanBitRate, &VARIANT::from(bitrate))
+            .map_err(failed)?;
+        // Keyframes come on request after loss; a regular one every ten seconds bounds recovery.
+        codec
+            .SetValue(
+                &CODECAPI_AVEncMPVGOPSize,
+                &VARIANT::from(fps.saturating_mul(10)),
+            )
+            .map_err(failed)?;
+        let output: IMFMediaType = MFCreateMediaType().map_err(failed)?;
+        output
+            .SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)
+            .map_err(failed)?;
+        output
+            .SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_H264)
+            .map_err(failed)?;
+        output
+            .SetUINT32(&MF_MT_AVG_BITRATE, bitrate)
+            .map_err(failed)?;
+        output
+            .SetUINT64(&MF_MT_FRAME_SIZE, pack(width, height))
+            .map_err(failed)?;
+        output
+            .SetUINT64(&MF_MT_FRAME_RATE, pack(fps, 1))
+            .map_err(failed)?;
+        output
+            .SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)
+            .map_err(failed)?;
+        output
+            .SetUINT32(&MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Base.0 as u32)
+            .map_err(failed)?;
+        output
+            .SetUINT32(&MF_MT_YUV_MATRIX, MFVideoTransferMatrix_BT709.0 as u32)
+            .map_err(failed)?;
+        output
+            .SetUINT32(&MF_MT_VIDEO_NOMINAL_RANGE, MFNominalRange_16_235.0 as u32)
+            .map_err(failed)?;
+        transform.SetOutputType(0, &output, 0).map_err(failed)?;
+        let input: IMFMediaType = MFCreateMediaType().map_err(failed)?;
+        input
+            .SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)
+            .map_err(failed)?;
+        input
+            .SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_NV12)
+            .map_err(failed)?;
+        input
+            .SetUINT64(&MF_MT_FRAME_SIZE, pack(width, height))
+            .map_err(failed)?;
+        input
+            .SetUINT64(&MF_MT_FRAME_RATE, pack(fps, 1))
+            .map_err(failed)?;
+        input
+            .SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)
+            .map_err(failed)?;
+        transform.SetInputType(0, &input, 0).map_err(failed)?;
+        Ok(())
+    }
+}
+
 pub struct SoftwareH264 {
     transform: IMFTransform,
     codec: ICodecAPI,
@@ -95,73 +179,8 @@ impl SoftwareH264 {
                 CoCreateInstance(&CLSID_MSH264EncoderMFT, None, CLSCTX_INPROC_SERVER).map_err(
                     |_| io::Error::new(io::ErrorKind::Unsupported, "no Windows H.264 encoder"),
                 )?;
-            // Encoder properties go before the media types, which fix the encoder's buffering.
             let codec: ICodecAPI = transform.cast().map_err(failed)?;
-            codec
-                .SetValue(&CODECAPI_AVLowLatencyMode, &VARIANT::from(true))
-                .map_err(failed)?;
-            codec
-                .SetValue(
-                    &CODECAPI_AVEncCommonRateControlMode,
-                    &VARIANT::from(eAVEncCommonRateControlMode_CBR.0 as u32),
-                )
-                .map_err(failed)?;
-            codec
-                .SetValue(&CODECAPI_AVEncCommonMeanBitRate, &VARIANT::from(bitrate))
-                .map_err(failed)?;
-            // Keyframes come on request after loss; a regular one every ten seconds bounds recovery.
-            codec
-                .SetValue(
-                    &CODECAPI_AVEncMPVGOPSize,
-                    &VARIANT::from(fps.saturating_mul(10)),
-                )
-                .map_err(failed)?;
-            let output: IMFMediaType = MFCreateMediaType().map_err(failed)?;
-            output
-                .SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)
-                .map_err(failed)?;
-            output
-                .SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_H264)
-                .map_err(failed)?;
-            output
-                .SetUINT32(&MF_MT_AVG_BITRATE, bitrate)
-                .map_err(failed)?;
-            output
-                .SetUINT64(&MF_MT_FRAME_SIZE, pack(width, height))
-                .map_err(failed)?;
-            output
-                .SetUINT64(&MF_MT_FRAME_RATE, pack(fps, 1))
-                .map_err(failed)?;
-            output
-                .SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)
-                .map_err(failed)?;
-            output
-                .SetUINT32(&MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Base.0 as u32)
-                .map_err(failed)?;
-            output
-                .SetUINT32(&MF_MT_YUV_MATRIX, MFVideoTransferMatrix_BT709.0 as u32)
-                .map_err(failed)?;
-            output
-                .SetUINT32(&MF_MT_VIDEO_NOMINAL_RANGE, MFNominalRange_16_235.0 as u32)
-                .map_err(failed)?;
-            transform.SetOutputType(0, &output, 0).map_err(failed)?;
-            let input: IMFMediaType = MFCreateMediaType().map_err(failed)?;
-            input
-                .SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)
-                .map_err(failed)?;
-            input
-                .SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_NV12)
-                .map_err(failed)?;
-            input
-                .SetUINT64(&MF_MT_FRAME_SIZE, pack(width, height))
-                .map_err(failed)?;
-            input
-                .SetUINT64(&MF_MT_FRAME_RATE, pack(fps, 1))
-                .map_err(failed)?;
-            input
-                .SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)
-                .map_err(failed)?;
-            transform.SetInputType(0, &input, 0).map_err(failed)?;
+            configure(&transform, &codec, width, height, fps, bitrate)?;
             transform
                 .ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0)
                 .map_err(failed)?;
@@ -278,6 +297,8 @@ impl SoftwareH264 {
         }
     }
 }
+
+pub mod hardware;
 
 #[cfg(test)]
 mod tests;

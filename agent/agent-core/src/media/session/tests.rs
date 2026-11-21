@@ -270,3 +270,31 @@ fn transfer_messages_pass_only_with_their_right_and_answers_come_back() {
     );
     assert!(transport.is_stopped());
 }
+
+#[test]
+fn a_hardware_encoder_report_raises_the_limits_and_a_software_one_lowers_them() {
+    use crate::media::link::{EncoderReport, encoder_message};
+    let (_browser, peer, _) = connect(software());
+    let mut transport = Transport::new(peer, Profile::Text, (3840, 2160), Instant::now());
+    let pixels = |(width, height): (u32, u32)| u64::from(width) * u64::from(height);
+    let start = pixels(transport.frame_size());
+    assert!(start <= 1920 * 1080, "software limits at first");
+    let report = |hardware: bool| EncoderReport {
+        hardware,
+        vendor: if hardware {
+            "intel".into()
+        } else {
+            String::new()
+        },
+        name: "encoder".into(),
+        latency_ms: Some(3),
+    };
+    transport
+        .worker_message(&encoder_message(&report(true)))
+        .unwrap();
+    assert!(pixels(transport.frame_size()) > start, "hardware limits");
+    transport
+        .worker_message(&encoder_message(&report(false)))
+        .unwrap();
+    assert_eq!(pixels(transport.frame_size()), start);
+}

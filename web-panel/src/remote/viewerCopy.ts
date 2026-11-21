@@ -21,6 +21,8 @@ const hu = {
     `Késleltetés: ${rtt === null ? "nincs mérés" : `${rtt.toLocaleString("hu-HU")} ms`} · csomagvesztés: ${loss === null ? "nincs mérés" : `${(loss * 100).toLocaleString("hu-HU", { maximumFractionDigits: 1 })}%`}`,
   degraded:
     "A hálózat romlott (veszteség, késés vagy ingadozás). A minőség automatikusan csökkent, és javuláskor fokozatosan visszaáll.",
+  encoder: (name: string, hardware: boolean, latency: number | null) =>
+    `Kódoló: ${name} (${hardware ? "hardveres" : "szoftveres"})${latency === null ? "" : ` · kódolás ${latency.toLocaleString("hu-HU")} ms`}`,
   direct: "Közvetlen kapcsolat",
   relay: "Kapcsolat a relén át",
   keys: "Rendszerbillentyűk",
@@ -87,6 +89,8 @@ const en: {
     `Latency: ${rtt === null ? "not measured" : `${rtt.toLocaleString("en-GB")} ms`} · packet loss: ${loss === null ? "not measured" : `${(loss * 100).toLocaleString("en-GB", { maximumFractionDigits: 1 })}%`}`,
   degraded:
     "The network has degraded (loss, delay or jitter). Quality was lowered automatically and recovers gradually as it improves.",
+  encoder: (name, hardware, latency) =>
+    `Encoder: ${name} (${hardware ? "hardware" : "software"})${latency === null ? "" : ` · encoding ${latency.toLocaleString("en-GB")} ms`}`,
   direct: "Direct connection",
   relay: "Connection through the relay",
   keys: "System keys",

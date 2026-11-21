@@ -385,6 +385,15 @@ export function Viewer({
             {fresh.path && ` · ${c[fresh.path]}`}
           </p>
         )}
+        {fresh?.encoder && (
+          <p className="muted">
+            {c.encoder(
+              fresh.encoder.name,
+              fresh.encoder.hardware,
+              fresh.encoder.latencyMs,
+            )}
+          </p>
+        )}
         <fieldset className="remote-viewer-profile">
           <legend>{c.profile}</legend>
           {(["text", "motion"] as const).map((value) => (

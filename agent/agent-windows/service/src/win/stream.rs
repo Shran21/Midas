@@ -10,16 +10,78 @@ use std::{
 use midas_agent_core::media::{
     adapt::{Limits, Settings, frame_size},
     frame::{Bgra, bgra_to_nv12},
-    link::{Command, Encoded, frame_messages},
+    link::{Command, Encoded, EncoderReport, encoder_message, frame_messages},
 };
 
-use super::{capture::Duplicator, encode::SoftwareH264};
+use super::{
+    capture::Duplicator,
+    encode::{
+        SoftwareH264,
+        hardware::{HardwareH264, candidates},
+    },
+};
 use crate::capture::{Frame, Selection};
 
+/// How often the encoder in use and its latency are reported.
+const REPORT_EVERY: Duration = Duration::from_secs(1);
+
+enum Backend {
+    Software(SoftwareH264),
+    Hardware(HardwareH264),
+}
+
+impl Backend {
+    fn encode(&mut self, nv12: &[u8], keyframe: bool) -> io::Result<Vec<u8>> {
+        match self {
+            Self::Software(encoder) => encoder.encode(nv12, keyframe).map(<[u8]>::to_vec),
+            Self::Hardware(encoder) => encoder.encode(nv12, keyframe).map(<[u8]>::to_vec),
+        }
+    }
+
+    fn set_bitrate(&mut self, bitrate: u32) -> io::Result<()> {
+        match self {
+            Self::Software(encoder) => encoder.set_bitrate(bitrate),
+            Self::Hardware(encoder) => encoder.set_bitrate(bitrate),
+        }
+    }
+
+    fn report(&self, software: Option<Duration>) -> EncoderReport {
+        let millis = |latency: Duration| latency.as_millis().min(u128::from(u16::MAX - 1)) as u16;
+        match self {
+            Self::Software(_) => EncoderReport {
+                hardware: false,
+                vendor: String::new(),
+                name: "Media Foundation H.264".into(),
+                latency_ms: software.map(millis),
+            },
+            Self::Hardware(encoder) => EncoderReport {
+                hardware: true,
+                vendor: encoder.vendor.as_str().into(),
+                name: encoder.name.clone(),
+                latency_ms: encoder.latency().map(millis),
+            },
+        }
+    }
+}
+
 struct Encoder {
-    encoder: SoftwareH264,
+    backend: Backend,
     size: (u32, u32),
     fps: u32,
+}
+
+/// The first hardware encoder that starts, if hardware may still be tried.
+fn hardware(size: (u32, u32), fps: u32, bitrate: u32) -> Option<HardwareH264> {
+    let found = candidates()
+        .inspect_err(|error| tracing::debug!(%error, "no hardware encoders listed"))
+        .ok()?;
+    found.iter().find_map(|candidate| {
+        HardwareH264::new(candidate, size.0, size.1, fps, bitrate)
+            .inspect_err(|error| {
+                tracing::info!(encoder = %candidate.name, %error, "hardware encoder did not start");
+            })
+            .ok()
+    })
 }
 
 /// Encoding at the transport's settings; the encoder is rebuilt only for a new size or rate.
@@ -31,6 +93,10 @@ pub struct Encoding {
     nv12: Vec<u8>,
     sequence: u32,
     started: Instant,
+    /// Hardware is tried until it fails once; the software encoder serves the rest.
+    try_hardware: bool,
+    reported: Option<Instant>,
+    software_latency: Option<Duration>,
 }
 
 fn bitrate(settings: Settings) -> u32 {
@@ -47,6 +113,18 @@ impl Encoding {
             nv12: Vec::new(),
             sequence: 0,
             started: Instant::now(),
+            try_hardware: true,
+            reported: None,
+            software_latency: None,
+        }
+    }
+
+    /// Software only, as after a hardware failure.
+    #[cfg(test)]
+    fn software_only(settings: Settings) -> Self {
+        Self {
+            try_hardware: false,
+            ..Self::new(settings)
         }
     }
 
@@ -61,7 +139,7 @@ impl Encoding {
                 let changed = settings.bitrate != self.settings.bitrate;
                 self.settings = settings;
                 if changed && let Some(current) = &mut self.encoder {
-                    current.encoder.set_bitrate(bitrate(settings))?;
+                    current.backend.set_bitrate(bitrate(settings))?;
                 }
             }
         }
@@ -93,12 +171,24 @@ impl Encoding {
             .as_ref()
             .is_none_or(|current| current.size != size || current.fps != fps)
         {
-            self.encoder = Some(Encoder {
-                encoder: SoftwareH264::new(size.0, size.1, fps, bitrate(self.settings))?,
-                size,
-                fps,
-            });
+            // The old encoder goes first: a hardware one may hold the device the next needs.
+            self.encoder = None;
+            let rate = bitrate(self.settings);
+            let backend = match self
+                .try_hardware
+                .then(|| hardware(size, fps, rate))
+                .flatten()
+            {
+                Some(encoder) => Backend::Hardware(encoder),
+                None => Backend::Software(SoftwareH264::new(size.0, size.1, fps, rate)?),
+            };
+            self.limits = match backend {
+                Backend::Hardware(_) => Limits::HARDWARE,
+                Backend::Software(_) => Limits::SOFTWARE,
+            };
+            self.encoder = Some(Encoder { backend, size, fps });
             self.keyframe = true;
+            self.reported = None;
         }
         bgra_to_nv12(
             Bgra {
@@ -114,10 +204,33 @@ impl Encoding {
         .map_err(|_| io::Error::from(io::ErrorKind::InvalidData))?;
         let keyframe = std::mem::take(&mut self.keyframe);
         let encoder = self.encoder.as_mut().expect("encoder just set");
-        let data = encoder.encoder.encode(&self.nv12, keyframe)?.to_vec();
+        let started = Instant::now();
+        let data = match encoder.backend.encode(&self.nv12, keyframe) {
+            Ok(data) => data,
+            // A failing hardware encoder is replaced by the software one with the next frame.
+            Err(error) if matches!(encoder.backend, Backend::Hardware(_)) => {
+                tracing::warn!(%error, "hardware encoder failed; the software encoder takes over");
+                self.try_hardware = false;
+                self.encoder = None;
+                self.limits = Limits::SOFTWARE;
+                self.keyframe = true;
+                return Ok(None);
+            }
+            Err(error) => return Err(error),
+        };
+        if matches!(encoder.backend, Backend::Software(_)) {
+            self.software_latency = Some(started.elapsed());
+        }
+        let report = self
+            .reported
+            .is_none_or(|at| at.elapsed() >= REPORT_EVERY)
+            .then(|| encoder_message(&encoder.backend.report(self.software_latency)));
+        if report.is_some() {
+            self.reported = Some(Instant::now());
+        }
         if data.is_empty() {
             self.keyframe |= keyframe;
-            return Ok(None);
+            return Ok(report.map(|report| vec![report]));
         }
         let encoded = Encoded {
             sequence: self.sequence,
@@ -128,7 +241,10 @@ impl Encoding {
             data,
         };
         self.sequence = self.sequence.wrapping_add(1);
-        Ok(frame_messages(&encoded))
+        Ok(frame_messages(&encoded).map(|mut messages| {
+            messages.extend(report);
+            messages
+        }))
     }
 }
 
@@ -193,7 +309,7 @@ impl Stream {
 
 #[cfg(test)]
 mod tests {
-    use midas_agent_core::media::link::Assembler;
+    use midas_agent_core::media::link::{Assembler, is_frame, read_encoder};
 
     use super::*;
 
@@ -210,13 +326,59 @@ mod tests {
         let mut assembler = Assembler::default();
         messages
             .iter()
+            .filter(|message| is_frame(message))
             .find_map(|message| assembler.push(message).unwrap())
             .unwrap()
     }
 
+    fn reports(messages: &[Vec<u8>]) -> Vec<EncoderReport> {
+        messages.iter().filter_map(|m| read_encoder(m)).collect()
+    }
+
+    #[test]
+    fn the_encoder_in_use_is_reported_with_its_latency() {
+        let settings = Settings {
+            bitrate: 1_000_000,
+            scale: 0.5,
+            fps: 15,
+        };
+        let mut software = Encoding::software_only(settings);
+        let first = match software.encode(&desktop(0), Instant::now()) {
+            Ok(messages) => messages.unwrap(),
+            Err(error) if error.kind() == io::ErrorKind::Unsupported => {
+                println!("skipped: {error}");
+                return;
+            }
+            Err(error) => panic!("encoding: {error}"),
+        };
+        let report = &reports(&first)[0];
+        assert!(!report.hardware && report.vendor.is_empty());
+        assert!(report.latency_ms.is_some());
+        // Within the second nothing new is reported.
+        let next = software
+            .encode(&desktop(1), Instant::now())
+            .unwrap()
+            .unwrap();
+        assert!(reports(&next).is_empty());
+        // Where a hardware encoder exists it is used first and reported as such.
+        let mut encoding = Encoding::new(settings);
+        let mut seen = Vec::new();
+        for shift in 0..10 {
+            if let Some(messages) = encoding.encode(&desktop(shift), Instant::now()).unwrap() {
+                seen.extend(reports(&messages));
+            }
+        }
+        let report = seen.first().expect("a report");
+        println!("encoder in use: {report:?}");
+        if report.hardware {
+            assert!(!report.vendor.is_empty());
+            assert_eq!(encoding.limits, Limits::HARDWARE);
+        }
+    }
+
     #[test]
     fn frames_follow_the_settings_and_keyframes_come_on_request() {
-        let mut encoding = Encoding::new(Settings {
+        let mut encoding = Encoding::software_only(Settings {
             bitrate: 1_000_000,
             scale: 0.5,
             fps: 15,

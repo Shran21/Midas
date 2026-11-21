@@ -51,7 +51,47 @@ export type Stats = {
   degraded: boolean;
   /** Whether packets went directly or through the relay; `null` before any went. */
   path: "direct" | "relay" | null;
+  /** The encoder the remote computer uses; `null` before it reported one. */
+  encoder: {
+    name: string;
+    hardware: boolean;
+    vendor: "intel" | "nvidia" | "amd" | "other" | null;
+    /** From a frame's input to its output; `null` while not measured. */
+    latencyMs: number | null;
+  } | null;
 };
+
+const VENDORS = ["intel", "nvidia", "amd", "other"] as const;
+
+function readEncoder(value: unknown): Stats["encoder"] | undefined {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "object") return undefined;
+  const encoder = value as Record<string, unknown>;
+  const vendor =
+    encoder.vendor === "" ? null : VENDORS.find((v) => v === encoder.vendor);
+  const latency = encoder.latency_ms;
+  if (
+    typeof encoder.name !== "string" ||
+    encoder.name.length === 0 ||
+    [...encoder.name].length > 64 ||
+    /\p{Cc}/u.test(encoder.name) ||
+    typeof encoder.hardware !== "boolean" ||
+    vendor === undefined ||
+    encoder.hardware !== (vendor !== null) ||
+    (latency !== null &&
+      (typeof latency !== "number" ||
+        !Number.isSafeInteger(latency) ||
+        latency < 0 ||
+        latency > 65_534))
+  )
+    return undefined;
+  return {
+    name: encoder.name,
+    hardware: encoder.hardware,
+    vendor,
+    latencyMs: latency as number | null,
+  };
+}
 
 /** Key combinations the browser cannot capture itself, sent as physical keys in order. */
 export const SYSTEM_KEYS = {
@@ -174,6 +214,8 @@ export function readStats(text: string): Stats | null {
   if (network !== "good" && network !== "degraded") return null;
   const path = record.path ?? null;
   if (path !== null && path !== "direct" && path !== "relay") return null;
+  const encoder = readEncoder(record.encoder);
+  if (encoder === undefined) return null;
   if (
     width === null ||
     height === null ||
@@ -199,6 +241,7 @@ export function readStats(text: string): Stats | null {
     loss,
     degraded: network === "degraded",
     path,
+    encoder,
   };
 }
 

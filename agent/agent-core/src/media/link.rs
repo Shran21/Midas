@@ -25,6 +25,9 @@ const SAS: u8 = 9;
 const SAS_RESULT: u8 = 10;
 const TRANSFER: u8 = 11;
 const TRANSFER_REPLY: u8 = 12;
+const ENCODER: u8 = 13;
+/// Characters of a reported encoder name.
+const ENCODER_NAME: usize = 64;
 const TEXT: u8 = 4;
 /// Characters of one text message; longer text arrives in several.
 const TEXT_LIMIT: usize = 64;
@@ -151,6 +154,55 @@ pub enum Command {
     Sas,
     /// A checked clipboard or file transfer message for the user worker.
     Transfer(Vec<u8>),
+}
+
+/// Which encoder a worker uses and how long a frame takes through it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EncoderReport {
+    pub hardware: bool,
+    /// `intel`, `nvidia`, `amd`, `other`, or empty for the software encoder.
+    pub vendor: String,
+    pub name: String,
+    /// From a frame's input to its output, when measured.
+    pub latency_ms: Option<u16>,
+}
+
+const VENDORS: [&str; 5] = ["", "intel", "nvidia", "amd", "other"];
+
+pub fn encoder_message(report: &EncoderReport) -> Vec<u8> {
+    let vendor = VENDORS
+        .iter()
+        .position(|vendor| *vendor == report.vendor)
+        .unwrap_or(4) as u8;
+    let name: String = report.name.chars().take(ENCODER_NAME).collect();
+    let mut message = vec![ENCODER, u8::from(report.hardware), vendor];
+    message.extend_from_slice(&report.latency_ms.unwrap_or(u16::MAX).to_le_bytes());
+    message.extend_from_slice(name.as_bytes());
+    message
+}
+
+pub fn read_encoder(message: &[u8]) -> Option<EncoderReport> {
+    let [ENCODER, hardware @ (0 | 1), vendor, low, high, name @ ..] = message else {
+        return None;
+    };
+    let name = std::str::from_utf8(name).ok()?;
+    let vendor = VENDORS.get(usize::from(*vendor))?;
+    let latency = u16::from_le_bytes([*low, *high]);
+    (!name.is_empty()
+        && name.chars().count() <= ENCODER_NAME
+        && !name.chars().any(char::is_control)
+        && (*hardware == 1) != vendor.is_empty())
+    .then(|| EncoderReport {
+        hardware: *hardware == 1,
+        vendor: (*vendor).to_owned(),
+        name: name.to_owned(),
+        latency_ms: (latency != u16::MAX).then_some(latency),
+    })
+}
+
+/// Whether `message` is a piece of an encoded frame.
+pub fn is_frame(message: &[u8]) -> bool {
+    message.first() == Some(&FRAME)
 }
 
 /// The user worker's answer to a transfer message; the transport checks it again.
@@ -420,6 +472,34 @@ impl Assembler {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn encoder_reports_round_trip_and_reject_anything_else() {
+        let report = EncoderReport {
+            hardware: true,
+            vendor: "intel".into(),
+            name: "Intel® Quick Sync Video H.264 Encoder MFT".into(),
+            latency_ms: Some(7),
+        };
+        let message = encoder_message(&report);
+        assert_eq!(read_encoder(&message), Some(report.clone()));
+        let software = EncoderReport {
+            hardware: false,
+            vendor: String::new(),
+            name: "Media Foundation H.264".into(),
+            latency_ms: None,
+        };
+        assert_eq!(read_encoder(&encoder_message(&software)), Some(software));
+        // A hardware report needs a vendor and a software one none.
+        let mut mixed = message.clone();
+        mixed[1] = 0;
+        assert_eq!(read_encoder(&mixed), None);
+        let mut control = message.clone();
+        control.push(7);
+        assert_eq!(read_encoder(&control), None);
+        assert_eq!(read_encoder(&message[..5]), None);
+        assert!(!is_frame(&message));
+    }
 
     fn frame(size: usize, sequence: u32) -> Encoded {
         Encoded {

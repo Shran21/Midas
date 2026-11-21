@@ -15,8 +15,8 @@ use super::transfer::{self, Ledger, Message, Report};
 use super::{
     adapt::{Controller, Limits, Profile, Settings, frame_size},
     link::{
-        Assembler, Command, Desktop, Encoded, LinkError, read_desktop, read_sas_result,
-        read_transfer_reply,
+        Assembler, Command, Desktop, Encoded, EncoderReport, LinkError, read_desktop, read_encoder,
+        read_sas_result, read_transfer_reply,
     },
     peer::{Peer, PeerError, PeerEvent},
 };
@@ -63,6 +63,8 @@ pub struct Transport {
     /// What the grant allows besides picture and input.
     transfer: Rights,
     ledger: Ledger,
+    /// The encoder the current source reports, which also sets the limits.
+    encoder: Option<EncoderReport>,
 }
 
 impl Transport {
@@ -88,6 +90,7 @@ impl Transport {
             desktop: Desktop::User,
             transfer: Rights::NONE,
             ledger: Ledger::default(),
+            encoder: None,
         };
         transport.settings();
         transport
@@ -178,6 +181,23 @@ impl Transport {
         }
         if let Some(desktop) = read_desktop(message) {
             self.set_desktop(desktop);
+            return Ok(());
+        }
+        if let Some(report) = read_encoder(message) {
+            // A hardware encoder keeps up with more pixels and frames; the limits follow it.
+            if self
+                .encoder
+                .as_ref()
+                .is_none_or(|known| known.hardware != report.hardware)
+            {
+                let limits = if report.hardware {
+                    Limits::HARDWARE
+                } else {
+                    Limits::SOFTWARE
+                };
+                self.set_limits(limits, Instant::now());
+            }
+            self.encoder = Some(report);
             return Ok(());
         }
         if let Some(reply) = read_transfer_reply(message) {
@@ -289,6 +309,12 @@ impl Transport {
                 Desktop::Elevated => "elevated",
                 Desktop::Secure => "secure",
             },
+            "encoder": self.encoder.as_ref().map(|encoder| json!({
+                "name": encoder.name,
+                "hardware": encoder.hardware,
+                "vendor": encoder.vendor,
+                "latency_ms": encoder.latency_ms,
+            })),
         });
         self.bytes = 0;
         self.frames = 0;
@@ -305,7 +331,12 @@ impl Transport {
         while let Some(event) = self.peer.next_event() {
             match event {
                 PeerEvent::Connected => {
-                    if let Some(limits) = self.peer.limits() {
+                    let reported = self
+                        .encoder
+                        .as_ref()
+                        .filter(|encoder| encoder.hardware)
+                        .map(|_| Limits::HARDWARE);
+                    if let Some(limits) = reported.or_else(|| self.peer.limits()) {
                         self.set_limits(limits, now);
                     }
                     self.commands.push_back(Command::Keyframe);

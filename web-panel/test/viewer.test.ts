@@ -65,7 +65,50 @@ test("agent statistics are read strictly", () => {
     loss: null,
     degraded: false,
     path: null,
+    encoder: null,
   });
+  // The encoder in use, as the agent reports it.
+  const encoder = {
+    name: "Intel® Quick Sync Video H.264 Encoder MFT",
+    hardware: true,
+    vendor: "intel",
+    latency_ms: 2,
+  };
+  assert.deepEqual(readStats(JSON.stringify({ ...report, encoder }))?.encoder, {
+    name: encoder.name,
+    hardware: true,
+    vendor: "intel",
+    latencyMs: 2,
+  });
+  assert.deepEqual(
+    readStats(
+      JSON.stringify({
+        ...report,
+        encoder: {
+          name: "Media Foundation H.264",
+          hardware: false,
+          vendor: "",
+          latency_ms: null,
+        },
+      }),
+    )?.encoder,
+    {
+      name: "Media Foundation H.264",
+      hardware: false,
+      vendor: null,
+      latencyMs: null,
+    },
+  );
+  for (const wrong of [
+    { ...encoder, vendor: "" },
+    { ...encoder, hardware: false },
+    { ...encoder, latency_ms: -1 },
+    { ...encoder, name: "" },
+  ])
+    assert.equal(
+      readStats(JSON.stringify({ ...report, encoder: wrong })),
+      null,
+    );
   const measured = readStats(
     JSON.stringify({
       ...report,

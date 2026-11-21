@@ -23,7 +23,7 @@ use midas_agent_core::media::{
     files::Files,
     link::{
         Command, Desktop, KEEPALIVE_MESSAGE, command_message, desktop_message, read_command,
-        read_desktop, sas_result_message, transfer_reply_message,
+        read_desktop, read_transfer_reply, sas_result_message, transfer_reply_message,
     },
     peer::{Answered, answer},
     session::{Input, Transport},
@@ -909,7 +909,11 @@ where
                 if message == KEEPALIVE_MESSAGE || read_desktop(&message).is_some() {
                     continue;
                 }
-                if !route(desktop, privileged.is_some()).frames_privileged {
+                // Frames and the encoder report follow the picture's source; the user's transfer
+                // answers pass whichever desktop is shown.
+                if read_transfer_reply(&message).is_some()
+                    || !route(desktop, privileged.is_some()).frames_privileged
+                {
                     forward(&frames, message);
                 }
             }
