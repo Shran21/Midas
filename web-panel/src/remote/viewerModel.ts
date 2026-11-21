@@ -63,6 +63,18 @@ export const SYSTEM_KEYS = {
   desktop: ["MetaLeft", "KeyD"],
 } as const;
 
+/** Keys a phone's on-screen keyboard does not send to the picture. */
+export const COMMON_KEYS = {
+  enter: ["Enter"],
+  backspace: ["Backspace"],
+  escape: ["Escape"],
+  tab: ["Tab"],
+  left: ["ArrowLeft"],
+  up: ["ArrowUp"],
+  down: ["ArrowDown"],
+  right: ["ArrowRight"],
+} as const;
+
 /** The modifier keys held with a pointer event: Ctrl 1, Shift 2, Alt 4, Windows 8. */
 export function modifiers(event: {
   ctrlKey: boolean;

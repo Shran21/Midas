@@ -3362,6 +3362,20 @@ h1[tabindex="-1"]:focus {
   height: 100%;
   object-fit: contain;
   display: block;
+  transform-origin: center;
+}
+.remote-viewer-zoom {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.remote-viewer-zoom legend {
+  float: left;
+  margin-right: 4px;
 }
 .remote-viewer-bar {
   display: flex;

@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { api, type DeviceSummary } from "../api";
 import type { Language } from "../i18n";
+import {
+  Gestures,
+  HOLD,
+  IDENTITY,
+  type Output,
+  type View,
+  zoomBy,
+} from "./gestures";
 import type { RemoteRequest } from "./model";
 import { TransferPanel } from "./TransferPanel";
 import { viewerCopy } from "./viewerCopy";
 import {
   bitrate,
+  COMMON_KEYS,
   combination,
   keyCode,
   modifiers,
@@ -67,6 +76,14 @@ export function Viewer({
   const [profile, setProfile] = useState<"text" | "motion">("text");
   const [sas, setSas] = useState<"sent" | "unavailable" | null>(null);
   const [typed, setTyped] = useState("");
+  const [view, setView] = useState<View>(IDENTITY);
+  const surfaceSize = useCallback(() => {
+    const box = surface.current?.getBoundingClientRect();
+    return { width: box?.width ?? 0, height: box?.height ?? 0 };
+  }, []);
+  const gestures = useRef<Gestures | null>(null);
+  gestures.current ??= new Gestures(surfaceSize);
+  const hold = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [transferChannel, setTransferChannel] = useState<RTCDataChannel | null>(
     null,
   );
@@ -155,23 +172,75 @@ export function Viewer({
     if (control?.readyState === "open") control.send(JSON.stringify(message));
   }, []);
 
-  const pointer = (event: React.PointerEvent<HTMLDivElement>) => {
+  const press = (
+    clientX: number,
+    clientY: number,
+    buttons: number,
+    held = 0,
+  ) => {
     const element = video.current;
     if (!element) return;
     const point = videoPoint(
-      event.clientX,
-      event.clientY,
+      clientX,
+      clientY,
       element.getBoundingClientRect(),
-      { width: element.videoWidth, height: element.videoHeight },
+      {
+        width: element.videoWidth,
+        height: element.videoHeight,
+      },
     );
-    if (point)
-      send({
-        type: "pointer",
-        ...point,
-        buttons: event.buttons & 31,
-        modifiers: modifiers(event),
-      });
+    if (point) send({ type: "pointer", ...point, buttons, modifiers: held });
   };
+
+  const pointer = (event: React.PointerEvent<HTMLDivElement>) =>
+    press(event.clientX, event.clientY, event.buttons & 31, modifiers(event));
+
+  // What a touch gesture produced: presses for the remote computer, or a new zoom.
+  const apply = (out: Output[]) => {
+    const box = surface.current?.getBoundingClientRect();
+    if (!box) return;
+    for (const item of out) {
+      if ("view" in item) setView(item.view);
+      else
+        press(
+          box.left + item.press.x,
+          box.top + item.press.y,
+          item.press.buttons,
+        );
+    }
+  };
+
+  const touch = (
+    event: React.PointerEvent<HTMLDivElement>,
+    phase: "down" | "move" | "up" | "cancel",
+  ) => {
+    const box = surface.current?.getBoundingClientRect();
+    const model = gestures.current;
+    if (!box || !model) return;
+    const at = performance.now();
+    const point = { x: event.clientX - box.left, y: event.clientY - box.top };
+    if (phase === "down") {
+      apply(model.down(event.pointerId, point, at));
+      clearTimeout(hold.current);
+      hold.current = setTimeout(
+        () => apply(model.tick(performance.now())),
+        HOLD + 20,
+      );
+    } else if (phase === "move") apply(model.move(event.pointerId, point));
+    else if (phase === "up") apply(model.up(event.pointerId, point, at));
+    else apply(model.cancel());
+  };
+
+  const zoom = (factor: number | null) => {
+    const model = gestures.current;
+    if (!model) return;
+    model.setView(
+      factor === null ? IDENTITY : zoomBy(model.view, factor, surfaceSize()),
+    );
+    setView(model.view);
+  };
+
+  useEffect(() => () => clearTimeout(hold.current), []);
 
   useEffect(() => {
     const element = surface.current;
@@ -212,22 +281,70 @@ export function Viewer({
         aria-describedby={`${id}-hint`}
         // biome-ignore lint/a11y/noNoninteractiveTabindex: the remote desktop takes the keyboard while focused
         tabIndex={0}
-        onPointerMove={pointer}
+        onPointerMove={(event) =>
+          event.pointerType === "touch" ? touch(event, "move") : pointer(event)
+        }
         onPointerDown={(event) => {
           surface.current?.focus();
           event.currentTarget.setPointerCapture(event.pointerId);
-          pointer(event);
+          if (event.pointerType === "touch") touch(event, "down");
+          else pointer(event);
         }}
-        onPointerUp={pointer}
+        onPointerUp={(event) =>
+          event.pointerType === "touch" ? touch(event, "up") : pointer(event)
+        }
+        onPointerCancel={(event) => {
+          if (event.pointerType === "touch") touch(event, "cancel");
+        }}
         onContextMenu={(event) => event.preventDefault()}
         onKeyDown={(event) => key(event, true)}
         onKeyUp={(event) => key(event, false)}
       >
-        <video ref={video} autoPlay muted playsInline />
+        <video
+          ref={video}
+          autoPlay
+          muted
+          playsInline
+          style={{
+            transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
+          }}
+        />
       </div>
       <p id={`${id}-hint`} className="muted">
-        {c.hint}
+        {c.hint} {c.touch}
       </p>
+      <fieldset className="remote-viewer-zoom">
+        <legend>{c.zoom}</legend>
+        <button
+          type="button"
+          className="button"
+          aria-label={c.zoomOut}
+          disabled={view.scale <= 1}
+          onClick={() => zoom(1 / 1.5)}
+        >
+          −
+        </button>
+        <span aria-live="polite">
+          {c.zoomLevel(Math.round(view.scale * 100))}
+        </span>
+        <button
+          type="button"
+          className="button"
+          aria-label={c.zoomIn}
+          disabled={view.scale >= 4}
+          onClick={() => zoom(1.5)}
+        >
+          +
+        </button>
+        <button
+          type="button"
+          className="button"
+          disabled={view.scale === 1}
+          onClick={() => zoom(null)}
+        >
+          {c.zoomReset}
+        </button>
+      </fieldset>
       <div className="remote-viewer-bar">
         <p role="status" aria-live="polite">
           {c[state]}
@@ -281,6 +398,25 @@ export function Viewer({
               {c[value]}
             </button>
           ))}
+        </fieldset>
+        <fieldset className="remote-viewer-keys">
+          <legend>{c.common}</legend>
+          {(Object.keys(COMMON_KEYS) as (keyof typeof COMMON_KEYS)[]).map(
+            (name) => (
+              <button
+                key={name}
+                type="button"
+                className="button"
+                disabled={phase !== "live"}
+                onClick={() => {
+                  for (const message of combination(COMMON_KEYS[name]))
+                    send(message);
+                }}
+              >
+                {c[name]}
+              </button>
+            ),
+          )}
         </fieldset>
         <fieldset className="remote-viewer-keys">
           <legend>{c.keys}</legend>
