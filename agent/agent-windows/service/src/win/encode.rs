@@ -67,6 +67,16 @@ fn pack(high: u32, low: u32) -> u64 {
     (u64::from(high) << 32) | u64::from(low)
 }
 
+/// How an encoder takes the properties it does not offer.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Properties {
+    /// The Windows encoder offers all of them; a refusal is an error.
+    Required,
+    /// A vendor encoder may lack some; it still runs with its own defaults, and the bitrate
+    /// set with the media type still applies.
+    Optional,
+}
+
 /// Low-latency constant-bitrate constrained baseline from NV12; the same for every encoder.
 ///
 /// # Safety
@@ -74,33 +84,44 @@ fn pack(high: u32, low: u32) -> u64 {
 unsafe fn configure(
     transform: &IMFTransform,
     codec: &ICodecAPI,
-    width: u32,
-    height: u32,
-    fps: u32,
-    bitrate: u32,
+    (width, height, fps, bitrate): (u32, u32, u32, u32),
+    properties: Properties,
 ) -> io::Result<()> {
+    let set = |key: &windows::core::GUID, value: VARIANT, name: &str| {
+        // SAFETY: a documented encoder property on the caller's live encoder.
+        match unsafe { codec.SetValue(key, &value) } {
+            Ok(()) => Ok(()),
+            Err(error) if properties == Properties::Optional => {
+                tracing::info!(property = name, %error, "the encoder does not offer this property");
+                Ok(())
+            }
+            Err(error) => Err(failed(error)),
+        }
+    };
+    // Encoder properties go before the media types, which fix the encoder's buffering.
+    set(
+        &CODECAPI_AVLowLatencyMode,
+        VARIANT::from(true),
+        "low latency",
+    )?;
+    set(
+        &CODECAPI_AVEncCommonRateControlMode,
+        VARIANT::from(eAVEncCommonRateControlMode_CBR.0 as u32),
+        "constant bitrate",
+    )?;
+    set(
+        &CODECAPI_AVEncCommonMeanBitRate,
+        VARIANT::from(bitrate),
+        "bitrate",
+    )?;
+    // Keyframes come on request after loss; a regular one every ten seconds bounds recovery.
+    set(
+        &CODECAPI_AVEncMPVGOPSize,
+        VARIANT::from(fps.saturating_mul(10)),
+        "keyframe interval",
+    )?;
     // SAFETY: the caller's encoder; every value passed is owned for the call.
     unsafe {
-        // Encoder properties go before the media types, which fix the encoder's buffering.
-        codec
-            .SetValue(&CODECAPI_AVLowLatencyMode, &VARIANT::from(true))
-            .map_err(failed)?;
-        codec
-            .SetValue(
-                &CODECAPI_AVEncCommonRateControlMode,
-                &VARIANT::from(eAVEncCommonRateControlMode_CBR.0 as u32),
-            )
-            .map_err(failed)?;
-        codec
-            .SetValue(&CODECAPI_AVEncCommonMeanBitRate, &VARIANT::from(bitrate))
-            .map_err(failed)?;
-        // Keyframes come on request after loss; a regular one every ten seconds bounds recovery.
-        codec
-            .SetValue(
-                &CODECAPI_AVEncMPVGOPSize,
-                &VARIANT::from(fps.saturating_mul(10)),
-            )
-            .map_err(failed)?;
         let output: IMFMediaType = MFCreateMediaType().map_err(failed)?;
         output
             .SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)
@@ -180,7 +201,12 @@ impl SoftwareH264 {
                     |_| io::Error::new(io::ErrorKind::Unsupported, "no Windows H.264 encoder"),
                 )?;
             let codec: ICodecAPI = transform.cast().map_err(failed)?;
-            configure(&transform, &codec, width, height, fps, bitrate)?;
+            configure(
+                &transform,
+                &codec,
+                (width, height, fps, bitrate),
+                Properties::Required,
+            )?;
             transform
                 .ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0)
                 .map_err(failed)?;

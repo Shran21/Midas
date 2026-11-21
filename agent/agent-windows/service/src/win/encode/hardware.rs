@@ -31,7 +31,7 @@ use windows::{
 
 use midas_agent_core::media::frame::nv12_len;
 
-use super::{configure, failed, platform};
+use super::{Properties, configure, failed, platform};
 
 /// How long a frame may wait for the encoder to take it.
 const INPUT_WAIT: Duration = Duration::from_millis(500);
@@ -180,7 +180,12 @@ impl HardwareH264 {
                 .map_err(failed)?;
             let codec: ICodecAPI = transform.cast().map_err(failed)?;
             let events: IMFMediaEventGenerator = transform.cast().map_err(failed)?;
-            configure(&transform, &codec, width, height, fps, bitrate)?;
+            configure(
+                &transform,
+                &codec,
+                (width, height, fps, bitrate),
+                Properties::Optional,
+            )?;
             transform
                 .ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0)
                 .map_err(failed)?;
