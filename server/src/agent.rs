@@ -267,6 +267,11 @@ async fn serve(
                     registration.ended(message);
                 }
             }
+            Ok(Ok(Body::RemoteTransfer(message))) => {
+                if let Some(registration) = &mut remote_grants {
+                    registration.transfer(message);
+                }
+            }
             Ok(Ok(Body::MediaAnswer(message))) => {
                 if let Some(registration) = &mut remote_grants {
                     registration.media_answer(message);

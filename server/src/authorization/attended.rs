@@ -3,6 +3,7 @@
 
 use std::time::{Duration, Instant};
 
+use midas_protocol::remote as wire;
 use midas_remote_auth::{Claims, Connection, Mode, Rights, SignedGrant, Target as GrantTarget};
 use serde::Deserialize;
 
@@ -220,6 +221,76 @@ impl Authorizer {
                 Err(error)
             }
         }
+    }
+
+    /// One clipboard or file transfer the agent reported, with what it is about but never its
+    /// content; a malformed report is recorded as such.
+    pub(crate) async fn record_transfer(
+        &self,
+        identity: &SessionInfo,
+        target: Target,
+        id: Uuid,
+        report: &wire::TransferReport,
+    ) -> Result<()> {
+        use midas_protocol::remote::{TransferKind, TransferOutcome};
+        let kind = match TransferKind::try_from(report.kind) {
+            Ok(TransferKind::ClipboardToDevice) => Some("clipboard_to_device"),
+            Ok(TransferKind::ClipboardFromDevice) => Some("clipboard_from_device"),
+            Ok(TransferKind::Upload) => Some("upload"),
+            Ok(TransferKind::Download) => Some("download"),
+            _ => None,
+        };
+        let outcome = match TransferOutcome::try_from(report.outcome) {
+            Ok(TransferOutcome::Started) => Some(("started", Outcome::Success)),
+            Ok(TransferOutcome::Completed) => Some(("completed", Outcome::Success)),
+            Ok(TransferOutcome::Failed) => Some(("failed", Outcome::Failure)),
+            Ok(TransferOutcome::Cancelled) => Some(("cancelled", Outcome::Success)),
+            Ok(TransferOutcome::Interrupted) => Some(("interrupted", Outcome::Failure)),
+            _ => None,
+        };
+        let name_valid = report.name.len() <= midas_protocol::remote::MAX_TRANSFER_NAME
+            && !report.name.chars().any(char::is_control);
+        let problem_valid = report.problem.len() <= 32
+            && report
+                .problem
+                .bytes()
+                .all(|c| c.is_ascii_lowercase() || c == b'_');
+        let mut event = Event::new(
+            Action::RemoteTransfer,
+            Outcome::Failure,
+            Actor::session(identity),
+        )
+        .detail("request_id", id.to_string());
+        match (kind, outcome) {
+            (Some(kind), Some((label, result)))
+                if name_valid
+                    && problem_valid
+                    && matches!(report.sha256.len(), 0 | 32)
+                    && report
+                        .size
+                        .is_none_or(|size| size <= 4 * 1024 * 1024 * 1024) =>
+            {
+                event.outcome = result;
+                event = event.detail("kind", kind).detail("result", label);
+                if !report.name.is_empty() {
+                    event = event.detail("name", report.name.as_str());
+                }
+                if let Some(size) = report.size {
+                    event = event.detail("size", size);
+                }
+                if !report.sha256.is_empty() {
+                    let digest: String = report.sha256.iter().map(|b| format!("{b:02x}")).collect();
+                    event = event.detail("sha256", digest);
+                }
+                if !report.problem.is_empty() {
+                    event = event.detail("problem", report.problem.as_str());
+                }
+            }
+            _ => event = event.detail("result", "malformed_report"),
+        }
+        event.tenant = Some(target.tenant);
+        event.device = target.device;
+        self.record_decision(&event).await
     }
 
     pub(crate) async fn record_attended(

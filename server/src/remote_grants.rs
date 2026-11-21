@@ -41,12 +41,17 @@ struct Entry {
     slot: Arc<Semaphore>,
 }
 
+/// Transfer reports one session may have waiting for its audit.
+const TRANSFER_REPORTS: usize = 64;
+
 pub(crate) enum Command {
     Prepare {
         message: wire::Prepare,
         stop: watch::Receiver<bool>,
         active: Arc<AtomicBool>,
         ended: Arc<AtomicI32>,
+        /// Where the session's transfer reports go, for its audit.
+        transfers: Option<mpsc::Sender<wire::TransferReport>>,
         reply: oneshot::Sender<Result<Challenge>>,
     },
     Deliver {
@@ -96,6 +101,7 @@ struct Flow {
     active: Arc<AtomicBool>,
     /// Why the agent ended the session itself, as `wire::EndReason`.
     ended: Arc<AtomicI32>,
+    transfers: Option<mpsc::Sender<wire::TransferReport>>,
     challenge: Option<oneshot::Sender<Result<Challenge>>>,
     delivery: Option<oneshot::Sender<Result<()>>>,
     media: Option<oneshot::Sender<Result<String>>>,
@@ -120,6 +126,8 @@ pub struct Session {
     sender: mpsc::Sender<Command>,
     /// What renewals of an attended session are signed for, once its grant is acknowledged.
     renewal: Option<Box<Renewal>>,
+    /// The agent's transfer reports, for the request that records them.
+    transfers: Mutex<Option<mpsc::Receiver<wire::TransferReport>>>,
     _slot: OwnedSemaphorePermit,
 }
 
@@ -145,6 +153,14 @@ impl Session {
         self.stop.send_replace(true);
     }
     /// Why the agent ended the session itself, if it did.
+    /// The agent's transfer reports; only the first caller gets them.
+    pub fn take_transfers(&self) -> Option<mpsc::Receiver<wire::TransferReport>> {
+        self.transfers
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+    }
+
     pub fn ended_by_agent(&self) -> Option<wire::EndReason> {
         wire::EndReason::try_from(self.ended.load(Ordering::Acquire))
             .ok()
@@ -319,6 +335,7 @@ impl Registration {
                 stop,
                 active,
                 ended,
+                transfers,
                 reply,
             } => {
                 if self.flow.is_some()
@@ -348,6 +365,7 @@ impl Registration {
                     stop,
                     active,
                     ended,
+                    transfers,
                     challenge: Some(reply),
                     delivery: None,
                     media: None,
@@ -460,6 +478,19 @@ impl Registration {
             let reason =
                 wire::EndReason::try_from(message.reason).unwrap_or(wire::EndReason::Stopped);
             flow.ended.store(reason as i32, Ordering::Release);
+        }
+    }
+
+    /// A transfer the agent reports for the active request; anything else is dropped. A session
+    /// that reports faster than its audit is written loses the excess, never the connection.
+    pub fn transfer(&mut self, message: wire::TransferReport) {
+        if let Some(sender) = self
+            .flow
+            .as_ref()
+            .filter(|flow| flow.request == message.request && flow.active.load(Ordering::Acquire))
+            .and_then(|flow| flow.transfers.as_ref())
+        {
+            let _ = sender.try_send(message);
         }
     }
 
@@ -716,6 +747,7 @@ impl Enrollment {
             stop,
             sender: sender.clone(),
             renewal: None,
+            transfers: Mutex::new(None),
             _slot: slot,
         };
         let (reply, result) = oneshot::channel();
@@ -739,6 +771,7 @@ impl Enrollment {
                 stop: stopped,
                 active: session.active.clone(),
                 ended: session.ended.clone(),
+                transfers: None,
                 reply,
             })
             .map_err(|_| AccessError::Offline)?;
@@ -812,6 +845,8 @@ impl Enrollment {
             os_session,
         } = reserved;
         let (stop, stopped) = watch::channel(false);
+        // Reports beyond this wait are dropped rather than slowing the agent connection.
+        let (report_sender, reports) = mpsc::channel(TRANSFER_REPORTS);
         let mut session = Session {
             request: id,
             deadline: Mutex::new(Instant::now() + CONSENT_TIMEOUT + REPLY_LIMIT + LIFETIME),
@@ -820,6 +855,7 @@ impl Enrollment {
             stop,
             sender: sender.clone(),
             renewal: None,
+            transfers: Mutex::new(Some(reports)),
             _slot: slot,
         };
         let (reply, result) = oneshot::channel();
@@ -847,6 +883,7 @@ impl Enrollment {
                 stop: stopped,
                 active: session.active.clone(),
                 ended: session.ended.clone(),
+                transfers: Some(report_sender),
                 reply,
             })
             .map_err(|_| AccessError::Offline)?;

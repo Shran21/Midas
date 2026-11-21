@@ -30,6 +30,7 @@ struct Broker {
     block_at: usize,
     entered: tokio::sync::Notify,
     release: Mutex<std::sync::mpsc::Receiver<()>>,
+    transfers: Mutex<Vec<Report>>,
 }
 
 impl Broker {
@@ -55,6 +56,9 @@ fn worker(lease: &Lease) -> Worker {
 }
 
 impl Native for Broker {
+    fn transfers(&self) -> Vec<Report> {
+        std::mem::take(&mut *self.transfers.lock().unwrap())
+    }
     fn observe(&self, _: Target) -> Result<Observation, Error> {
         if self.calls.fetch_add(1, Ordering::SeqCst) + 1 == self.block_at {
             self.entered.notify_one();
@@ -137,6 +141,7 @@ impl Fixture {
             block_at,
             entered: tokio::sync::Notify::new(),
             release: Mutex::new(wait),
+            transfers: Mutex::new(Vec::new()),
         });
         let key = SigningKey::generate().unwrap();
         Self {
@@ -638,4 +643,30 @@ async fn media_offers_reach_the_backend_only_for_the_accepted_request() {
         transport.media(offer(&f.prepare.request)),
         Err(Error::Revoked)
     );
+}
+
+#[tokio::test]
+async fn the_active_sessions_transfers_reach_the_server_for_its_request() {
+    use crate::media::transfer::{Kind, Outcome};
+    let f = Fixture::attended(Some(Consent::Allowed));
+    let mut transport = f.connect();
+    let challenge = attended_challenge(&mut transport, &f).await;
+    transport.deliver(f.sign(challenge)).unwrap();
+    assert!(matches!(
+        response(&mut transport).await,
+        Body::RemoteAck(wire::Ack { accepted: true, .. })
+    ));
+    f.broker.transfers.lock().unwrap().push(Report {
+        kind: Kind::ClipboardToDevice,
+        name: None,
+        size: None,
+        sha256: None,
+        outcome: Outcome::Completed,
+    });
+    let Body::RemoteTransfer(report) = response(&mut transport).await else {
+        panic!("transfer report");
+    };
+    assert_eq!(report.request, f.prepare.request);
+    assert_eq!(report.kind, wire::TransferKind::ClipboardToDevice as i32);
+    assert_eq!(report.outcome, wire::TransferOutcome::Completed as i32);
 }

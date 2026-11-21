@@ -9,8 +9,11 @@
 
 use std::fmt;
 
+use midas_protocol::remote as wire;
 use midas_remote_auth::Transfer as Rights;
+use prost::Message as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
+use uuid::Uuid;
 
 /// File bytes in one data message.
 pub const CHUNK: usize = 16 * 1024;
@@ -383,6 +386,7 @@ pub enum Kind {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Outcome {
+    Started,
     Completed,
     Failed(Problem),
     Cancelled,
@@ -431,15 +435,20 @@ impl Ledger {
     }
 
     fn file(&mut self, id: Id, kind: Kind, name: String, size: u64) {
+        let report = |outcome| Report {
+            kind,
+            name: Some(name.clone()),
+            size: Some(size),
+            sha256: None,
+            outcome,
+        };
         if self.open.len() >= LEDGER_OPEN && !self.open.contains_key(&id) {
-            self.push(Report {
-                kind,
-                name: Some(name),
-                size: Some(size),
-                sha256: None,
-                outcome: Outcome::Interrupted,
-            });
+            self.push(report(Outcome::Interrupted));
             return;
+        }
+        // A start is reported at once: the end may never be seen if the session breaks off.
+        if !self.open.contains_key(&id) {
+            self.push(report(Outcome::Started));
         }
         self.open.insert(id, (kind, name, size));
     }
@@ -525,6 +534,139 @@ impl Ledger {
     pub fn dropped(&self) -> u64 {
         self.dropped
     }
+}
+
+impl Problem {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unavailable => "unavailable",
+            Self::Denied => "denied",
+            Self::NotFound => "not_found",
+            Self::TooLarge => "too_large",
+            Self::Changed => "changed",
+            Self::NoSpace => "no_space",
+            Self::Empty => "empty",
+            Self::Invalid => "invalid",
+        }
+    }
+
+    fn parse(text: &str) -> Option<Self> {
+        [
+            Self::Unavailable,
+            Self::Denied,
+            Self::NotFound,
+            Self::TooLarge,
+            Self::Changed,
+            Self::NoSpace,
+            Self::Empty,
+            Self::Invalid,
+        ]
+        .into_iter()
+        .find(|problem| problem.as_str() == text)
+    }
+}
+
+/// Reports one process hands another at a time.
+pub const REPORTS_LIMIT: usize = 256;
+
+impl Report {
+    pub fn wire(&self, request: Uuid) -> wire::TransferReport {
+        let (outcome, problem) = match self.outcome {
+            Outcome::Started => (wire::TransferOutcome::Started, ""),
+            Outcome::Completed => (wire::TransferOutcome::Completed, ""),
+            Outcome::Failed(problem) => (wire::TransferOutcome::Failed, problem.as_str()),
+            Outcome::Cancelled => (wire::TransferOutcome::Cancelled, ""),
+            Outcome::Interrupted => (wire::TransferOutcome::Interrupted, ""),
+        };
+        wire::TransferReport {
+            request: request.as_bytes().to_vec(),
+            kind: match self.kind {
+                Kind::ClipboardToDevice => wire::TransferKind::ClipboardToDevice,
+                Kind::ClipboardFromDevice => wire::TransferKind::ClipboardFromDevice,
+                Kind::Upload => wire::TransferKind::Upload,
+                Kind::Download => wire::TransferKind::Download,
+            } as i32,
+            outcome: outcome as i32,
+            name: self.name.clone().unwrap_or_default(),
+            size: self.size,
+            sha256: self
+                .sha256
+                .map(|digest| digest.0.to_vec())
+                .unwrap_or_default(),
+            problem: problem.into(),
+        }
+    }
+
+    /// A report as another process or the agent sent it; `None` when anything is off.
+    pub fn from_wire(report: &wire::TransferReport) -> Option<Self> {
+        let kind = match wire::TransferKind::try_from(report.kind).ok()? {
+            wire::TransferKind::ClipboardToDevice => Kind::ClipboardToDevice,
+            wire::TransferKind::ClipboardFromDevice => Kind::ClipboardFromDevice,
+            wire::TransferKind::Upload => Kind::Upload,
+            wire::TransferKind::Download => Kind::Download,
+            wire::TransferKind::Unspecified => return None,
+        };
+        let problem = (!report.problem.is_empty())
+            .then(|| Problem::parse(&report.problem))
+            .flatten();
+        let outcome = match (
+            wire::TransferOutcome::try_from(report.outcome).ok()?,
+            problem,
+        ) {
+            (wire::TransferOutcome::Started, None) => Outcome::Started,
+            (wire::TransferOutcome::Completed, None) => Outcome::Completed,
+            (wire::TransferOutcome::Failed, Some(problem)) => Outcome::Failed(problem),
+            (wire::TransferOutcome::Cancelled, None) => Outcome::Cancelled,
+            (wire::TransferOutcome::Interrupted, None) => Outcome::Interrupted,
+            _ => return None,
+        };
+        if !report.problem.is_empty() && problem.is_none() {
+            return None;
+        }
+        let file = matches!(kind, Kind::Upload | Kind::Download);
+        let sha256 = match report.sha256.as_slice() {
+            [] => None,
+            digest => Some(Hex(digest.try_into().ok()?)),
+        };
+        let valid = if file {
+            name_valid(&report.name)
+                && report.size.is_some_and(|size| size <= FILE_LIMIT)
+                && (sha256.is_none() || outcome == Outcome::Completed)
+        } else {
+            report.name.is_empty() && report.size.is_none() && sha256.is_none()
+        };
+        valid.then(|| Self {
+            kind,
+            name: file.then(|| report.name.clone()),
+            size: report.size,
+            sha256,
+            outcome,
+        })
+    }
+}
+
+/// Reports for the service, from the process that runs the transport.
+pub fn reports_message(reports: &[Report]) -> Vec<u8> {
+    let mut message = Vec::new();
+    for report in reports.iter().take(REPORTS_LIMIT) {
+        report
+            .wire(Uuid::nil())
+            .encode_length_delimited(&mut message)
+            .expect("a vector grows");
+    }
+    message
+}
+
+pub fn read_reports(mut message: &[u8]) -> Option<Vec<Report>> {
+    let mut reports = Vec::new();
+    while !message.is_empty() {
+        if reports.len() == REPORTS_LIMIT {
+            return None;
+        }
+        let report = wire::TransferReport::decode_length_delimited(&mut message).ok()?;
+        reports.push(Report::from_wire(&report)?);
+    }
+    Some(reports)
 }
 
 #[cfg(test)]

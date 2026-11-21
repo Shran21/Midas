@@ -288,3 +288,74 @@ fn worker_answers_are_checked_against_the_grant() {
         );
     }
 }
+
+#[test]
+fn the_ledger_reports_starts_ends_and_breaks_without_content() {
+    let id = Id::parse(ID).unwrap();
+    let mut ledger = Ledger::default();
+    ledger.request(&Request::Upload {
+        id,
+        name: "jelentés.pdf".into(),
+        size: 5,
+    });
+    // A resumed start within the same session is reported once.
+    ledger.request(&Request::Upload {
+        id,
+        name: "jelentés.pdf".into(),
+        size: 5,
+    });
+    ledger.reply(&Reply::UploadDone {
+        id,
+        name: "jelentés (2).pdf".into(),
+        size: 5,
+        sha256: Hex([1; 32]),
+    });
+    ledger.request(&Request::ClipboardSet {
+        text: "titok".into(),
+    });
+    ledger.reply(&Reply::ClipboardSet);
+    ledger.request(&Request::Download {
+        id: Hex([2; 16]),
+        path: r"C:\Users\a\x.txt".into(),
+        size: 9,
+        modified: 1,
+        offset: 0,
+    });
+    ledger.close();
+    let reports: Vec<_> = std::iter::from_fn(|| ledger.take()).collect();
+    let outcomes: Vec<_> = reports.iter().map(|r| (r.kind, r.outcome)).collect();
+    assert_eq!(
+        outcomes,
+        [
+            (Kind::Upload, Outcome::Started),
+            (Kind::Upload, Outcome::Completed),
+            (Kind::ClipboardToDevice, Outcome::Completed),
+            (Kind::Download, Outcome::Started),
+            (Kind::Download, Outcome::Interrupted),
+        ]
+    );
+    assert_eq!(reports[1].name.as_deref(), Some("jelentés (2).pdf"));
+    assert_eq!(reports[3].name.as_deref(), Some("x.txt"));
+    assert_eq!(reports[2].name, None);
+    // Between processes and to the server they read back the same, and nothing else passes.
+    let message = reports_message(&reports);
+    assert!(!String::from_utf8_lossy(&message).contains("titok"));
+    assert_eq!(read_reports(&message), Some(reports.clone()));
+    let request = Uuid::new_v4();
+    let mut wire = reports[1].wire(request);
+    assert_eq!(wire.request, request.as_bytes());
+    assert_eq!(Report::from_wire(&wire), Some(reports[1].clone()));
+    wire.problem = "boom".into();
+    assert_eq!(Report::from_wire(&wire), None);
+    let mut clipboard = reports[2].wire(request);
+    clipboard.size = Some(5);
+    assert_eq!(Report::from_wire(&clipboard), None, "no clipboard length");
+    let mut digest = reports[0].wire(request);
+    digest.sha256 = vec![0; 32];
+    assert_eq!(
+        Report::from_wire(&digest),
+        None,
+        "a digest only when completed"
+    );
+    assert_eq!(read_reports(&message[..message.len() - 1]), None);
+}

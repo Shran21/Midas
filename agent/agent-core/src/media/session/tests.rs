@@ -192,3 +192,81 @@ fn only_well_formed_input_passes() {
             .is_err()
     );
 }
+
+#[test]
+fn transfer_messages_pass_only_with_their_right_and_answers_come_back() {
+    use midas_remote_auth::Transfer as Rights;
+
+    use crate::media::{
+        link::transfer_reply_message,
+        transfer::{Kind, Message, Reply, Request, read_request, reply_message},
+    };
+    let all = Rights {
+        clipboard: true,
+        upload: true,
+        download: true,
+    };
+    let (mut browser, peer, _) = connect(software());
+    let mut transport = Transport::new(peer, Profile::Text, (1920, 1080), Instant::now());
+    transport.allow_transfer(Rights {
+        clipboard: true,
+        ..Rights::NONE
+    });
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut forwarded = Vec::new();
+    while forwarded.is_empty() {
+        assert!(Instant::now() < deadline, "no transfer message passed");
+        browser.send_transfer(br#"{"type":"clipboard_get"}"#);
+        // Downloads are not granted: never forwarded.
+        browser.send_transfer(br#"{"type":"list"}"#);
+        browser.step();
+        transport
+            .drive(Instant::now() + Duration::from_millis(5))
+            .unwrap();
+        forwarded.extend(commands(&mut transport).into_iter().filter_map(
+            |command| match command {
+                Command::Transfer(message) => Some(message),
+                _ => None,
+            },
+        ));
+    }
+    assert!(
+        forwarded
+            .iter()
+            .all(|m| read_request(m, all) == Some(Message::Control(Request::ClipboardGet)))
+    );
+    let answer = reply_message(&Message::Control(Reply::Clipboard {
+        text: "árvíz".into(),
+    }));
+    transport
+        .worker_message(&transfer_reply_message(&answer))
+        .unwrap();
+    while browser.transfers.is_empty() {
+        assert!(Instant::now() < deadline, "no answer reached the browser");
+        browser.step();
+        transport
+            .drive(Instant::now() + Duration::from_millis(5))
+            .unwrap();
+    }
+    let received: serde_json::Value = serde_json::from_slice(&browser.transfers[0]).unwrap();
+    assert_eq!(received["type"], "clipboard");
+    assert_eq!(received["text"], "árvíz");
+    // The audit learns that the clipboard moved, not what it held.
+    let report = transport.next_report().unwrap();
+    assert_eq!(
+        (report.kind, report.name),
+        (Kind::ClipboardFromDevice, None)
+    );
+    // An answer the grant does not allow means a misbehaving worker: the session ends.
+    let listing = reply_message(&Message::Control(Reply::Listing {
+        path: "/home".into(),
+        parent: None,
+        entries: Vec::new(),
+        truncated: false,
+    }));
+    assert_eq!(
+        transport.worker_message(&transfer_reply_message(&listing)),
+        Err(LinkError::Invalid)
+    );
+    assert!(transport.is_stopped());
+}

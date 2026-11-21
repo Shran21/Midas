@@ -27,7 +27,7 @@ use midas_agent_core::media::{
     },
     peer::{Answered, answer},
     session::{Input, Transport},
-    transfer::{read_request, reply_message},
+    transfer::{REPORTS_LIMIT, Report, read_reports, read_request, reply_message, reports_message},
     turn::{Server, allocate},
 };
 use midas_remote_auth::Transfer;
@@ -56,6 +56,9 @@ const KEEPALIVE: Duration = Duration::from_secs(1);
 const OFFER: u8 = 1;
 const ANSWER: u8 = 2;
 const REFUSED: u8 = 3;
+/// The service collects the transfers the companion's transport reported for the audit.
+pub const REPORTS: u8 = 6;
+const REPORTED: u8 = 7;
 const LISTEN: u8 = 4;
 const LISTENING: u8 = 5;
 /// How often the privileged worker looks at the input desktop.
@@ -633,11 +636,42 @@ fn software() -> Vec<Encoder> {
 }
 
 /// The WebRTC transport on its own thread: worker frames in, worker commands out.
+/// Transfers waiting for the service, which collects them every few seconds.
+type Reports = Arc<Mutex<std::collections::VecDeque<Report>>>;
+
+fn keep_reports(transport: &mut Transport, reports: &Reports) {
+    let mut queue = reports.lock().unwrap_or_else(|e| e.into_inner());
+    while let Some(report) = transport.next_report() {
+        if queue.len() < REPORTS_LIMIT {
+            queue.push_back(report);
+        }
+    }
+}
+
+/// The companion's answer to a collection: the reports since the last one.
+fn reports_reply(reports: &Reports) -> Vec<u8> {
+    let taken: Vec<Report> = reports
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .drain(..)
+        .collect();
+    [vec![REPORTED], reports_message(&taken)].concat()
+}
+
+/// The reports in the companion's answer, or `None` when it is not one.
+pub fn read_reports_reply(message: &[u8]) -> Option<Vec<Report>> {
+    match message {
+        [REPORTED, rest @ ..] => read_reports(rest),
+        _ => None,
+    }
+}
+
 fn transport(
     mut transport: Transport,
     frames: blocking::Receiver<Vec<u8>>,
     commands: mpsc::Sender<Command>,
     stop: Arc<AtomicBool>,
+    reports: Reports,
 ) {
     while !stop.load(Ordering::Acquire) {
         if transport
@@ -662,8 +696,11 @@ fn transport(
         }
         let mut pending: Vec<Command> = std::iter::from_fn(|| transport.next_command()).collect();
         pending.extend(std::iter::from_fn(|| transport.next_input()).map(Command::Input));
+        keep_reports(&mut transport, &reports);
         for command in pending {
             if commands.blocking_send(command).is_err() {
+                transport.stop();
+                keep_reports(&mut transport, &reports);
                 return;
             }
         }
@@ -672,6 +709,7 @@ fn transport(
         }
     }
     transport.stop();
+    keep_reports(&mut transport, &reports);
     while let Some(command) = transport.next_command() {
         let _ = commands.blocking_send(command);
     }
@@ -796,11 +834,15 @@ where
     let mut incoming = reader(incoming);
     let (offers_sender, mut offers) = mpsc::channel::<Transport>(1);
     let (attached_sender, mut attached) = mpsc::channel::<Connection<NamedPipeServer>>(1);
+    let reports: Reports = Arc::default();
+    let collected = reports.clone();
     let control_task = tokio::spawn(async move {
         let mut started = false;
         let mut listening = false;
         while let Ok(Some(message)) = control.next().await {
-            let reply = if let Some((handle, endpoint)) = read_listen(&message) {
+            let reply = if message == [REPORTS] {
+                reports_reply(&collected)
+            } else if let Some((handle, endpoint)) = read_listen(&message) {
                 let accepted = !listening
                     && accept_privileged(
                         handle,
@@ -923,8 +965,9 @@ where
                 }
                 frames = Some(sender);
                 let (stop, commands) = (stop.clone(), commands_sender.clone());
+                let reports = reports.clone();
                 running = Some(std::thread::spawn(move || {
-                    self::transport(transport, receiver, commands, stop)
+                    self::transport(transport, receiver, commands, stop, reports)
                 }));
             }
             command = commands.recv() => {
@@ -1039,6 +1082,26 @@ mod tests {
         assert_eq!(read_answer(&[ANSWER, b'v']), Some("v".into()));
         assert_eq!(read_answer(&[ANSWER]), None);
         assert_eq!(read_answer(&[REFUSED]), None);
+    }
+
+    #[test]
+    fn collected_reports_are_taken_once() {
+        use midas_agent_core::media::transfer::{Kind, Outcome};
+        let reports: Reports = Arc::default();
+        let report = Report {
+            kind: Kind::ClipboardFromDevice,
+            name: None,
+            size: None,
+            sha256: None,
+            outcome: Outcome::Completed,
+        };
+        reports.lock().unwrap().push_back(report.clone());
+        assert_eq!(
+            read_reports_reply(&reports_reply(&reports)),
+            Some(vec![report])
+        );
+        assert_eq!(read_reports_reply(&reports_reply(&reports)), Some(vec![]));
+        assert_eq!(read_reports_reply(&[ANSWER]), None);
     }
 
     #[test]

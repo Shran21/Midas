@@ -7,9 +7,12 @@ use std::{
     time::Duration,
 };
 
-use midas_agent_core::remote::{
-    Consent, ConsentRequest, DesktopKind, Lease, Observation, Presence,
-    transport::{Native, Relay},
+use midas_agent_core::{
+    media::transfer::Report,
+    remote::{
+        Consent, ConsentRequest, DesktopKind, Lease, Observation, Presence,
+        transport::{Native, Relay},
+    },
 };
 use midas_protocol::sessions::{OsSession, Presence as WirePresence};
 use midas_remote_auth::{Error, Mode, Rights, Target, Transfer};
@@ -329,6 +332,32 @@ impl Native for Coordinator {
             drop(lease);
         }));
         Ok(())
+    }
+
+    fn transfers(&self) -> Vec<Report> {
+        self.runtime.block_on(async {
+            let mut media = self.media.lock().await;
+            let Some((control, _)) = media.as_mut() else {
+                return Vec::new();
+            };
+            let reply = control
+                .exchange(
+                    &[super::media::REPORTS],
+                    tokio::time::Instant::now() + IO_TIMEOUT,
+                )
+                .await;
+            match reply.map(|reply| super::media::read_reports_reply(&reply)) {
+                Ok(Some(reports)) => reports,
+                Ok(None) => {
+                    tracing::warn!("transfer reports refused: malformed answer");
+                    Vec::new()
+                }
+                Err(error) => {
+                    tracing::debug!(%error, "transfer reports not collected");
+                    Vec::new()
+                }
+            }
+        })
     }
 
     fn media(&self, offer: &str, relays: &[Relay]) -> Result<String, Error> {

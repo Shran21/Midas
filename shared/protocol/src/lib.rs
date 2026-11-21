@@ -48,7 +48,7 @@ impl VersionRange {
 pub struct Envelope {
     #[prost(
         oneof = "Body",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29"
     )]
     pub body: Option<Body>,
 }
@@ -113,6 +113,9 @@ pub enum Body {
     /// The agent ended the session itself, and why.
     #[prost(message, tag = "28")]
     RemoteEnded(remote::Ended),
+    /// One clipboard or file transfer of the active session, for the audit; never its content.
+    #[prost(message, tag = "29")]
+    RemoteTransfer(remote::TransferReport),
 }
 
 /// First message from the agent.

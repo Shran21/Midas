@@ -24,6 +24,17 @@ use crate::{
 };
 
 type Result<T> = std::result::Result<T, AccessError>;
+/// Transfers one session records in the audit.
+const TRANSFER_AUDIT_LIMIT: usize = 1000;
+
+async fn next_transfer(
+    transfers: &mut Option<tokio::sync::mpsc::Receiver<wire::TransferReport>>,
+) -> Option<wire::TransferReport> {
+    match transfers {
+        Some(receiver) => receiver.recv().await,
+        None => std::future::pending().await,
+    }
+}
 /// Unfinished requests one operator may have at a time.
 const OPERATOR_LIMIT: usize = 4;
 /// Finished requests stay readable this long, so the panel sees the final state.
@@ -287,9 +298,21 @@ impl Enrollment {
             let mut renew =
                 tokio::time::interval_at(tokio::time::Instant::now() + RENEW_EVERY, RENEW_EVERY);
             let mut reason = None;
+            let mut transfers = session.take_transfers();
+            let mut recorded = 0;
             while session.is_active() {
                 tokio::select! {
                     () = tokio::time::sleep(Duration::from_millis(250)) => {}
+                    Some(report) = next_transfer(&mut transfers) => {
+                        // A session cannot flood the audit: beyond the limit reports are counted.
+                        recorded += 1;
+                        if recorded <= TRANSFER_AUDIT_LIMIT {
+                            let _ = enrollment
+                                .authorizer
+                                .record_transfer(&requester.identity, target, id, &report)
+                                .await;
+                        }
+                    }
                     () = cancelled(&mut stop) => {
                         reason = Some("operator");
                         session.revoke();

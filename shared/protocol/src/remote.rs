@@ -134,6 +134,56 @@ pub struct Ended {
     pub reason: i32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, prost::Enumeration)]
+#[repr(i32)]
+pub enum TransferKind {
+    Unspecified = 0,
+    ClipboardToDevice = 1,
+    ClipboardFromDevice = 2,
+    /// A file from the operator to the device.
+    Upload = 3,
+    /// A file from the device to the operator.
+    Download = 4,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, prost::Enumeration)]
+#[repr(i32)]
+pub enum TransferOutcome {
+    Unspecified = 0,
+    Started = 1,
+    Completed = 2,
+    Failed = 3,
+    Cancelled = 4,
+    /// The session ended first; the file may resume in another one.
+    Interrupted = 5,
+}
+
+/// The most UTF-8 bytes of a reported file name.
+pub const MAX_TRANSFER_NAME: usize = 1024;
+
+/// What the audit records of one transfer: never the clipboard's content or length, nor a
+/// file's bytes.
+#[derive(Clone, PartialEq, Message)]
+pub struct TransferReport {
+    #[prost(bytes = "vec", tag = "1")]
+    pub request: Vec<u8>,
+    #[prost(enumeration = "TransferKind", tag = "2")]
+    pub kind: i32,
+    #[prost(enumeration = "TransferOutcome", tag = "3")]
+    pub outcome: i32,
+    /// The file's name; empty for the clipboard.
+    #[prost(string, tag = "4")]
+    pub name: String,
+    #[prost(uint64, optional, tag = "5")]
+    pub size: Option<u64>,
+    /// SHA-256 of a completed file; empty otherwise.
+    #[prost(bytes = "vec", tag = "6")]
+    pub sha256: Vec<u8>,
+    /// Why it failed, as the agent names it, such as `no_space`.
+    #[prost(string, tag = "7")]
+    pub problem: String,
+}
+
 /// The most SDP bytes either side accepts.
 pub const MAX_SDP: usize = 16 * 1024;
 
@@ -250,6 +300,15 @@ mod tests {
             Body::RemoteEnded(Ended {
                 request: vec![1; 16],
                 reason: EndReason::Local as i32,
+            }),
+            Body::RemoteTransfer(TransferReport {
+                request: vec![1; 16],
+                kind: TransferKind::Download as i32,
+                outcome: TransferOutcome::Completed as i32,
+                name: "jelentés.pdf".into(),
+                size: Some(5),
+                sha256: vec![0xab; 32],
+                problem: String::new(),
             }),
         ];
         for message in messages {

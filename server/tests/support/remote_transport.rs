@@ -41,6 +41,8 @@ pub struct Broker {
     consenting: AtomicBool,
     /// The relays the last media offer carried.
     pub relays: Mutex<Vec<midas_agent_core::remote::transport::Relay>>,
+    /// Transfers the session reports at the next collection.
+    transfers: Mutex<Vec<midas_agent_core::media::transfer::Report>>,
 }
 
 impl Broker {
@@ -58,6 +60,7 @@ impl Broker {
             asked: Mutex::new(Vec::new()),
             consenting: AtomicBool::new(false),
             relays: Mutex::new(Vec::new()),
+            transfers: Mutex::new(Vec::new()),
         }
     }
     /// The local user's End on the agent side.
@@ -179,6 +182,9 @@ impl Native for Broker {
             return Err(Error::Revoked);
         }
         Ok(format!("answer to {} bytes", offer.len()))
+    }
+    fn transfers(&self) -> Vec<midas_agent_core::media::transfer::Report> {
+        std::mem::take(&mut *self.transfers.lock().unwrap())
     }
 }
 
@@ -600,6 +606,48 @@ pub async fn verify_attended(
             download: true,
         }
     );
+    // The agent's transfer reports reach the audit with what they are about, never content.
+    {
+        use midas_agent_core::media::transfer::{Hex, Kind, Outcome, Report};
+        *broker.transfers.lock().unwrap() = vec![
+            Report {
+                kind: Kind::Download,
+                name: Some("jelentés.pdf".into()),
+                size: Some(5),
+                sha256: Some(Hex([0xab; 32])),
+                outcome: Outcome::Completed,
+            },
+            Report {
+                kind: Kind::ClipboardFromDevice,
+                name: None,
+                size: None,
+                sha256: None,
+                outcome: Outcome::Completed,
+            },
+        ];
+    }
+    let audited = tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            let rows: Vec<String> = sqlx::query_scalar("SELECT details::text FROM midas.tenant_audit WHERE tenant_id=$1 AND device_id=$2 AND action='remote.transfer' ORDER BY sequence")
+                .bind(ctx.tenant).bind(ctx.device).fetch_all(&mut *admin).await.unwrap();
+            let rows: Vec<Value> = rows.iter().map(|row| serde_json::from_str(row).unwrap()).collect();
+            if rows.len() == 2 {
+                return rows;
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+    })
+    .await
+    .expect("transfers are audited");
+    let request_id = path.rsplit('/').next().unwrap();
+    assert_eq!(audited[0]["request_id"], request_id);
+    assert_eq!(audited[0]["kind"], "download");
+    assert_eq!(audited[0]["result"], "completed");
+    assert_eq!(audited[0]["name"], "jelentés.pdf");
+    assert_eq!(audited[0]["size"], 5);
+    assert_eq!(audited[0]["sha256"], "ab".repeat(32));
+    assert_eq!(audited[1]["kind"], "clipboard_from_device");
+    assert!(audited[1].get("size").is_none() && audited[1].get("name").is_none());
     broker.end_locally();
     let local = settled(ctx, &path, "active").await;
     assert_eq!(local["state"], "ended", "{local}");

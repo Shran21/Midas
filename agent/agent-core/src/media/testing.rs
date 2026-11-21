@@ -28,7 +28,10 @@ pub(crate) struct Browser {
     local: SocketAddr,
     pub(crate) frames: Vec<Vec<u8>>,
     pub(crate) messages: Vec<Vec<u8>>,
+    /// What arrived on the `transfer` channel.
+    pub(crate) transfers: Vec<Vec<u8>>,
     channel: Option<ChannelId>,
+    transfer: Option<ChannelId>,
     pub(crate) open: bool,
     buffer: Vec<u8>,
 }
@@ -48,6 +51,7 @@ impl Browser {
         let mut change = rtc.sdp_api();
         change.add_media(MediaKind::Video, Direction::RecvOnly, None, None, None);
         let channel = change.add_channel("control".into());
+        let transfer = change.add_channel("transfer".into());
         let (offer, pending) = change.apply().unwrap();
         let browser = Self {
             rtc,
@@ -55,7 +59,9 @@ impl Browser {
             local,
             frames: Vec::new(),
             messages: Vec::new(),
+            transfers: Vec::new(),
             channel: Some(channel),
+            transfer: Some(transfer),
             open: false,
             buffer: vec![0; DATAGRAM],
         };
@@ -71,6 +77,9 @@ impl Browser {
                 }
                 Output::Event(Event::MediaData(data)) => self.frames.push(data.data.to_vec()),
                 Output::Event(Event::ChannelOpen(..)) => self.open = true,
+                Output::Event(Event::ChannelData(data)) if Some(data.id) == self.transfer => {
+                    self.transfers.push(data.data);
+                }
                 Output::Event(Event::ChannelData(data)) => self.messages.push(data.data),
                 Output::Event(_) => {}
             }
@@ -108,6 +117,13 @@ impl Browser {
             };
             self.rtc.handle_input(input).unwrap();
         }
+    }
+
+    pub(crate) fn send_transfer(&mut self, message: &[u8]) -> bool {
+        let Some(mut channel) = self.transfer.and_then(|id| self.rtc.channel(id)) else {
+            return false;
+        };
+        channel.write(false, message).unwrap_or(false)
     }
 
     pub(crate) fn send(&mut self, message: &[u8]) -> bool {

@@ -8,6 +8,8 @@ use std::{
 
 use midas_protocol::{Body, Welcome, remote as wire, sessions::Presence as WirePresence};
 use midas_remote_auth::{Connection, Error, Mode, Rights, SignedGrant, Target, Transfer};
+
+use crate::media::transfer::{REPORTS_LIMIT, Report};
 use tokio::sync::{Semaphore, mpsc};
 use uuid::Uuid;
 
@@ -37,7 +39,14 @@ pub trait Native: Send + Sync {
         let _ = (offer, relays);
         Err(Error::Target)
     }
+    /// Clipboard and file transfers of the active session since the last call, for the audit.
+    fn transfers(&self) -> Vec<Report> {
+        Vec::new()
+    }
 }
+
+/// How often the active session's transfers are collected for the audit.
+const TRANSFER_POLL: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// A TURN relay the server named for one session, with its short-lived credential.
 #[derive(Clone, PartialEq, Eq)]
@@ -374,6 +383,8 @@ impl Drop for RevokeChannel {
 enum Next {
     Work(Box<Work>),
     Ended(Ending),
+    /// Time to collect the active session's transfers.
+    Poll,
     Closed,
 }
 
@@ -436,14 +447,39 @@ impl Transport {
             // The active lease is watched beside the work, so its end reaches the server even
             // when nothing else is asked.
             let mut watched: Option<(Uuid, Renewer)> = None;
-            loop {
+            let mut poll = tokio::time::interval(TRANSFER_POLL);
+            poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            'serve: loop {
                 let next = tokio::select! {
                     work = inbox.recv() => work.map_or(Next::Closed, |work| Next::Work(Box::new(work))),
                     ending = ended(&watched) => Next::Ended(ending),
+                    _ = poll.tick(), if watched.is_some() => Next::Poll,
                 };
                 let work = match next {
                     Next::Work(work) => *work,
                     Next::Closed => break,
+                    Next::Poll => {
+                        let Some((request, _)) = &watched else {
+                            continue;
+                        };
+                        let request = *request;
+                        let native = engine.native.clone();
+                        let Ok(reports) =
+                            tokio::task::spawn_blocking(move || native.transfers()).await
+                        else {
+                            break;
+                        };
+                        for report in reports.into_iter().take(REPORTS_LIMIT) {
+                            if outbox
+                                .send(Body::RemoteTransfer(report.wire(request)))
+                                .await
+                                .is_err()
+                            {
+                                break 'serve;
+                            }
+                        }
+                        continue;
+                    }
                     Next::Ended(ending) => {
                         let Some((request, _)) = watched.take() else {
                             continue;
