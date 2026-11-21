@@ -6,6 +6,7 @@ import {
   type SessionSelection,
 } from "../api";
 import type { Language } from "../i18n";
+import { ChatPanel } from "./ChatPanel";
 import {
   CONSENT_LIFETIME,
   finished,
@@ -393,14 +394,25 @@ export function RequestStatus({
         </p>
       )}
       {request.state === "active" && (
-        <Viewer
-          tenant={tenant}
-          device={device}
-          request={request}
-          csrf={csrf}
-          language={language}
-          fail={fail}
-        />
+        <>
+          <Viewer
+            tenant={tenant}
+            device={device}
+            request={request}
+            csrf={csrf}
+            language={language}
+            fail={fail}
+          />
+          <ChatPanel
+            tenant={tenant}
+            device={device.id}
+            request={request.id}
+            account={account}
+            csrf={csrf}
+            language={language}
+            fail={fail}
+          />
+        </>
       )}
       <div className="remote-request-actions">
         {!done && (

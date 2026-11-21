@@ -3464,6 +3464,50 @@ h1[tabindex="-1"]:focus {
 .remote-transfer-download {
   overflow-x: auto;
 }
+.remote-chat {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.remote-chat h4 {
+  margin: 0;
+}
+.remote-chat-messages {
+  display: grid;
+  gap: 6px;
+  max-height: 16rem;
+  margin: 0;
+  padding: 8px;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+.remote-chat-messages li {
+  display: grid;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+.remote-chat-who {
+  color: var(--muted);
+  font-size: 12px;
+}
+.remote-chat-text {
+  white-space: pre-wrap;
+}
+.remote-chat-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+}
+.remote-chat-form label {
+  flex-basis: 100%;
+}
+.remote-chat-form textarea {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
 .button-link {
   padding: 0;
   border: 0;

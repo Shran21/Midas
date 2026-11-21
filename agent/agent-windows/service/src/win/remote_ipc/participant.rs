@@ -13,7 +13,9 @@ use tokio::{
 #[cfg(test)]
 use super::IO_TIMEOUT;
 use super::{Connection, STARTUP_TIMEOUT, bootstrap::delivery, denied};
-use crate::consent::{Answer, END, INDICATE, Question, encode_answer};
+use crate::consent::{
+    Answer, COLLECT, END, INDICATE, Question, SHOWN, encode_answer, read_chat, said_message,
+};
 
 pub(in crate::win::remote_ipc) const WORKER_HELLO: &[u8] = b"worker-ready/1";
 pub(in crate::win::remote_ipc) const BROKER_HELLO: &[u8] = b"broker-ready/1";
@@ -174,18 +176,48 @@ pub(in crate::win::remote_ipc) async fn consent(
         tokio::task::spawn_blocking(move || indicate(&question, &handle))
     };
     tokio::pin!(shown);
-    tokio::select! {
-        message = service.next() => {
-            crate::win::indicator::dismiss(&handle);
-            let _ = shown.await;
-            closed(message?)
-        }
-        pressed = &mut shown => {
-            if pressed.map_err(|_| denied())?? {
-                service.reply(END, Instant::now() + ANSWER_TIMEOUT).await?;
+    // The service asks, the indicator answers; after the user's End every answer is `END`.
+    let mut pressed = false;
+    let mut finished = false;
+    loop {
+        let message = tokio::select! {
+            message = service.next() => message?,
+            result = &mut shown, if !finished => {
+                finished = true;
+                pressed = result.map_err(|_| denied())??;
+                continue;
             }
-            closed(service.next().await?)
-        }
+        };
+        let answer = match message {
+            Some(message) if pressed => {
+                let _ = message;
+                END.to_vec()
+            }
+            Some(message) if message == COLLECT => said_message(&crate::win::indicator::said()),
+            Some(message) => match read_chat(&message) {
+                Some(text) => {
+                    crate::win::indicator::deliver(&handle, text);
+                    SHOWN.to_vec()
+                }
+                None => {
+                    crate::win::indicator::dismiss(&handle);
+                    if !finished {
+                        let _ = shown.await;
+                    }
+                    return Err(denied());
+                }
+            },
+            None => {
+                crate::win::indicator::dismiss(&handle);
+                if !finished {
+                    let _ = shown.await;
+                }
+                return Ok(());
+            }
+        };
+        service
+            .reply(&answer, Instant::now() + ANSWER_TIMEOUT)
+            .await?;
     }
 }
 

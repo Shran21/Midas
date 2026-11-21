@@ -43,6 +43,9 @@ pub struct Broker {
     pub relays: Mutex<Vec<midas_agent_core::remote::transport::Relay>>,
     /// Transfers the session reports at the next collection.
     transfers: Mutex<Vec<midas_agent_core::media::transfer::Report>>,
+    /// The operator's chat as the user saw it, and what the user wrote.
+    shown: Mutex<Vec<String>>,
+    said: Mutex<Vec<String>>,
 }
 
 impl Broker {
@@ -61,6 +64,8 @@ impl Broker {
             consenting: AtomicBool::new(false),
             relays: Mutex::new(Vec::new()),
             transfers: Mutex::new(Vec::new()),
+            shown: Mutex::new(Vec::new()),
+            said: Mutex::new(Vec::new()),
         }
     }
     /// The local user's End on the agent side.
@@ -185,6 +190,12 @@ impl Native for Broker {
     }
     fn transfers(&self) -> Vec<midas_agent_core::media::transfer::Report> {
         std::mem::take(&mut *self.transfers.lock().unwrap())
+    }
+    fn chat(&self, text: &str) {
+        self.shown.lock().unwrap().push(text.to_owned());
+    }
+    fn chats(&self) -> Vec<String> {
+        std::mem::take(&mut *self.said.lock().unwrap())
     }
 }
 
@@ -648,8 +659,129 @@ pub async fn verify_attended(
     assert_eq!(audited[0]["sha256"], "ab".repeat(32));
     assert_eq!(audited[1]["kind"], "clipboard_from_device");
     assert!(audited[1].get("size").is_none() && audited[1].get("name").is_none());
+    // The two participants chat while the session runs; only the requester reads it.
+    let chat = format!("{path}/chat");
+    let say = serde_json::json!({ "text": "Mindjárt nézem a nyomtatót." });
+    assert_eq!(
+        call(
+            ctx.app,
+            "POST",
+            &chat,
+            Some(ctx.outsider),
+            Some(say.clone()),
+            &[]
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        call(
+            ctx.app,
+            "POST",
+            &chat,
+            Some(ctx.manager),
+            Some(serde_json::json!({ "text": "a\u{7}" })),
+            &[]
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    let (status, sent, _) = call(ctx.app, "POST", &chat, Some(ctx.manager), Some(say), &[]).await;
+    assert_eq!(status, StatusCode::CREATED, "{sent}");
+    assert_eq!(
+        (sent["seq"].as_u64(), &sent["from"]),
+        (Some(1), &serde_json::json!("operator"))
+    );
+    broker.said.lock().unwrap().push("Köszönöm, várok.".into());
+    let conversation = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let (status, body, _) = call(
+                ctx.app,
+                "GET",
+                &format!("{chat}/0"),
+                Some(ctx.manager),
+                None,
+                &[],
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{body}");
+            if body["messages"].as_array().unwrap().len() == 2 {
+                return body;
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+    })
+    .await
+    .expect("the user's answer arrives");
+    assert_eq!(conversation["messages"][1]["from"], "user");
+    assert_eq!(conversation["messages"][1]["text"], "Köszönöm, várok.");
+    assert_eq!(
+        *broker.shown.lock().unwrap(),
+        ["Mindjárt nézem a nyomtatót."]
+    );
+    let (_, after, _) = call(
+        ctx.app,
+        "GET",
+        &format!("{chat}/1"),
+        Some(ctx.manager),
+        None,
+        &[],
+    )
+    .await;
+    assert_eq!(after["messages"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        call(
+            ctx.app,
+            "GET",
+            &format!("{chat}/0"),
+            Some(ctx.outsider),
+            None,
+            &[]
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
     broker.end_locally();
     let local = settled(ctx, &path, "active").await;
+    // The chat ends with the session: nothing is kept, nothing more is sent.
+    let (_, closed, _) = call(
+        ctx.app,
+        "GET",
+        &format!("{chat}/0"),
+        Some(ctx.manager),
+        None,
+        &[],
+    )
+    .await;
+    assert_eq!(closed["messages"], serde_json::json!([]));
+    assert_eq!(
+        call(
+            ctx.app,
+            "POST",
+            &chat,
+            Some(ctx.manager),
+            Some(serde_json::json!({ "text": "Még itt?" })),
+            &[]
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    let chats: Vec<String> = sqlx::query_scalar("SELECT details::text FROM midas.tenant_audit WHERE tenant_id=$1 AND device_id=$2 AND action='remote.chat'")
+        .bind(ctx.tenant).bind(ctx.device).fetch_all(&mut *admin).await.unwrap();
+    assert_eq!(chats.len(), 1);
+    let counted: Value = serde_json::from_str(&chats[0]).unwrap();
+    assert_eq!(
+        (
+            counted["from_operator"].as_u64(),
+            counted["from_user"].as_u64()
+        ),
+        (Some(1), Some(1))
+    );
+    assert!(!chats[0].contains("nyomtató") && !chats[0].contains("Köszönöm"));
     assert_eq!(local["state"], "ended", "{local}");
     assert_eq!(local["reason"], "local");
     assert!(!broker.allowed());

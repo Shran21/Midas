@@ -496,6 +496,21 @@ export const api = {
       `${devicePath(tenant, device)}/remote-requests/${encodeURIComponent(id)}`,
       { signal },
     ),
+  remoteChat: (tenant: string, device: string, id: string, after: number) =>
+    request<unknown>(
+      `${devicePath(tenant, device)}/remote-requests/${encodeURIComponent(id)}/chat/${after}`,
+    ),
+  sendRemoteChat: (
+    tenant: string,
+    device: string,
+    id: string,
+    text: string,
+    csrf: string,
+  ) =>
+    request<unknown>(
+      `${devicePath(tenant, device)}/remote-requests/${encodeURIComponent(id)}/chat`,
+      { method: "POST", body: { text }, csrf },
+    ),
   remoteIce: (tenant: string, device: string, id: string) =>
     request<unknown>(
       `${devicePath(tenant, device)}/remote-requests/${encodeURIComponent(id)}/ice`,

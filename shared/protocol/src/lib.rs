@@ -48,7 +48,7 @@ impl VersionRange {
 pub struct Envelope {
     #[prost(
         oneof = "Body",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30"
     )]
     pub body: Option<Body>,
 }
@@ -116,6 +116,10 @@ pub enum Body {
     /// One clipboard or file transfer of the active session, for the audit; never its content.
     #[prost(message, tag = "29")]
     RemoteTransfer(remote::TransferReport),
+    /// A chat message of the active session: from the operator to the agent, or from the
+    /// signed-in user to the server.
+    #[prost(message, tag = "30")]
+    RemoteChat(remote::Chat),
 }
 
 /// First message from the agent.

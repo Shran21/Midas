@@ -293,6 +293,27 @@ impl Authorizer {
         self.record_decision(&event).await
     }
 
+    /// How many chat messages each side sent in a session that ended; never what they said.
+    pub(crate) async fn record_chat(
+        &self,
+        identity: &SessionInfo,
+        target: Target,
+        id: Uuid,
+        [operator, user]: [u64; 2],
+    ) -> Result<()> {
+        let mut event = Event::new(
+            Action::RemoteChat,
+            Outcome::Success,
+            Actor::session(identity),
+        )
+        .detail("request_id", id.to_string())
+        .detail("from_operator", operator)
+        .detail("from_user", user);
+        event.tenant = Some(target.tenant);
+        event.device = target.device;
+        self.record_decision(&event).await
+    }
+
     pub(crate) async fn record_attended(
         &self,
         identity: &SessionInfo,

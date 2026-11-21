@@ -31,6 +31,8 @@ struct Broker {
     entered: tokio::sync::Notify,
     release: Mutex<std::sync::mpsc::Receiver<()>>,
     transfers: Mutex<Vec<Report>>,
+    shown: Mutex<Vec<String>>,
+    said: Mutex<Vec<String>>,
 }
 
 impl Broker {
@@ -58,6 +60,12 @@ fn worker(lease: &Lease) -> Worker {
 impl Native for Broker {
     fn transfers(&self) -> Vec<Report> {
         std::mem::take(&mut *self.transfers.lock().unwrap())
+    }
+    fn chat(&self, text: &str) {
+        self.shown.lock().unwrap().push(text.to_owned());
+    }
+    fn chats(&self) -> Vec<String> {
+        std::mem::take(&mut *self.said.lock().unwrap())
     }
     fn observe(&self, _: Target) -> Result<Observation, Error> {
         if self.calls.fetch_add(1, Ordering::SeqCst) + 1 == self.block_at {
@@ -142,6 +150,8 @@ impl Fixture {
             entered: tokio::sync::Notify::new(),
             release: Mutex::new(wait),
             transfers: Mutex::new(Vec::new()),
+            shown: Mutex::new(Vec::new()),
+            said: Mutex::new(Vec::new()),
         });
         let key = SigningKey::generate().unwrap();
         Self {
@@ -669,4 +679,37 @@ async fn the_active_sessions_transfers_reach_the_server_for_its_request() {
     assert_eq!(report.request, f.prepare.request);
     assert_eq!(report.kind, wire::TransferKind::ClipboardToDevice as i32);
     assert_eq!(report.outcome, wire::TransferOutcome::Completed as i32);
+}
+
+#[tokio::test]
+async fn chat_goes_both_ways_only_for_the_active_request() {
+    let f = Fixture::attended(Some(Consent::Allowed));
+    let mut transport = f.connect();
+    let challenge = attended_challenge(&mut transport, &f).await;
+    transport.deliver(f.sign(challenge)).unwrap();
+    assert!(matches!(
+        response(&mut transport).await,
+        Body::RemoteAck(wire::Ack { accepted: true, .. })
+    ));
+    let chat = |request: &[u8], text: &str| wire::Chat {
+        request: request.to_vec(),
+        text: text.into(),
+    };
+    assert_eq!(
+        transport.chat(chat(Uuid::new_v4().as_bytes(), "más kérés")),
+        Err(Error::Target)
+    );
+    assert_eq!(
+        transport.chat(chat(&f.prepare.request, "a\u{7}")),
+        Err(Error::Invalid)
+    );
+    transport
+        .chat(chat(&f.prepare.request, "Mindjárt nézem."))
+        .unwrap();
+    f.broker.said.lock().unwrap().push("Köszönöm!".into());
+    let Body::RemoteChat(said) = response(&mut transport).await else {
+        panic!("the user's chat");
+    };
+    assert_eq!(said, chat(&f.prepare.request, "Köszönöm!"));
+    assert_eq!(*f.broker.shown.lock().unwrap(), ["Mindjárt nézem."]);
 }

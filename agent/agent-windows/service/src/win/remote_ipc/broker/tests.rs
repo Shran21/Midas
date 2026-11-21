@@ -618,11 +618,14 @@ async fn consent_participant(parent: &Peer, token: &OwnedHandle, session: u32, i
         )
         .await
         .unwrap();
-    let ended = tokio::time::timeout(Duration::from_secs(5), control.receive())
+    let ended = control
+        .exchange(
+            crate::consent::COLLECT,
+            tokio::time::Instant::now() + Duration::from_secs(5),
+        )
         .await
-        .expect("the indicator's End")
         .unwrap();
-    assert_eq!(ended.as_deref(), Some(crate::consent::END));
+    assert_eq!(ended, crate::consent::END);
     println!("session indicator sent the user's End");
     drop(control);
     for _ in 0..50 {

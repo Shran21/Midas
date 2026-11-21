@@ -319,6 +319,14 @@ async fn session(
                         tracing::warn!(?error, "media offer refused");
                     }
                 }
+                // A refused chat message only loses that message.
+                Ok(Body::RemoteChat(chat)) => {
+                    if let Some(remote) = remote.as_mut()
+                        && let Err(error) = remote.chat(chat)
+                    {
+                        tracing::debug!(?error, "chat message refused");
+                    }
+                }
                 Ok(Body::SessionRequest(request)) => {
                     if let Some(probe) = &settings.sessions
                         && midas_protocol::sessions::identifier(&request.request_id)

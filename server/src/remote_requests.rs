@@ -20,19 +20,87 @@ use crate::{
         attended::{Asked, AttendedRequest, CONSENT_TIMEOUT, refusal},
     },
     enrollment::Enrollment,
-    remote_grants::{Attended, Session},
+    remote_grants::{Attended, FromAgent, Session},
 };
 
 type Result<T> = std::result::Result<T, AccessError>;
 /// Transfers one session records in the audit.
 const TRANSFER_AUDIT_LIMIT: usize = 1000;
+/// Chat messages a session keeps; older ones fall off.
+const CHAT_KEPT: usize = 200;
+/// Chat messages each side may send per second.
+const CHAT_RATE: usize = 5;
 
-async fn next_transfer(
-    transfers: &mut Option<tokio::sync::mpsc::Receiver<wire::TransferReport>>,
-) -> Option<wire::TransferReport> {
-    match transfers {
+async fn next_inbound(
+    inbound: &mut Option<tokio::sync::mpsc::Receiver<FromAgent>>,
+) -> Option<FromAgent> {
+    match inbound {
         Some(receiver) => receiver.recv().await,
         None => std::future::pending().await,
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Speaker {
+    Operator,
+    /// The user signed in to the target session.
+    User,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ChatMessage {
+    pub seq: u64,
+    pub from: Speaker,
+    pub text: String,
+    /// Unix seconds.
+    pub at: i64,
+}
+
+/// One session's chat, while it runs; it closes and empties when the session ends.
+#[derive(Default)]
+struct Conversation {
+    open: bool,
+    messages: std::collections::VecDeque<ChatMessage>,
+    next: u64,
+    counts: [u64; 2],
+    recent: [std::collections::VecDeque<Instant>; 2],
+}
+
+impl Conversation {
+    fn push(&mut self, from: Speaker, text: String) -> Option<ChatMessage> {
+        let side = from as usize;
+        let now = Instant::now();
+        let recent = &mut self.recent[side];
+        while recent
+            .front()
+            .is_some_and(|at| now.duration_since(*at) >= Duration::from_secs(1))
+        {
+            recent.pop_front();
+        }
+        if !self.open || recent.len() >= CHAT_RATE {
+            return None;
+        }
+        recent.push_back(now);
+        self.next += 1;
+        self.counts[side] += 1;
+        let message = ChatMessage {
+            seq: self.next,
+            from,
+            text,
+            at: unix_now(),
+        };
+        if self.messages.len() == CHAT_KEPT {
+            self.messages.pop_front();
+        }
+        self.messages.push_back(message.clone());
+        Some(message)
+    }
+
+    fn close(&mut self) -> [u64; 2] {
+        self.open = false;
+        self.messages.clear();
+        self.counts
     }
 }
 /// Unfinished requests one operator may have at a time.
@@ -104,6 +172,7 @@ struct Tracked {
     /// The granted session while it is active, for its single media setup.
     session: Option<Weak<Session>>,
     offered: bool,
+    chat: Conversation,
 }
 
 impl Tracked {
@@ -228,6 +297,7 @@ impl Enrollment {
             created: Instant::now(),
             session: None,
             offered: false,
+            chat: Conversation::default(),
         };
         let view = tracked.view(id);
         self.remote_requests.entries().insert(id, tracked);
@@ -289,6 +359,7 @@ impl Enrollment {
             let session = Arc::new(session);
             if let Some(entry) = requests.entries().get_mut(&id) {
                 entry.session = Some(Arc::downgrade(&session));
+                entry.chat.open = true;
             }
             status.send_replace(Status::Active {
                 until: unix_now() + session.remaining().as_secs() as i64,
@@ -298,21 +369,28 @@ impl Enrollment {
             let mut renew =
                 tokio::time::interval_at(tokio::time::Instant::now() + RENEW_EVERY, RENEW_EVERY);
             let mut reason = None;
-            let mut transfers = session.take_transfers();
+            let mut inbound = session.take_inbound();
             let mut recorded = 0;
             while session.is_active() {
                 tokio::select! {
                     () = tokio::time::sleep(Duration::from_millis(250)) => {}
-                    Some(report) = next_transfer(&mut transfers) => {
+                    Some(message) = next_inbound(&mut inbound) => match message {
                         // A session cannot flood the audit: beyond the limit reports are counted.
-                        recorded += 1;
-                        if recorded <= TRANSFER_AUDIT_LIMIT {
-                            let _ = enrollment
-                                .authorizer
-                                .record_transfer(&requester.identity, target, id, &report)
-                                .await;
+                        FromAgent::Transfer(report) => {
+                            recorded += 1;
+                            if recorded <= TRANSFER_AUDIT_LIMIT {
+                                let _ = enrollment
+                                    .authorizer
+                                    .record_transfer(&requester.identity, target, id, &report)
+                                    .await;
+                            }
                         }
-                    }
+                        FromAgent::Chat(text) => {
+                            if let Some(entry) = requests.entries().get_mut(&id) {
+                                entry.chat.push(Speaker::User, text);
+                            }
+                        }
+                    },
                     () = cancelled(&mut stop) => {
                         reason = Some("operator");
                         session.revoke();
@@ -344,6 +422,18 @@ impl Enrollment {
                 })
             });
             drop(session);
+            // The chat ends with the session; the audit learns only how much was said.
+            let counts = requests
+                .entries()
+                .get_mut(&id)
+                .map(|entry| entry.chat.close())
+                .unwrap_or_default();
+            if counts != [0, 0] {
+                let _ = enrollment
+                    .authorizer
+                    .record_chat(&requester.identity, target, id, counts)
+                    .await;
+            }
             let label = reason.unwrap_or("expired");
             let outcome = if matches!(label, "operator" | "local") {
                 Outcome::Success
@@ -365,6 +455,99 @@ impl Enrollment {
             });
         });
         Ok(view)
+    }
+
+    /// Sends the operator's chat message to the signed-in user of the active request. Checked
+    /// like the picture: the requester only, with every permission of the session's mode.
+    pub async fn remote_chat_send(
+        &self,
+        sessions: &Sessions,
+        token: &SessionToken,
+        tenant: Uuid,
+        device: Uuid,
+        id: Uuid,
+        text: String,
+    ) -> Result<Option<ChatMessage>> {
+        if !wire::chat_valid(&text) {
+            return Err(AccessError::InvalidInput);
+        }
+        let target = Target {
+            tenant,
+            device: Some(device),
+        };
+        let decision = self
+            .authorizer
+            .authorize(sessions, token, target, Permission::RemoteControl)
+            .await?;
+        let Some((mode, uac, transfer)) = self
+            .remote_requests
+            .entries()
+            .get(&id)
+            .filter(|e| {
+                e.tenant == tenant && e.device == device && e.operator == decision.operator_id
+            })
+            .map(|e| (e.mode, e.uac, e.transfer))
+        else {
+            return Ok(None);
+        };
+        self.authorizer
+            .authorize_attended_operation(sessions, token, target, mode, uac, transfer)
+            .await?;
+        let mut entries = self.remote_requests.entries();
+        let Some(entry) = entries.get_mut(&id) else {
+            return Ok(None);
+        };
+        let session = entry
+            .session
+            .as_ref()
+            .and_then(Weak::upgrade)
+            .filter(|session| session.is_active() && entry.chat.open)
+            .ok_or(AccessError::Offline)?;
+        let message = entry
+            .chat
+            .push(Speaker::Operator, text.clone())
+            .ok_or(AccessError::Conflict)?;
+        if let Err(error) = session.chat(text) {
+            entry.chat.messages.pop_back();
+            entry.chat.counts[Speaker::Operator as usize] -= 1;
+            return Err(error);
+        }
+        Ok(Some(message))
+    }
+
+    /// The chat of an active request after `after`, for the requester only.
+    pub async fn remote_chat_read(
+        &self,
+        sessions: &Sessions,
+        token: &SessionToken,
+        tenant: Uuid,
+        device: Uuid,
+        id: Uuid,
+        after: u64,
+    ) -> Result<Option<Vec<ChatMessage>>> {
+        let target = Target {
+            tenant,
+            device: Some(device),
+        };
+        let decision = self
+            .authorizer
+            .authorize(sessions, token, target, Permission::RemoteControl)
+            .await?;
+        Ok(self
+            .remote_requests
+            .entries()
+            .get(&id)
+            .filter(|e| {
+                e.tenant == tenant && e.device == device && e.operator == decision.operator_id
+            })
+            .map(|e| {
+                e.chat
+                    .messages
+                    .iter()
+                    .filter(|message| message.seq > after)
+                    .cloned()
+                    .collect()
+            }))
     }
 
     /// The relays the browser may use for an active request, with short-lived credentials; an

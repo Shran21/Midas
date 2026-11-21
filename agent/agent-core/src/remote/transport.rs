@@ -43,10 +43,20 @@ pub trait Native: Send + Sync {
     fn transfers(&self) -> Vec<Report> {
         Vec::new()
     }
+    /// Shows the operator's chat message to the signed-in user of the active session.
+    fn chat(&self, text: &str) {
+        let _ = text;
+    }
+    /// What the signed-in user wrote in the chat since the last call.
+    fn chats(&self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
-/// How often the active session's transfers are collected for the audit.
-const TRANSFER_POLL: std::time::Duration = std::time::Duration::from_secs(2);
+/// How often the active session's transfers and the user's chat are collected.
+const POLL: std::time::Duration = std::time::Duration::from_secs(1);
+/// User chat messages forwarded per collection.
+const CHATS_PER_POLL: usize = 5;
 
 /// A TURN relay the server named for one session, with its short-lived credential.
 #[derive(Clone, PartialEq, Eq)]
@@ -179,6 +189,8 @@ enum Work {
         grant: SignedGrant,
         stop: Arc<Revocation>,
     },
+    /// The operator's chat message, for the active request only.
+    Chat { request: Uuid, text: String },
 }
 
 struct Prepared {
@@ -369,6 +381,7 @@ impl Engine {
                     sdp: answer,
                 })
             }
+            Work::Chat { .. } => unreachable!("chat is handled before processing"),
         }
     }
 }
@@ -447,7 +460,7 @@ impl Transport {
             // The active lease is watched beside the work, so its end reaches the server even
             // when nothing else is asked.
             let mut watched: Option<(Uuid, Renewer)> = None;
-            let mut poll = tokio::time::interval(TRANSFER_POLL);
+            let mut poll = tokio::time::interval(POLL);
             poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             'serve: loop {
                 let next = tokio::select! {
@@ -464,17 +477,29 @@ impl Transport {
                         };
                         let request = *request;
                         let native = engine.native.clone();
-                        let Ok(reports) =
-                            tokio::task::spawn_blocking(move || native.transfers()).await
+                        let Ok((reports, chats)) = tokio::task::spawn_blocking(move || {
+                            (native.transfers(), native.chats())
+                        })
+                        .await
                         else {
                             break;
                         };
-                        for report in reports.into_iter().take(REPORTS_LIMIT) {
-                            if outbox
-                                .send(Body::RemoteTransfer(report.wire(request)))
-                                .await
-                                .is_err()
-                            {
+                        let chats = chats
+                            .into_iter()
+                            .filter(|text| wire::chat_valid(text))
+                            .take(CHATS_PER_POLL)
+                            .map(|text| {
+                                Body::RemoteChat(wire::Chat {
+                                    request: request.as_bytes().to_vec(),
+                                    text,
+                                })
+                            });
+                        let reports = reports
+                            .into_iter()
+                            .take(REPORTS_LIMIT)
+                            .map(|report| Body::RemoteTransfer(report.wire(request)));
+                        for body in reports.chain(chats) {
+                            if outbox.send(body).await.is_err() {
                                 break 'serve;
                             }
                         }
@@ -501,6 +526,14 @@ impl Transport {
                         continue;
                     }
                 };
+                // A chat message needs no answer and never waits for the native slot.
+                if let Work::Chat { request, text } = work {
+                    if engine.active == Some(request) {
+                        let native = engine.native.clone();
+                        let _ = tokio::task::spawn_blocking(move || native.chat(&text)).await;
+                    }
+                    continue;
+                }
                 let output = if let Ok(permit) = backend.slot.clone().try_acquire_owned() {
                     let result = tokio::task::spawn_blocking(move || {
                         let output = engine.process(work, true);
@@ -647,6 +680,27 @@ impl Transport {
                 relays: relays(offer.relays)?,
                 offer: offer.sdp,
                 stop: stop.clone(),
+            })
+            .map_err(|_| Error::Revoked)
+    }
+
+    /// Passes the operator's chat message on, only for the current request.
+    pub fn chat(&mut self, chat: wire::Chat) -> Result<(), Error> {
+        let request = id(&chat.request)?;
+        if !wire::chat_valid(&chat.text) {
+            return Err(Error::Invalid);
+        }
+        if self
+            .operation
+            .as_ref()
+            .is_none_or(|(current, _)| *current != request)
+        {
+            return Err(Error::Target);
+        }
+        self.commands
+            .try_send(Work::Chat {
+                request,
+                text: chat.text,
             })
             .map_err(|_| Error::Revoked)
     }

@@ -28,7 +28,7 @@ use super::{
     tokens::PreparedToken,
 };
 use crate::{
-    consent::{Answer, END, INDICATE, Question, decode_answer},
+    consent::{Answer, COLLECT, END, INDICATE, Question, chat_message, decode_answer, read_said},
     win::sessions::Observer,
 };
 
@@ -57,6 +57,41 @@ pub struct Coordinator {
     /// The companion's control channel and the transfer the grant allows.
     media: Arc<tokio::sync::Mutex<Option<(Control, Transfer)>>>,
     window: Mutex<Option<Window>>,
+    chat: Arc<Chat>,
+}
+
+/// Chat messages between the server and the session indicator, both ways.
+#[derive(Default)]
+struct Chat {
+    /// The technician's messages for the indicator.
+    outgoing: Mutex<std::collections::VecDeque<String>>,
+    /// The user's messages for the server.
+    said: Mutex<std::collections::VecDeque<String>>,
+}
+
+/// Messages either way kept waiting; beyond this they are dropped.
+const CHAT_QUEUE: usize = 50;
+/// How often the indicator is asked for the user's messages and the End button.
+const INDICATOR_POLL: Duration = Duration::from_millis(300);
+
+fn queue(
+    queue: &Mutex<std::collections::VecDeque<String>>,
+    texts: impl IntoIterator<Item = String>,
+) {
+    let mut queue = queue.lock().unwrap_or_else(|e| e.into_inner());
+    for text in texts {
+        if queue.len() < CHAT_QUEUE {
+            queue.push_back(text);
+        }
+    }
+}
+
+fn drain(queue: &Mutex<std::collections::VecDeque<String>>) -> Vec<String> {
+    queue
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .drain(..)
+        .collect()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -80,6 +115,7 @@ impl Coordinator {
             runtime,
             active: Mutex::new(None),
             media: Arc::new(tokio::sync::Mutex::new(None)),
+            chat: Arc::default(),
             window: Mutex::new(None),
         })
     }
@@ -221,25 +257,59 @@ impl Coordinator {
 
 /// Waits for the lease to end. A consented session keeps its indicator: the user's End, or the
 /// indicator going away, ends the session at once, since it must not run without that control.
-async fn watched(lease: &Lease, window: Option<Window>) {
+/// The indicator also carries the chat: every request is answered before the next one, so no
+/// read is cut short.
+async fn watched(lease: &Lease, window: Option<Window>, chat: &Chat) {
     let Some(mut window) = window else {
         return lease.ended().await;
     };
-    let shown = window
+    let mut shown = window
         .control
         .send(INDICATE, tokio::time::Instant::now() + IO_TIMEOUT)
         .await
         .is_ok();
-    if shown {
+    let mut poll = tokio::time::interval(INDICATOR_POLL);
+    while shown {
         tokio::select! {
-            () = lease.ended() => return,
-            ended = window.control.receive() => {
-                tracing::info!(pressed = matches!(ended, Ok(Some(ref m)) if m == END), "session indicator ended the session");
+            () = lease.ended() => {
+                drain(&chat.outgoing);
+                return;
+            }
+            _ = poll.tick() => {}
+        }
+        let requests: Vec<Vec<u8>> = drain(&chat.outgoing)
+            .iter()
+            .map(|text| chat_message(text))
+            .chain(std::iter::once(COLLECT.to_vec()))
+            .collect();
+        for request in requests {
+            let answer = window
+                .control
+                .exchange(&request, tokio::time::Instant::now() + IO_TIMEOUT)
+                .await;
+            match answer {
+                Ok(answer) if answer == END => {
+                    tracing::info!("the user pressed End on the session indicator");
+                    shown = false;
+                }
+                Ok(answer) if request == COLLECT => match read_said(&answer) {
+                    Some(said) => queue(&chat.said, said),
+                    None => shown = false,
+                },
+                Ok(_) => {}
+                Err(error) => {
+                    tracing::info!(%error, "the session indicator went away");
+                    shown = false;
+                }
+            }
+            if !shown {
+                break;
             }
         }
     }
     lease.cancellation().end_locally();
     lease.ended().await;
+    drain(&chat.outgoing);
     drop(window.running);
 }
 
@@ -318,10 +388,11 @@ impl Native for Coordinator {
                 window.allowed.elapsed() < START_WAIT && window.session == lease.target().session
             });
         let media = self.media.clone();
+        let chat = self.chat.clone();
         let transfer = lease.rights().transfer;
         *media.blocking_lock() = control.map(|control| (control, transfer));
         *active = Some(self.runtime.spawn(async move {
-            match supervise(workers, watched(&lease, window)).await {
+            match supervise(workers, watched(&lease, window, &chat)).await {
                 Ok(stopped) => tracing::info!(lease = %id, ?stopped, "remote support workers stopped"),
                 Err(error) => {
                     tracing::warn!(lease = %id, %error, "remote support workers did not stop cleanly");
@@ -332,6 +403,14 @@ impl Native for Coordinator {
             drop(lease);
         }));
         Ok(())
+    }
+
+    fn chat(&self, text: &str) {
+        queue(&self.chat.outgoing, [text.to_owned()]);
+    }
+
+    fn chats(&self) -> Vec<String> {
+        drain(&self.chat.said)
     }
 
     fn transfers(&self) -> Vec<Report> {

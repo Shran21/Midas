@@ -13,6 +13,41 @@ pub const LONGEST_WAIT: u32 = 300;
 pub const INDICATE: &[u8] = b"indicate/1";
 /// The local user pressed End on the indicator.
 pub const END: &[u8] = b"end/1";
+// While the indicator shows, the service asks and the indicator answers each message, so no
+// read is ever left half done; the answer is `END` once the user pressed End.
+/// The technician's chat message for the indicator; answered with `SHOWN`.
+pub const CHAT: &[u8] = b"chat/1:";
+pub const SHOWN: &[u8] = b"shown/1";
+/// The service collects the user's chat messages; answered with `SAID`.
+pub const COLLECT: &[u8] = b"collect/1";
+const SAID: &[u8] = b"said/1:";
+
+pub fn chat_message(text: &str) -> Vec<u8> {
+    [CHAT, text.as_bytes()].concat()
+}
+
+/// The technician's text, when it is a chat message both sides accept.
+pub fn read_chat(message: &[u8]) -> Option<String> {
+    let text = std::str::from_utf8(message.strip_prefix(CHAT)?).ok()?;
+    midas_protocol::remote::chat_valid(text).then(|| text.to_owned())
+}
+
+/// The user's messages, separated by NUL, which no chat message contains.
+pub fn said_message(texts: &[String]) -> Vec<u8> {
+    [SAID, texts.join("\0").as_bytes()].concat()
+}
+
+pub fn read_said(message: &[u8]) -> Option<Vec<String>> {
+    let texts = std::str::from_utf8(message.strip_prefix(SAID)?).ok()?;
+    if texts.is_empty() {
+        return Some(Vec::new());
+    }
+    let texts: Vec<String> = texts.split('\0').map(str::to_owned).collect();
+    texts
+        .iter()
+        .all(|text| midas_protocol::remote::chat_valid(text))
+        .then_some(texts)
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Question {
@@ -218,6 +253,12 @@ pub struct Indicator {
     pub title: String,
     pub line: String,
     pub end: String,
+    pub chat: String,
+    pub send: String,
+    /// How the user's own messages are signed in the conversation.
+    pub you: String,
+    /// The label of the field the user types into.
+    pub message: String,
 }
 
 pub fn indicator(question: &Question, hungarian: bool) -> Indicator {
@@ -234,6 +275,10 @@ pub fn indicator(question: &Question, hungarian: bool) -> Indicator {
                 question.operator, question.customer
             ),
             end: "Befejezés".into(),
+            chat: "Üzenetek".into(),
+            send: "Küldés".into(),
+            you: "Te".into(),
+            message: "Üzenet:".into(),
         }
     } else {
         Indicator {
@@ -243,6 +288,10 @@ pub fn indicator(question: &Question, hungarian: bool) -> Indicator {
                 question.operator, question.customer
             ),
             end: "End".into(),
+            chat: "Messages".into(),
+            send: "Send".into(),
+            you: "You".into(),
+            message: "Message:".into(),
         }
     }
 }
@@ -270,6 +319,21 @@ mod tests {
             transfer: Transfer::NONE,
             seconds: 60,
         }
+    }
+
+    #[test]
+    fn chat_messages_round_trip_and_reject_anything_else() {
+        assert_eq!(
+            read_chat(&chat_message("Mindjárt nézem.")).as_deref(),
+            Some("Mindjárt nézem.")
+        );
+        assert_eq!(read_chat(&chat_message("a\u{7}")), None);
+        assert_eq!(read_chat(END), None);
+        let said = ["Köszönöm!".to_owned(), "Két\nsor".to_owned()];
+        assert_eq!(read_said(&said_message(&said)), Some(said.to_vec()));
+        assert_eq!(read_said(&said_message(&[])), Some(Vec::new()));
+        assert_eq!(read_said(&said_message(&["  ".into()])), None);
+        assert_eq!(read_said(SHOWN), None);
     }
 
     #[test]

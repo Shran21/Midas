@@ -184,6 +184,25 @@ pub struct TransferReport {
     pub problem: String,
 }
 
+/// Characters of one chat message.
+pub const MAX_CHAT_CHARS: usize = 1000;
+
+#[derive(Clone, PartialEq, Message)]
+pub struct Chat {
+    #[prost(bytes = "vec", tag = "1")]
+    pub request: Vec<u8>,
+    #[prost(string, tag = "2")]
+    pub text: String,
+}
+
+/// A chat message both sides accept: not blank, within the limit, and no control character
+/// other than a line break.
+pub fn chat_valid(text: &str) -> bool {
+    !text.trim().is_empty()
+        && text.chars().count() <= MAX_CHAT_CHARS
+        && !text.chars().any(|c| c.is_control() && c != '\n')
+}
+
 /// The most SDP bytes either side accepts.
 pub const MAX_SDP: usize = 16 * 1024;
 
@@ -301,6 +320,10 @@ mod tests {
                 request: vec![1; 16],
                 reason: EndReason::Local as i32,
             }),
+            Body::RemoteChat(Chat {
+                request: vec![1; 16],
+                text: "Szia!\nMindjárt nézem.".into(),
+            }),
             Body::RemoteTransfer(TransferReport {
                 request: vec![1; 16],
                 kind: TransferKind::Download as i32,
@@ -311,6 +334,10 @@ mod tests {
                 problem: String::new(),
             }),
         ];
+        assert!(chat_valid("Szia!\nMindjárt nézem."));
+        assert!(!chat_valid("  \n "));
+        assert!(!chat_valid("a\u{7}b"));
+        assert!(!chat_valid(&"x".repeat(MAX_CHAT_CHARS + 1)));
         for message in messages {
             assert_eq!(
                 decode(&encode(message.clone())).unwrap(),

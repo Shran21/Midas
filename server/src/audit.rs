@@ -39,6 +39,7 @@ names!(Action {
     RemoteMedia => "remote.media",
     RemoteSessionEnd => "remote.session_end",
     RemoteTransfer => "remote.transfer",
+    RemoteChat => "remote.chat",
     RemoteSessionsRead => "remote.sessions_read",
     UnattendedPolicySet => "remote.unattended_policy_set",
     TenantCreate => "tenant.create",

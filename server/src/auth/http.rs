@@ -227,6 +227,14 @@ pub fn router(state: Arc<WebAuth>) -> Router {
             get(remote_ice),
         )
         .route(
+            "/api/tenants/{id}/devices/{device}/remote-requests/{request}/chat",
+            post(remote_chat_send),
+        )
+        .route(
+            "/api/tenants/{id}/devices/{device}/remote-requests/{request}/chat/{after}",
+            get(remote_chat_read),
+        )
+        .route(
             "/api/tenants/{id}/devices/{device}/metrics",
             get(device_metrics),
         )
@@ -658,6 +666,64 @@ async fn remote_ice(
         ice_servers: servers,
     })
     .into_response();
+    response.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store"),
+    );
+    Ok(response)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ChatText {
+    text: String,
+}
+
+#[derive(Serialize)]
+struct ChatMessages {
+    messages: Vec<crate::remote_requests::ChatMessage>,
+}
+
+async fn remote_chat_send(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((tenant, device, request)): Path<(Uuid, Uuid, Uuid)>,
+    Json(body): Json<ChatText>,
+) -> Result<(StatusCode, Json<crate::remote_requests::ChatMessage>)> {
+    if !midas_protocol::remote::chat_valid(&body.text) {
+        return Err(Failure(StatusCode::BAD_REQUEST, "invalid_request"));
+    }
+    enrollment(&state)?
+        .remote_chat_send(
+            &state.sessions,
+            &context.token,
+            tenant,
+            device,
+            request,
+            body.text,
+        )
+        .await?
+        .map(|message| (StatusCode::CREATED, Json(message)))
+        .ok_or(Failure(StatusCode::NOT_FOUND, "not_found"))
+}
+
+async fn remote_chat_read(
+    State(state): State<Arc<WebAuth>>,
+    Extension(context): Extension<Context>,
+    Path((tenant, device, request, after)): Path<(Uuid, Uuid, Uuid, u64)>,
+) -> Result<Response> {
+    let messages = enrollment(&state)?
+        .remote_chat_read(
+            &state.sessions,
+            &context.token,
+            tenant,
+            device,
+            request,
+            after,
+        )
+        .await?
+        .ok_or(Failure(StatusCode::NOT_FOUND, "not_found"))?;
+    let mut response = Json(ChatMessages { messages }).into_response();
     response.headers_mut().insert(
         axum::http::header::CACHE_CONTROL,
         axum::http::HeaderValue::from_static("no-store"),
